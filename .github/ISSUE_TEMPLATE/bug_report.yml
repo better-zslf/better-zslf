@@ -1,0 +1,65 @@
+name: 功能异常
+description: 客户端功能不正常、崩溃、数据不符
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: ftype
+    attributes:
+      label: 问题类型
+      options:
+        - 功能异常
+        - 登录问题
+        - 数据不符
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 问题描述
+      description: 发生了什么？期望的结果是什么？
+      placeholder: 例如：打开「校园动态」页面一直转圈，无法加载列表
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 进入 xx 页面
+        2. 点击 xx
+        3. 出现 xx
+    validations:
+      required: true
+
+  - type: input
+    id: appver
+    attributes:
+      label: App 版本
+      placeholder: 例如 1.0.0 (1)
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 系统版本
+      placeholder: 例如 Android 14 / iOS 17.1
+    validations:
+      required: true
+
+  - type: textarea
+    id: shots
+    attributes:
+      label: 截图或录屏
+      description: 直接拖拽图片到本区域即可上传
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        > 请勿在 issue 中填写学号、密码、token 等敏感信息。

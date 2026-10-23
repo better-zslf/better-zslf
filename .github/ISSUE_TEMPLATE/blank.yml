@@ -1,0 +1,11 @@
+name: 其它问题
+description: 不属于上述两类的问题
+title: "[Other] "
+labels: ["question"]
+body:
+  - type: textarea
+    id: body
+    attributes:
+      label: 内容
+    validations:
+      required: true

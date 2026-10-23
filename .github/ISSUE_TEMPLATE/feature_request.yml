@@ -1,0 +1,35 @@
+name: 新功能建议
+description: 希望 better-zslf 增加或改进某个功能
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决什么问题
+      description: 描述你遇到的场景或痛点
+      placeholder: 例如：每次查课表都要打开官方 App，希望能在这里直接看
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 期望的方案
+      description: 你希望这个功能长什么样、怎么用
+    validations:
+      required: true
+
+  - type: textarea
+    id: alt
+    attributes:
+      label: 考虑过的替代方案
+    validations:
+      required: false
+
+  - type: input
+    id: appver
+    attributes:
+      label: App 版本（选填）
+    validations:
+      required: false

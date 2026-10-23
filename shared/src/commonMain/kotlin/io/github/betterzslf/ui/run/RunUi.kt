@@ -4,10 +4,14 @@ import io.github.betterzslf.core.text.AppText
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
@@ -15,8 +19,7 @@ import io.github.betterzslf.data.RunRepository
 import io.github.betterzslf.feature.run.*
 import io.github.betterzslf.feature.runui.RunDisplay
 import io.github.betterzslf.platform.*
-import io.github.betterzslf.ui.ConfirmationCheckRow
-import io.github.betterzslf.ui.SectionCard
+import io.github.betterzslf.ui.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.*
 import top.yukonga.miuix.kmp.basic.*
@@ -50,12 +53,21 @@ internal fun missingRunSelection() = ApiResult.Failure(ApiError.Validation(listO
 
 internal fun LazyListScope.runFeedback(query: RunPageQuery, retry: () -> Unit, keyPrefix: String = "read") {
     if (query.loading) item("$keyPrefix:loading") { Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() } }
-    query.error?.let { error -> item("$keyPrefix:error") { SectionCard(if (query.data == null) AppText.Common.READ_FAILED else AppText.Common.REFRESH_FAILED_PREVIOUS_RESULTS_RETAINED, error + AppText.Common.TAP_TO_QUERY_AGAIN_NEWLINE_SUFFIX, retry) } }
-    query.message?.let { text -> item("$keyPrefix:message") { SectionCard(AppText.Common.SERVER_NOTICE_TITLE, text) } }
+    query.error?.let { error -> item("$keyPrefix:error") {
+        RunCard {
+            InfoBanner(error, title = if (query.data == null) AppText.Common.READ_FAILED else AppText.Common.REFRESH_FAILED_PREVIOUS_RESULTS_RETAINED, tone = UiTone.Warning)
+            TextButton(AppText.Common.REFRESH, onClick = retry)
+        }
+    } }
+    query.message?.let { text -> item("$keyPrefix:message") { InfoBanner(text, tone = UiTone.Neutral) } }
 }
 
 internal fun LazyListScope.runWarnings(warnings: List<String>, keyPrefix: String = "warning") {
-    itemsIndexed(warnings.distinct(), key = { index, _ -> "$keyPrefix:$index" }) { _, warning -> SectionCard(AppText.Common.INFORMATION_AND_LIMITS_TITLE, warning) }
+    if (warnings.isNotEmpty()) item("$keyPrefix:details") {
+        RunDisclosure(AppText.Common.INFORMATION_AND_LIMITS_TITLE) {
+            warnings.distinct().forEach { warning -> InfoBanner(warning, tone = UiTone.Neutral) }
+        }
+    }
 }
 
 @Composable
@@ -65,21 +77,11 @@ internal fun RunCheck(checked: Boolean, text: String, enabled: Boolean = true, o
 
 @Composable
 internal fun RunMetrics(session: RunSessionState, metric: Boolean) {
-    Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues(16.dp)) {
-        Text(AppText.Run.realRecordTitle((runPhase(session.phase))), style = MiuixTheme.textStyles.title4)
-        Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(Modifier.weight(1f)) { Text(AppText.Run.DISTANCE_LABEL); Text(RunDisplay.distance(session.distanceMeters, metric), style = MiuixTheme.textStyles.title4) }
-            Column(Modifier.weight(1f)) { Text(AppText.Run.SAMPLING_DURATION_LABEL); Text(RunDisplay.duration(session.elapsedMillis), style = MiuixTheme.textStyles.title4) }
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(Modifier.weight(1f)) { Text(AppText.Run.AVERAGE_PACE_LABEL); Text(RunDisplay.pace(session.distanceMeters, session.elapsedMillis, metric)) }
-            Column(Modifier.weight(1f)) { Text(AppText.Run.DISTANCE_TO_NEXT_POINT_LABEL); Text(RunDisplay.distance(session.distanceToNextCheckpointMeters, metric)) }
-        }
-        Spacer(Modifier.height(12.dp))
-        Text(AppText.Run.capturedPointCounts((session.acceptedSampleCount), (session.rejectedSampleCount)), color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-    }
+    MetricStrip(listOf(
+        UiMetric(RunDisplay.distance(session.distanceMeters, metric), AppText.Run.DISTANCE_LABEL),
+        UiMetric(RunDisplay.pace(session.distanceMeters, session.elapsedMillis, metric), AppText.Run.AVERAGE_PACE_LABEL),
+        UiMetric(session.acceptedSampleCount.toString(), AppText.Run.SAVED_POINTS_LABEL),
+    ))
 }
 
 internal fun runPhase(phase: RunSessionPhase): String = when (phase) {
@@ -115,6 +117,9 @@ internal fun RunMapPreview(
     checkpoints: List<RunCheckpoint> = emptyList(),
     coordinateSystem: RunMapCoordinateSystem = RunMapCoordinateSystem.GCJ02,
     role: RunMapRole = RunMapRole.IMPORTED,
+    height: Dp = 260.dp,
+    modifier: Modifier = Modifier,
+    showDetails: Boolean = false,
 ) {
     val useful = paths.filter { it.second.isNotEmpty() }
     val session by graph.sessions.session.collectAsState()
@@ -126,7 +131,9 @@ internal fun RunMapPreview(
     val apiKey = session?.mapToken
     val identity = remember(owner, provider, apiKey) { RunMapFeedbackIdentity(owner, provider, apiKey) }
     if (useful.isEmpty() && checkpoints.isEmpty()) {
-        SectionCard(AppText.Run.NO_DISPLAYABLE_COORDINATES, AppText.Run.NO_REAL_POSITION_OR_ROUTE_NO_SIMULATION_HINT)
+        Box(modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(AppUiTokens.CardRadius)), contentAlignment = Alignment.Center) {
+            RunEmpty(AppText.Run.NO_DISPLAYABLE_COORDINATES, AppText.Run.NO_REAL_POSITION_OR_ROUTE_NO_SIMULATION_HINT)
+        }
     } else key(identity) {
         // Feedback and the native panel share this configuration/mount lifetime, not the payload key.
         val document = remember { Any() }
@@ -137,6 +144,7 @@ internal fun RunMapPreview(
         // Read the latest state here so an event delivered during apply is never overwritten.
         SideEffect { feedback = feedback.forDocument(identity, document, latestData) }
         var selected by remember(paths) { mutableIntStateOf(0) }
+        var checkpointWindow by remember(checkpoints) { mutableIntStateOf(20) }
         val path = useful.getOrNull(selected.coerceIn(0, (useful.size - 1).coerceAtLeast(0)))
         val line = RunMapPath(coordinateSystem = coordinateSystem, segments = useful.map { it.second })
         val dark = when (settings.theme) { "Dark" -> true; "Light" -> false; else -> isSystemInDarkTheme() }
@@ -147,19 +155,32 @@ internal fun RunMapPreview(
             checkpoints = checkpoints.mapIndexed { index, point -> RunMapCheckpoint(point.id, point.point, AppText.Run.checkpointOrdinal((index + 1)), RunMapCoordinateSystem.GCJ02) },
             currentLocation = if (role == RunMapRole.ACTUAL) path?.second?.lastOrNull() else null,
             currentCoordinateSystem = coordinateSystem, dark = dark, editMode = false)
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            RunMapPanel(model, { event ->
-                feedback = feedback.forDocument(identity, document, latestData).onEvent(identity, document, event)
-            }, Modifier.fillMaxWidth().height(280.dp))
-            if (useful.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(AppText.Run.PREVIOUS_ROUTE_SEGMENT, enabled = selected > 0, onClick = { selected-- })
-                Text(AppText.Run.segmentSelection((selected + 1), (useful.size)))
-                TextButton(AppText.Run.NEXT_ROUTE_SEGMENT, enabled = selected + 1 < useful.size, onClick = { selected++ })
+        Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(AppUiTokens.CardRadius))) {
+                RunMapPanel(model, { event ->
+                    feedback = feedback.forDocument(identity, document, latestData).onEvent(identity, document, event)
+                }, Modifier.fillMaxSize())
+                if (visibleFeedback.status is RunMapDocumentFeedback.Failed || visibleFeedback.transient != null) {
+                    visibleFeedback.text()?.let { InfoBanner(it,
+                        tone = if (visibleFeedback.status is RunMapDocumentFeedback.Failed) UiTone.Warning else UiTone.Neutral,
+                        modifier = Modifier.align(Alignment.Center).padding(12.dp)) }
+                }
             }
-            visibleFeedback.text()?.let { Text(it) }
-            SectionCard(AppText.Run.coordinatePreviewFrame((coordinateSystem).toString()), (path?.let { (name, points) ->
-                AppText.Run.pathCoordinateSummary((name), (points.size), (coordinate(points.first())), (coordinate(points.last())))
-            } ?: AppText.Run.NO_AVAILABLE_PATH) + AppText.Run.checkpointPreviewFooter((checkpoints.size)))
+            if (showDetails || visibleFeedback.status is RunMapDocumentFeedback.Failed) RunDisclosure(AppText.Run.coordinatePreviewFrame(coordinateSystem.toString())) {
+                if (useful.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(AppText.Run.PREVIOUS_ROUTE_SEGMENT, enabled = selected > 0, onClick = { selected-- })
+                    Text(AppText.Run.segmentSelection(selected + 1, useful.size))
+                    TextButton(AppText.Run.NEXT_ROUTE_SEGMENT, enabled = selected + 1 < useful.size, onClick = { selected++ })
+                }
+                visibleFeedback.text()?.let { Text(it, fontSize = 13.sp) }
+                Text((path?.let { (name, points) ->
+                    AppText.Run.pathCoordinateSummary(name, points.size, coordinate(points.first()), coordinate(points.last()))
+                } ?: AppText.Run.NO_AVAILABLE_PATH) + AppText.Run.checkpointPreviewFooter(checkpoints.size), fontSize = 12.sp)
+                checkpoints.take(checkpointWindow).forEachIndexed { index, point ->
+                    Text("${AppText.Run.checkpointOrdinal(index + 1)} · ${coordinate(point.point)}", fontSize = 12.sp)
+                }
+                if (checkpointWindow < checkpoints.size) TextButton(AppText.Run.EXPAND_MORE_ORIGINAL_COORDINATES, onClick = { checkpointWindow += 20 })
+            }
         }
     }
 }
@@ -172,5 +193,11 @@ internal fun runFields(raw: JsonObject): List<Pair<String, String>> = raw.entrie
 }
 
 internal fun LazyListScope.runRawFields(raw: JsonObject, prefix: String = "raw") {
-    itemsIndexed(runFields(raw), key = { index, _ -> "$prefix:$index" }) { _, field -> SectionCard(field.first, field.second) }
+    val fields = runFields(raw)
+    if (fields.isNotEmpty()) item("$prefix:fields") { RunDisclosure(AppText.Common.INFORMATION_AND_LIMITS_TITLE) {
+        fields.forEach { (label, value) ->
+            Text(label, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            Text(value, fontSize = 14.sp)
+        }
+    } }
 }

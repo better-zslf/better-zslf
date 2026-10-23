@@ -4,8 +4,12 @@ import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.edition.BuildEdition
 import io.github.betterzslf.platform.ApkUpdateSpec
 
-/** Stable SemVer only. Numeric components are compared as digit strings, never narrowed. */
-class StableVersion private constructor(val versionName: String, private val parts: List<String>) : Comparable<StableVersion> {
+/** Remote parse stays stable-only; installed RCs enter solely through parseInstalled. No numeric narrowing. */
+class StableVersion private constructor(
+    val versionName: String,
+    private val parts: List<String>,
+    private val rcNumber: String? = null,
+) : Comparable<StableVersion> {
     override fun compareTo(other: StableVersion): Int {
         for (index in parts.indices) {
             val size = parts[index].length.compareTo(other.parts[index].length)
@@ -13,7 +17,11 @@ class StableVersion private constructor(val versionName: String, private val par
             val digits = parts[index].compareTo(other.parts[index])
             if (digits != 0) return digits
         }
-        return 0
+        // Prerelease precedence applies only after every numeric component is equal.
+        if (rcNumber == null) return if (other.rcNumber == null) 0 else 1
+        if (other.rcNumber == null) return -1
+        val size = rcNumber.length.compareTo(other.rcNumber.length)
+        return if (size != 0) size else rcNumber.compareTo(other.rcNumber)
     }
     override fun toString(): String = "StableVersion($versionName)"
     companion object {
@@ -26,6 +34,22 @@ class StableVersion private constructor(val versionName: String, private val par
             val numeric = if (BuildEdition.isPro) normalized.removeSuffix(BuildEdition.versionNameSuffix) else normalized
             val match = pattern.matchEntire(numeric) ?: return null
             return StableVersion(normalized, (1..3).map { match.groupValues[it] })
+        }
+
+        private val installedRcPattern = Regex("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)-rc([1-9][0-9]{0,5})$")
+
+        /** Only the installed version may be an RC; this parser must not validate release tags or APK specs. */
+        fun parseInstalled(value: String): StableVersion? {
+            parse(value)?.let { return it }
+            val normalized = value.removePrefix("v")
+            if (normalized.isEmpty() || normalized.length > 128) return null
+            // Keep numeric iOS marketing-version compatibility in parse(), but a Pro RC must name its edition.
+            val numeric = if (BuildEdition.isPro) {
+                if (!normalized.endsWith(BuildEdition.versionNameSuffix)) return null
+                normalized.removeSuffix(BuildEdition.versionNameSuffix)
+            } else normalized
+            val match = installedRcPattern.matchEntire(numeric) ?: return null
+            return StableVersion(normalized, (1..3).map { match.groupValues[it] }, match.groupValues[4])
         }
     }
 }

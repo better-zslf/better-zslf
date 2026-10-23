@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 [[ "$(uname -s)" == Darwin ]] || { echo 'Native simulator smoke requires macOS.' >&2; exit 1; }
-edition="${ORG_GRADLE_PROJECT_betterZslfEdition-standard}"
+edition="${ORG_GRADLE_PROJECT_betterZslfEdition-pro}"
 app=""
 for argument in "$@"; do
   case "$argument" in

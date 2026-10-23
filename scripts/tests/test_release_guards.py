@@ -2,11 +2,15 @@
 import base64
 import contextlib
 import io
+import json
+import os
 import re
+import textwrap
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from prepare_signing import REQUIRED, decode_keystore
@@ -74,6 +78,41 @@ class VersionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "numeric x.y.z"):
             self.check_version("VERSION_NAME=1.2.3-pro\nVERSION_CODE=42\n", edition="pro")
 
+    def test_optional_rc_keeps_numeric_marketing_base_and_exact_full_tag(self):
+        properties = "VERSION_NAME=1.0.0\nVERSION_CODE=2\nVERSION_PRERELEASE=rc1\n"
+        self.assertEqual(self.check_version(properties, "v1.0.0-rc1"),
+                         {"versionName": "1.0.0-rc1", "versionCode": 2, "tag": "v1.0.0-rc1"})
+        self.assertEqual(self.check_version(properties, "v1.0.0-rc1-pro", "pro"),
+                         {"versionName": "1.0.0-rc1-pro", "versionCode": 2, "tag": "v1.0.0-rc1-pro"})
+        self.assertEqual(self.check_version(properties.replace("rc1", "rc999999"))["versionName"], "1.0.0-rc999999")
+
+    def test_rc_is_bounded_and_cannot_be_empty_or_inject_an_edition(self):
+        for suffix in ("", "rc0", "rc01", "rc1000000", "rc.1", "RC1", "alpha1", "rc1-pro", "rc1+build", "rc1;echo BAD", "rc1$(id)"):
+            with self.subTest(suffix=suffix), self.assertRaisesRegex(ValueError, "VERSION_PRERELEASE"):
+                self.check_version(f"VERSION_NAME=1.0.0\nVERSION_CODE=2\nVERSION_PRERELEASE={suffix}\n")
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            self.check_version("VERSION_NAME=1.0.0\nVERSION_CODE=2\nVERSION_PRERELEASE=rc1\nVERSION_PRERELEASE=rc2\n")
+
+    def test_rc_cannot_match_another_channel_version_or_edition_tag(self):
+        properties = "VERSION_NAME=1.0.0\nVERSION_CODE=2\nVERSION_PRERELEASE=rc1\n"
+        for tag in ("v1.0.0", "v1.0.0-rc2", "v1.0.1-rc1", "v1.0.0-rc1-pro"):
+            with self.subTest(tag=tag), self.assertRaisesRegex(ValueError, "Tag must exactly"):
+                self.check_version(properties, tag)
+        with self.assertRaisesRegex(ValueError, "Tag must exactly"):
+            self.check_version(properties, "v1.0.0-rc1", "pro")
+
+    def test_cli_emits_channel_without_changing_three_key_metadata_schema(self):
+        import release_metadata
+        for suffix, expected in (("", "false"), ("VERSION_PRERELEASE=rc1\n", "true")):
+            with self.subTest(suffix=suffix), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                props, output, github = root / "version.properties", root / "meta.json", root / "github-output"
+                props.write_text("VERSION_NAME=1.0.0\nVERSION_CODE=2\n" + suffix, encoding="utf-8")
+                with mock.patch.object(sys, "argv", ["release_metadata.py", "--properties", str(props), "--output", str(output), "--github-output"]), mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(github)}, clear=True), contextlib.redirect_stdout(io.StringIO()):
+                    release_metadata.main()
+                self.assertEqual(set(json.loads(output.read_text(encoding="utf-8"))), {"versionName", "versionCode", "tag"})
+                self.assertIn(f"prerelease={expected}\n", github.read_text(encoding="utf-8"))
+
     def test_package_identity_is_explicit(self):
         self.assertEqual(APPLICATION_IDS, {"standard": "io.github.betterzslf", "pro": "io.github.betterzslf.pro"})
 
@@ -129,6 +168,45 @@ class SourceReleaseWorkflowContractTests(unittest.TestCase):
     """Source-shape contracts, not GitHub event execution or network proof."""
     def workflow(self):
         return (Path(__file__).resolve().parents[2] / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    def run_intent(self, tag, event="push", prerelease=False):
+        block = self.workflow().split("- name: Validate the exact repository, event and bounded ref\n", 1)[1].split("      - name:", 1)[0]
+        script = textwrap.dedent(block.split("python3 - <<'PY'\n", 1)[1].rsplit("\n          PY", 1)[0])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            event_file, output = root / "event.json", root / "output"
+            event_file.write_text(json.dumps({"release": {"draft": False, "prerelease": prerelease,
+                "html_url": "https://github.com/better-zslf/better-zslf/releases/tag/" + tag}}), encoding="utf-8")
+            environment = {"GITHUB_REPOSITORY":"better-zslf/better-zslf", "GITHUB_EVENT_NAME":event,
+                "EVENT_SOURCE_TAG":tag, "GITHUB_REF":"refs/tags/" + tag,
+                "GITHUB_EVENT_PATH":str(event_file), "GITHUB_OUTPUT":str(output)}
+            with mock.patch.dict(os.environ, environment, clear=True):
+                exec(compile(script, "source-release-intent", "exec"), {})
+            return output.read_text(encoding="utf-8")
+
+    def test_push_intent_accepts_only_exact_stable_or_bounded_rc_source_tags(self):
+        for tag in ("v1.0.0", "v1.0.0-rc1", "v1.0.0-rc999999"):
+            with self.subTest(tag=tag):
+                self.assertIn("source_tag=" + tag + "\n", self.run_intent(tag))
+        for tag in ("v1.0.0-rc0", "v1.0.0-rc01", "v1.0.0-rc1000000", "v1.0.0-rc.1", "v1.0.0-beta1", "v1.0.0-rc1-pro", "v01.0.0-rc1", "v1.0.0-rc1\ninjected=true"):
+            with self.subTest(tag=tag), self.assertRaises(SystemExit):
+                self.run_intent(tag)
+
+    def test_published_release_channel_must_match_tag_with_literal_boolean(self):
+        for tag, channel in (("v1.0.0", False), ("v1.0.0-rc1", True)):
+            with self.subTest(tag=tag):
+                self.assertIn("publish_standard=false\n", self.run_intent(tag, "release", channel))
+            for invalid in (not channel, str(channel).lower(), 0, 1, None):
+                with self.subTest(tag=tag, channel=invalid), self.assertRaises(SystemExit):
+                    self.run_intent(tag, "release", invalid)
+
+    def test_rc_publication_does_not_replace_latest_and_notification_rechecks_channel(self):
+        workflow = self.workflow()
+        self.assertIn("RELEASE_PRERELEASE: ${{ steps.version.outputs.prerelease }}", workflow)
+        self.assertIn("true) flags+=(--prerelease --latest=false)", workflow)
+        self.assertIn('"${flags[@]}"', workflow)
+        self.assertEqual(workflow.count("release.get('prerelease') is not ('-rc' in tag)"), 2)
+        self.assertIn("published standard artifacts are immutable", workflow)
 
     def test_published_and_push_checkouts_pin_event_sha_and_recheck_tag(self):
         workflow = self.workflow()

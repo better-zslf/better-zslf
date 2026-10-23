@@ -83,6 +83,6 @@ class AccountRecoveryBackPolicyTest {
         })
         assertSame(state, observed)
         assertEquals(AccountRecoveryPhase.RESETTING, state.phase)
-        assertEquals("请求可能已接收，请等待回执，返回不等于撤销", notice)
+        assertEquals("请求可能已受理，请等待结果。返回页面不会撤销请求。", notice)
     }
 }

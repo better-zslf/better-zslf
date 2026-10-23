@@ -49,7 +49,7 @@ def build_tool(tools: Path, name: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--edition", choices=tuple(APPLICATION_IDS), default="standard")
+    parser.add_argument("--edition", choices=tuple(APPLICATION_IDS), default="pro")
     parser.add_argument("--metadata", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

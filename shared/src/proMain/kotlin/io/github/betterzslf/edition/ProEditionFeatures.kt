@@ -12,7 +12,10 @@ import io.github.betterzslf.feature.water.KableWaterBleTransport
 import io.github.betterzslf.feature.water.WaterBleController
 import io.github.betterzslf.feature.water.WaterBlePhase
 import io.github.betterzslf.platform.createWaterEpilogueContext
-import io.github.betterzslf.ui.SectionCard
+import io.github.betterzslf.ui.CampusShortcut
+import androidx.compose.ui.graphics.Color
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Home
 import io.github.betterzslf.ui.run.RunImportPage
 import io.github.betterzslf.ui.water.WaterHeaterScreen
 import kotlinx.coroutines.CoroutineScope
@@ -40,9 +43,12 @@ private class ProEditionFeatures(private val scope: CoroutineScope) : EditionFea
             WaterBlePhase.Failed -> AppText.Water.CONNECTION_CLOSED_SEE_NOTICE
             WaterBlePhase.Closed -> AppText.Common.CLOSED
         }
-        SectionCard(AppText.Water.DORMITORY_HEATER_TITLE, AppText.Navigation.offlineWaterSummary(summary), {
-            if (EditionAccess.waterEnabled) open(Route.Page("water", title = AppText.Water.DORMITORY_HEATER_TITLE))
-        })
+        val needsAttention = state.phase in setOf(WaterBlePhase.Active, WaterBlePhase.Stopping, WaterBlePhase.ManualConfirmationRequired, WaterBlePhase.Failed)
+        CampusShortcut(AppText.Water.DORMITORY_HEATER_TITLE, MiuixIcons.Home, Color(0xFFFA3B3B),
+            supportingText = if (needsAttention) summary else "",
+            onClick = {
+                if (EditionAccess.waterEnabled) open(Route.Page("water", title = AppText.Water.DORMITORY_HEATER_TITLE))
+            })
     }
 
     @Composable override fun LoginEntry(open: () -> Unit) {

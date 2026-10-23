@@ -8,7 +8,7 @@ plugins {
 
 // One edition per compilation, including native/framework and host-test targets.
 // This is source selection, not a runtime feature flag or Android-only flavor.
-val betterZslfEdition = providers.gradleProperty("betterZslfEdition").orElse("standard").get()
+val betterZslfEdition = providers.gradleProperty("betterZslfEdition").orElse("pro").get()
 require(betterZslfEdition in setOf("standard", "pro")) {
     "betterZslfEdition must be standard or pro (was '$betterZslfEdition')"
 }

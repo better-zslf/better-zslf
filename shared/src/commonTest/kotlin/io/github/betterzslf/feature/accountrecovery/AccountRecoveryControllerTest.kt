@@ -59,7 +59,7 @@ class AccountRecoveryControllerTest {
     @Test fun guestHasAnHonestRequiredSessionStateAndEveryActionStaysDisabled() = runTest {
         val controller = AccountRecoveryController(null)
         assertEquals(AccountRecoveryPhase.GUEST, controller.state.value.phase)
-        assertTrue(controller.state.value.message.orEmpty().contains("匿名"))
+        assertEquals("请先登录，再使用短信重置。发送短信、核验验证码和重置都需要本次有效登录状态；登录状态变化后需重新核对。", controller.state.value.message)
         assertFalse(controller.sendCode(PHONE, true))
         assertFalse(controller.verify(PHONE, CODE))
         assertFalse(controller.prepare(PHONE, CODE, PASSWORD, PASSWORD))
@@ -76,7 +76,7 @@ class AccountRecoveryControllerTest {
         assertTrue(controller.sendCode(PHONE, true))
         assertEquals(listOf("send"), source.calls)
         assertEquals(60, controller.state.value.cooldownSeconds)
-        assertTrue(controller.state.value.message.orEmpty().contains("不保证送达"))
+        assertEquals("学校已受理短信请求。60 秒仅为本地冷却，不代表短信已送达，也不是验证码有效期。", controller.state.value.message)
     }
 
     @Test fun cooldownIsLocalAndExpiryNeverSendsAnotherSms() = runTest {

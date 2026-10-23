@@ -29,8 +29,9 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 fun ConfirmDialog(show: Boolean, title: String, summary: String, dismiss: () -> Unit, confirm: () -> Unit) {
     OverlayDialog(show = show, title = title, summary = summary, onDismissRequest = dismiss) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TextButton(AppText.Common.CANCEL, onClick = dismiss, modifier = Modifier.weight(1f))
-            TextButton(AppText.Common.CONFIRM, onClick = confirm, modifier = Modifier.weight(1f))
+            Button(onClick = dismiss, modifier = Modifier.weight(1f), minHeight = 48.dp, cornerRadius = AppUiTokens.ButtonRadius) { Text(AppText.Common.CANCEL) }
+            Button(onClick = confirm, modifier = Modifier.weight(1f), minHeight = 48.dp, cornerRadius = AppUiTokens.ButtonRadius,
+                colors = ButtonDefaults.buttonColorsPrimary()) { Text(AppText.Common.CONFIRM) }
         }
     }
 }
@@ -48,7 +49,7 @@ fun FeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBa
         "columns", "articles", "article", "document", "history", "notices", "messages", "discover" -> ContentPage(graph, page, onOpen, onBack)
         "venues", "venue", "venuetimes", "venueapply", "myvenues", "venueapplication", "fitness", "fitnessitems", "fitnessenrol" -> BookingPage(graph, page, onOpen, onBack)
         "runs", "rundetail", "runrecords", "runrecord", "runtracker", "runimport" -> RunFeaturePage(graph, page, onOpen, onBack, graph.runRuntime)
-        "community" -> CommunityScreen(graph, onOpen)
+        "community" -> CommunityScreen(graph, onOpen, onBack)
         "water" -> graph.editionFeatures.Page(graph, page, onOpen, onBack)
         "campusnet" -> CampusNetworkFeaturePage(graph, onBack)
         "feedback" -> FeedbackScreen(graph, onBack)
@@ -214,19 +215,32 @@ private fun DocumentScreen(graph: AppGraph, page: Route.Page, back: () -> Unit) 
 private fun FeedbackScreen(graph: AppGraph, back: () -> Unit) {
     val body = AppText.Content.feedbackBody((graph.platform.versionName), (graph.platform.description))
     Screen(AppText.App.FEEDBACK_TITLE, back) { padding -> PageList(padding) {
-        item { SectionCard(AppText.App.FEEDBACK_IMPROVEMENT_TITLE, AppText.App.PUBLIC_FEEDBACK_DATA_SCOPE_HINT) }
-        item { Button(onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf/issues/new?title=${AppText.App.FEEDBACK_ISSUE_TITLE_PREFIX.encodeURLParameter()}&body=${body.encodeURLParameter()}") }) { Text(AppText.App.REPORT_ISSUE) } }
-        item { TextButton(AppText.App.VIEW_EXISTING_ISSUES, onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf/issues") }) }
+        item { AppBrandMark(size = 64.dp, modifier = Modifier.padding(vertical = 12.dp)) }
+        item { SectionTitle(AppText.App.FEEDBACK_IMPROVEMENT_TITLE) }
+        item { InfoBanner(AppText.App.PUBLIC_FEEDBACK_DATA_SCOPE_HINT) }
+        item { PrimaryAction(AppText.App.REPORT_ISSUE, onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf/issues/new?title=${AppText.App.FEEDBACK_ISSUE_TITLE_PREFIX.encodeURLParameter()}&body=${body.encodeURLParameter()}") }) }
+        item { TextButton(AppText.App.VIEW_EXISTING_ISSUES, onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf/issues") }, modifier = Modifier.fillMaxWidth()) }
+        item { InfoBanner(AppText.App.OPEN_BROWSER_NOT_SUBMITTED_HINT, tone = UiTone.Neutral) }
     } }
 }
 
 @Composable
 private fun AboutScreen(graph: AppGraph, back: () -> Unit, openUpdates: () -> Unit) {
     Screen(AppText.App.ABOUT_APP_TITLE, back) { padding -> PageList(padding) {
-        item { SectionCard("better-zslf", AppText.Content.aboutVersion((graph.platform.versionName))) }
-        item { SectionCard(AppText.App.DATA_USE_WHEN_NEEDED_TITLE, if (BuildEdition.isPro) AppText.App.PRIVACY_AND_OFFLINE_WATER_PROTOCOL_HINT else AppText.Edition.STANDARD_PRIVACY_HINT) }
-        item { ArrowPreference(AppText.Updates.PROJECT_RELEASES_AND_UPDATES_LABEL, summary = AppText.Updates.MANUAL_GITHUB_RELEASES_CHECK_SUMMARY, onClick = openUpdates) }
-        item { ArrowPreference(AppText.App.PROJECT_SOURCE_LABEL, onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf") }) }
+        item { Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            AppBrandMark()
+            Text(AppText.App.CAMPUS_LIFE_WELCOME_TITLE, style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title2)
+            Text("better-zslf · ${if (BuildEdition.isPro) "Pro" else "Standard"}", color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            Text(AppText.Content.aboutVersion(graph.platform.versionName), color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        } }
+        item { InfoBanner(AppText.App.INDEPENDENT_CLIENT_DESCRIPTION, tone = UiTone.Neutral) }
+        item { InfoBanner(if (BuildEdition.isPro) AppText.App.PRIVACY_AND_OFFLINE_WATER_PROTOCOL_HINT else AppText.Edition.STANDARD_PRIVACY_HINT,
+            title = AppText.App.DATA_USE_WHEN_NEEDED_TITLE) }
+        item { Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
+            ArrowPreference(AppText.Updates.PROJECT_RELEASES_AND_UPDATES_LABEL, summary = AppText.Updates.MANUAL_GITHUB_RELEASES_CHECK_SUMMARY, onClick = openUpdates)
+            ArrowPreference(AppText.App.PROJECT_SOURCE_LABEL, onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf") })
+        } }
     } }
 }
 

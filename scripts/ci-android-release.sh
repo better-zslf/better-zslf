@@ -10,7 +10,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${ANDROID_KEY_PASSWORD:?Missing release key password}"
 : "${ANDROID_EXPECTED_CERT_SHA256:?Missing validated signing certificate}"
 [[ -s "$ANDROID_KEYSTORE_PATH" ]] || { echo 'Prepared release keystore is missing or empty.' >&2; exit 1; }
-edition="${BETTER_ZSLF_EDITION:-standard}"
+edition="${BETTER_ZSLF_EDITION:-pro}"
 case "$edition" in standard|pro) ;; *) echo 'Edition must be standard or pro.' >&2; exit 1 ;; esac
 python3 scripts/verify-wrapper.py
 # The aggregate covers all enabled app unit-test variants, including minified-build setups.

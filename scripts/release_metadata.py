@@ -7,14 +7,15 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-# iOS MARKETING_VERSION and Android versionName share this numeric triplet.
+# Keep the Apple marketing triplet numeric; the optional RC suffix is display/tag metadata.
 SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
+RELEASE_CANDIDATE = re.compile(r"rc[1-9][0-9]{0,5}\Z")
 
 
 APPLICATION_IDS = {"standard": "io.github.betterzslf", "pro": "io.github.betterzslf.pro"}
 
 
-def load_version(path: Path, tag: str | None = None, edition: str = "standard") -> dict:
+def load_version(path: Path, tag: str | None = None, edition: str = "pro") -> dict:
     if edition not in APPLICATION_IDS:
         raise ValueError("Edition must be standard or pro")
     values = {}
@@ -26,14 +27,20 @@ def load_version(path: Path, tag: str | None = None, edition: str = "standard") 
         if not separator or key.strip() in values:
             raise ValueError("Malformed or duplicate version property")
         values[key.strip()] = value.strip()
-    if set(values) != {"VERSION_NAME", "VERSION_CODE"}:
-        raise ValueError("version.properties must contain exactly VERSION_NAME and VERSION_CODE")
+    required = {"VERSION_NAME", "VERSION_CODE"}
+    if not required <= set(values) <= required | {"VERSION_PRERELEASE"}:
+        raise ValueError("version.properties requires VERSION_NAME and VERSION_CODE with only optional VERSION_PRERELEASE")
     name = values["VERSION_NAME"]
     code = values["VERSION_CODE"]
     if not SEMVER.fullmatch(name):
         raise ValueError("VERSION_NAME must use numeric x.y.z notation shared with iOS")
     if not re.fullmatch(r"[1-9][0-9]*", code) or int(code) > 2_100_000_000:
         raise ValueError("VERSION_CODE must be an integer in 1..2100000000")
+    prerelease = values.get("VERSION_PRERELEASE")
+    if prerelease is not None:
+        if not RELEASE_CANDIDATE.fullmatch(prerelease):
+            raise ValueError("VERSION_PRERELEASE must use rc followed by 1..6 digits without leading zero")
+        name += "-" + prerelease
     if edition == "pro":
         name += "-pro"
     expected_tag = f"v{name}"
@@ -46,7 +53,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--properties", type=Path, default=ROOT / "version.properties")
     parser.add_argument("--tag")
-    parser.add_argument("--edition", choices=tuple(APPLICATION_IDS), default="standard")
+    parser.add_argument("--edition", choices=tuple(APPLICATION_IDS), default="pro")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--github-output", action="store_true")
     args = parser.parse_args()
@@ -65,6 +72,7 @@ def main() -> None:
             stream.write(f"version_name={metadata['versionName']}\n")
             stream.write(f"version_code={metadata['versionCode']}\n")
             stream.write(f"tag={metadata['tag']}\n")
+            stream.write(f"prerelease={str('-rc' in metadata['versionName']).lower()}\n")
     print(f"Release version verified: {metadata['tag']} ({metadata['versionCode']})")
 
 

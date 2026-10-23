@@ -53,15 +53,15 @@ jobs:
           elif event in {'push', 'release'}:
               tag = os.environ.get('EVENT_SOURCE_TAG', '')
               n = r'(?:0|[1-9][0-9]{0,8})'
-              if not re.fullmatch('v' + n + r'\.' + n + r'\.' + n, tag):
-                  raise SystemExit('Expected a numeric standard release tag vX.Y.Z')
+              if not re.fullmatch('v' + n + r'\.' + n + r'\.' + n + r'(?:-rc[1-9][0-9]{0,5})?', tag):
+                  raise SystemExit('Expected a standard release tag vX.Y.Z or vX.Y.Z-rcN')
               if publish and os.environ.get('GITHUB_REF') != 'refs/tags/' + tag:
                   raise SystemExit('Expected the exact source tag push')
               if event == 'release':
                   release = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())['release']
                   expected = 'https://github.com/better-zslf/better-zslf/releases/tag/' + tag
-                  if release.get('draft') is not False or release.get('prerelease') is not False or release.get('html_url') != expected:
-                      raise SystemExit('Only the exact published stable release can notify Pro')
+                  if release.get('draft') is not False or release.get('prerelease') is not ('-rc' in tag) or release.get('html_url') != expected:
+                      raise SystemExit('Only the exact published release with matching RC channel can notify Pro')
               ref = 'refs/tags/' + tag
           else:
               raise SystemExit('Unexpected release trigger')
@@ -187,6 +187,7 @@ jobs:
       - name: Publish only a new standard GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_PRERELEASE: ${{ steps.version.outputs.prerelease }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
           RELEASE_VERSION_NAME: ${{ steps.version.outputs.version_name }}
         shell: bash
@@ -196,9 +197,15 @@ jobs:
             echo 'Release already exists; published standard artifacts are immutable.' >&2
             exit 1
           fi
+          flags=()
+          case "$RELEASE_PRERELEASE" in
+            true) flags+=(--prerelease --latest=false) ;;
+            false) ;;
+            *) echo 'Expected a validated release channel' >&2; exit 1 ;;
+          esac
           gh release create "$RELEASE_TAG" .local/release-dist/* \
             --repo better-zslf/better-zslf --verify-tag --generate-notes \
-            --title "better-zslf $RELEASE_VERSION_NAME"
+            --title "better-zslf $RELEASE_VERSION_NAME" "${flags[@]}"
 
   notify:
     name: Explicit repository-scoped dispatch to Pro CI
@@ -271,12 +278,12 @@ jobs:
           url = ''
           if publish:
               n = r'(?:0|[1-9][0-9]{0,8})'
-              if not re.fullmatch('v' + n + r'\.' + n + r'\.' + n, tag):
-                  raise SystemExit('Expected the exact numeric source release tag')
+              if not re.fullmatch('v' + n + r'\.' + n + r'\.' + n + r'(?:-rc[1-9][0-9]{0,5})?', tag):
+                  raise SystemExit('Expected the exact stable or RC source release tag')
               url = 'https://github.com/better-zslf/better-zslf/releases/tag/' + tag
               release = request('better-zslf/better-zslf/releases/tags/' + tag, os.environ.get('SOURCE_RELEASE_TOKEN'))
-              if not isinstance(release, dict) or release.get('tag_name') != tag or release.get('html_url') != url or release.get('draft') is not False or release.get('prerelease') is not False or not release.get('published_at'):
-                  raise SystemExit('Source release is not the exact published stable release')
+              if not isinstance(release, dict) or release.get('tag_name') != tag or release.get('html_url') != url or release.get('draft') is not False or release.get('prerelease') is not ('-rc' in tag) or not release.get('published_at'):
+                  raise SystemExit('Source release is not the exact published release with matching RC channel')
           elif tag != '':
               raise SystemExit('Tests-only notifications require an empty source tag')
           payload = {'ref': 'main', 'inputs': {'source_tag': tag, 'source_commit': sha,

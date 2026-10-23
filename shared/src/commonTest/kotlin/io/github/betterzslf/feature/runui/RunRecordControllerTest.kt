@@ -233,7 +233,7 @@ class RunRecordControllerTest {
         assertEquals(2, calls); assertEquals(2, controller.state.value.items.size)
         assertTrue(controller.state.value.items.all { it.trid == null })
         assertEquals(listOf("display-a", "display-b"), controller.state.value.items.map { it.raw["id"]?.jsonPrimitive?.content })
-        assertTrue(controller.state.value.end); hasWarning(controller, ".trid")
+        assertTrue(controller.state.value.end); hasWarning(controller, "缺少可确认的记录编号")
     }
 
     @Test fun alternativeOrInvalidIdentifiersNeverBecomeServerTrid() = runTest {

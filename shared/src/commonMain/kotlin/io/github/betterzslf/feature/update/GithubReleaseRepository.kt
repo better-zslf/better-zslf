@@ -36,7 +36,7 @@ class GithubReleaseRepository(private val httpClient: HttpClient) : GithubReleas
 
     override suspend fun check(currentVersionName: String): GithubReleaseCheck {
         if (closed.value) return failure(ReleaseIssue.CLOSED)
-        val current = StableVersion.parse(currentVersionName)?.takeIf { it.versionName == currentVersionName }
+        val current = StableVersion.parseInstalled(currentVersionName)?.takeIf { it.versionName == currentVersionName }
             ?: return failure(ReleaseIssue.UNKNOWN_CURRENT_VERSION)
         return try {
             val latest = fetch(GithubReleasePolicy.LATEST_API_URL, GithubReleasePolicy.MAX_JSON_BYTES)

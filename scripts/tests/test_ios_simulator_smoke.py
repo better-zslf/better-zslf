@@ -984,7 +984,7 @@ class ObserverCommandTests(unittest.TestCase):
 class SmokeWiringTests(unittest.TestCase):
     def test_selected_edition_bundle_is_only_forwarded_to_smoke_not_cleanup(self):
         shell = (smoke.ROOT / "scripts/ci-ios-smoke.sh").read_text()
-        self.assertIn('${ORG_GRADLE_PROJECT_betterZslfEdition-standard}', shell)
+        self.assertIn('${ORG_GRADLE_PROJECT_betterZslfEdition-pro}', shell)
         self.assertIn('standard) bundle=io.github.betterzslf ;;', shell)
         self.assertIn('pro) bundle=io.github.betterzslf.pro ;;', shell)
         smoke_lines = [line for line in shell.splitlines() if "python3 scripts/ios_simulator_smoke.py smoke " in line]

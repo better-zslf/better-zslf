@@ -4,7 +4,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 [[ "$(uname -s)" == Darwin ]] || { echo 'iOS build requires macOS.' >&2; exit 1; }
 method="${BETTER_ZSLF_CI_SIGNING_METHOD:-manual-ad-hoc}"
 case "$method" in manual-ad-hoc|xcode-simulator) ;; *) echo 'Unknown Simulator signing method.' >&2; exit 2 ;; esac
-edition="${ORG_GRADLE_PROJECT_betterZslfEdition-standard}"
+edition="${ORG_GRADLE_PROJECT_betterZslfEdition-pro}"
 for argument in "$@"; do
   case "$argument" in
     -PbetterZslfEdition=*) edition="${argument#-PbetterZslfEdition=}" ;;

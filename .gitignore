@@ -2,9 +2,6 @@
 /work/
 /zslf.apk
 /docs/*
-!/docs/development.md
-!/docs/architecture.md
-!/docs/testing.md
 
 # Build output and local toolchains
 .gradle/

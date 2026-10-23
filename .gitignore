@@ -1,7 +1,6 @@
 # Local analysis inputs contain private account and service data.
 /work/
 /zslf.apk
-/docs/*
 
 # Build output and local toolchains
 .gradle/

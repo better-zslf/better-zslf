@@ -8,7 +8,7 @@ import io.github.betterzslf.data.FitnessRepository
 import io.github.betterzslf.data.VenueRepository
 import kotlinx.serialization.json.*
 
-/** Exact form observed in app-service.js, SHA 887642f9…712f; see BOOKING_EVIDENCE.md. */
+/** Exact form observed in app-service.js, SHA 887642f9…712f; the evidence record is kept in Pro CI docs. */
 class VenueApplicationForm(
     val siteId: String,
     val timeIds: List<String>,

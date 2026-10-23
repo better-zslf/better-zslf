@@ -280,8 +280,8 @@
         "after": ")\n        put(\"objectId\", \"e872dbd2faddcb4c70d54"
       },
       "position": {
-        "start": 2220,
-        "end": 2224,
+        "start": 2239,
+        "end": 2243,
         "line": 44,
         "column": 27
       },
@@ -298,8 +298,8 @@
         "after": ", \"女\")) add(AppText.Booking.SEX_SELECTION_REQUIR"
       },
       "position": {
-        "start": 3399,
-        "end": 3402,
+        "start": 3418,
+        "end": 3421,
         "line": 74,
         "column": 28
       },
@@ -316,8 +316,8 @@
         "after": ")) add(AppText.Booking.SEX_SELECTION_REQUIRED)\n "
       },
       "position": {
-        "start": 3404,
-        "end": 3407,
+        "start": 3423,
+        "end": 3426,
         "line": 74,
         "column": 33
       },
@@ -334,8 +334,8 @@
         "after": ", \"下午\")) add(AppText.Booking.MORNING_OR_AFTERNOO"
       },
       "position": {
-        "start": 3570,
-        "end": 3574,
+        "start": 3589,
+        "end": 3593,
         "line": 76,
         "column": 31
       },
@@ -352,8 +352,8 @@
         "after": ")) add(AppText.Booking.MORNING_OR_AFTERNOON_SELE"
       },
       "position": {
-        "start": 3576,
-        "end": 3580,
+        "start": 3595,
+        "end": 3599,
         "line": 76,
         "column": 37
       },

@@ -84,7 +84,8 @@ jobs:
       - name: Configure Android compile SDK for KMP configuration
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
-          cmdline-tools-version: '15859902'
+          # v22+ mac archives use mac_arm64/mac_x86_64; this v3 action expects mac-{id}.
+          cmdline-tools-version: '15641748'
           log-accepted-android-sdk-licenses: false
           packages: 'platform-tools platforms;android-37.2 build-tools;36.0.0'
       - name: Install XcodeGen

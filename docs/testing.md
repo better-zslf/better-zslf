@@ -25,6 +25,15 @@ bash ./gradlew :shared:jvmTest :androidApp:assembleDebug :androidApp:lintDebug
 
 真实接口测试只在同时提供 `ZSLF_LIVE_TEST=1`、`ZSLF_USERNAME`、`ZSLF_PASSWORD` 的临时环境中执行。不要把真实值写进命令文件、配置、Issue 或 CI secrets 的常规测试配置。普通 CI 不访问学校服务。
 
+## 第二轮集成
+
+- 内容分页、通知已读、预约/体测表单与附件流程、热水器 UI 及真实采样会话协调已接入。
+- 全量项目报告 238 个 JUnit 方法、零失败/错误：237 项离线测试与 1 个默认关闭的 Live 门控方法。预约/体测的 28 项离线用例包含在内。
+- Android Debug APK、lint 均通过；另在 GitHub 的测试分支成功完成 Android 检查与产物上传。
+- 首次 macOS CI 在 Android command-line tools 下载阶段返回 404，未进入 iOS 编译；不能把该次运行当作 iOS 验收。
+- 软件蓝牙在 Bumble LocalLink 的真实虚拟 HCI/L2CAP/ATT/GATT 层完成发现、通知订阅、B0/B2/BA/B3/B4 与断开。这仍不等于 Android/Kable 或实体水控器验收。
+- 增加仅 Debug 构建可用的原生定位/文件选择探针；探针不创建学校 HTTP 客户端，不上传轨迹或文件，不进入 Release APK。
+
 ## 尚待验收
 
-iOS 原生编译/运行、真机 GPS/BLE、完整预约/体测写闭环、真实跑步任务与导入上传、发布签名与 GitHub Actions 实际执行。离线通过不代表这些项目已经完成。
+iOS 原生编译/运行、App/Kable 与模拟定位链路、真机 GPS/BLE、生产预约/体测接受性、真实跑步任务与导入上传、发布签名及正式发版。离线通过不代表这些项目已经完成。

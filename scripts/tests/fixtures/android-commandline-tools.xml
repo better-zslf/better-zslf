@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Official archive metadata excerpt, captured 2026-10-23.
+     Source: https://dl.google.com/android/repository/repository2-3.xml
+     Only versioned stable cmdline-tools 21.0/22.0 archives relevant to CI.
+     v22 mac architectures intentionally remain separate, matching the source. -->
+<repository>
+  <remotePackage path="cmdline-tools;21.0">
+    <channelRef ref="channel-0" />
+    <archives>
+      <archive>
+        <host-os>macosx</host-os>
+        <complete>
+          <size>152127646</size>
+          <checksum type="sha1">b62a5d8cf63ded173b47be867be4ee058ceda6df</checksum>
+          <url>commandlinetools-mac-15641748_latest.zip</url>
+        </complete>
+      </archive>
+    </archives>
+  </remotePackage>
+  <remotePackage path="cmdline-tools;22.0">
+    <channelRef ref="channel-0" />
+    <archives>
+      <archive>
+        <host-os>linux</host-os>
+        <complete>
+          <size>181833628</size>
+          <checksum type="sha1">040d3996a65543d22ec4bf73e4c37aa37a8d4af4</checksum>
+          <url>commandlinetools-linux-15859902_latest.zip</url>
+        </complete>
+      </archive>
+      <archive>
+        <host-os>macosx</host-os>
+        <complete>
+          <size>156281494</size>
+          <checksum type="sha1">1a79e61677b99cb0ce622792713cbea7ff2dc5de</checksum>
+          <url>commandlinetools-mac_x86_64-15859902_latest.zip</url>
+        </complete>
+      </archive>
+      <archive>
+        <host-os>macosx</host-os>
+        <complete>
+          <size>156083281</size>
+          <checksum type="sha1">c4e0dbc53f1a4ce04fc2b11d4e2c4675001a95af</checksum>
+          <url>commandlinetools-mac_arm64-15859902_latest.zip</url>
+        </complete>
+      </archive>
+    </archives>
+  </remotePackage>
+</repository>

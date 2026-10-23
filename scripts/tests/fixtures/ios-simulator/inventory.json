@@ -1,0 +1,28 @@
+{
+  "_fixture": "Synthetic simctl JSON schema fixture; not evidence of a native run.",
+  "devicetypes": [
+    {"name":"iPhone 17", "identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-17", "productFamily":"iPhone", "minRuntimeVersion":1703936, "maxRuntimeVersion":4294967295},
+    {"name":"iPad Pro 13-inch", "identifier":"com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch", "productFamily":"iPad", "minRuntimeVersion":1179648, "maxRuntimeVersion":4294967295},
+    {"name":"iPhone 15", "identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-15", "productFamily":"iPhone", "minRuntimeVersion":1114112, "maxRuntimeVersion":4294967295},
+    {"name":"Apple TV", "identifier":"com.apple.CoreSimulator.SimDeviceType.Apple-TV", "productFamily":"Apple TV", "minRuntimeVersion":0, "maxRuntimeVersion":4294967295}
+  ],
+  "runtimes": [
+    {"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-28-0", "version":"28.0", "isAvailable":false},
+    {"identifier":"com.apple.CoreSimulator.SimRuntime.tvOS-29-0", "version":"29.0", "isAvailable":true},
+    {"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-26-4", "version":"26.4", "isAvailable":true, "supportedDeviceTypes":[
+      {"identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-17"},
+      {"identifier":"com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch"}
+    ]},
+    {"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-18-6", "version":"18.6", "isAvailable":true,
+     "supportedDeviceTypes":["com.apple.CoreSimulator.SimDeviceType.iPhone-15"]}
+  ],
+  "devices": {
+    "com.apple.CoreSimulator.SimRuntime.iOS-26-4": [
+      {"udid":"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA", "name":"Existing runner iPhone", "deviceTypeIdentifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-17", "isAvailable":true, "state":"Shutdown"},
+      {"udid":"BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB", "name":"Existing runner iPad", "deviceTypeIdentifier":"com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch", "isAvailable":true, "state":"Booted"}
+    ],
+    "com.apple.CoreSimulator.SimRuntime.iOS-18-6": [
+      {"udid":"CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC", "name":"Existing older iPhone", "deviceTypeIdentifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-15", "isAvailable":true, "state":"Shutdown"}
+    ]
+  }
+}

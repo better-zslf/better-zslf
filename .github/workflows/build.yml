@@ -1,0 +1,69 @@
+name: Build standard edition
+
+on:
+  push:
+    branches: [main, 'test/**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      source_ref:
+        description: Optional fixed source commit from the validated release intent
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Complete standard/Pro tests and real iOS Native smoke live in pro-ci/tests.yml.
+# This public source workflow deliberately builds only the standard edition.
+jobs:
+  android:
+    name: Standard Android build and lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      BETTER_ZSLF_EDITION: standard
+      ORG_GRADLE_PROJECT_betterZslfEdition: standard
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify pinned Gradle wrapper
+        run: python3 scripts/verify-wrapper.py
+      - uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          cmdline-tools-version: '15859902'
+          log-accepted-android-sdk-licenses: false
+          packages: 'platform-tools platforms;android-37.2 build-tools;36.0.0'
+      - name: Validate standard version metadata
+        run: python3 scripts/release_metadata.py --edition standard
+      - name: Build and lint the standard Android APK
+        run: bash ./gradlew --no-daemon --stacktrace -PbetterZslfEdition=standard :androidApp:lintDebug :androidApp:assembleDebug
+      - name: Upload Android build and lint reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: standard-build-reports-${{ github.run_id }}
+          path: androidApp/build/reports/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload the standard debug APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: better-zslf-standard-debug-${{ github.sha }}
+          path: androidApp/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14

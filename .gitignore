@@ -1,0 +1,36 @@
+# Local analysis inputs contain private account and service data.
+/work/
+/zslf.apk
+/docs/*
+!/docs/development.md
+!/docs/architecture.md
+!/docs/testing.md
+
+# Build output and local toolchains
+.gradle/
+.kotlin/
+**/build/
+.local/
+local.properties
+*.hprof
+
+# Secrets and device state
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+*.xcuserstate
+xcuserdata/
+DerivedData/
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+__pycache__/
+*.py[cod]

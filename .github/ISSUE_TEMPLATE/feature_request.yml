@@ -7,11 +7,10 @@ body:
     id: problem
     attributes:
       label: 想解决什么问题
-      description: 描述你遇到的场景或痛点
-      placeholder: 例如：每次查课表都要打开官方 App，希望能在这里直接看
+      description: 描述你遇到的场景或痛点，请省略个人信息和账号凭据
+      placeholder: 例如：希望能更快查看首页通知
     validations:
       required: true
-
   - type: textarea
     id: solution
     attributes:
@@ -19,14 +18,12 @@ body:
       description: 你希望这个功能长什么样、怎么用
     validations:
       required: true
-
   - type: textarea
     id: alt
     attributes:
       label: 考虑过的替代方案
     validations:
       required: false
-
   - type: input
     id: appver
     attributes:

@@ -1,0 +1,287 @@
+name: Standard release and scoped Pro notification
+
+on:
+  push:
+    tags: ['v*']
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Full lowercase source SHA for a notification dry-run; never publishes a source release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: standard-release-${{ github.event.release.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  intent:
+    name: Validate the source event without executing tag-supplied code
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      source_ref: ${{ steps.bound.outputs.source_ref }}
+      source_tag: ${{ steps.bound.outputs.source_tag }}
+      publish_standard: ${{ steps.bound.outputs.publish_standard }}
+      dry_run: ${{ steps.bound.outputs.dry_run }}
+    steps:
+      - name: Validate the exact repository, event and bounded ref
+        id: request
+        env:
+          REQUESTED_SOURCE_SHA: ${{ inputs.source_ref }}
+          EVENT_SOURCE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          if os.environ.get('GITHUB_REPOSITORY') != 'better-zslf/better-zslf':
+              raise SystemExit('Unexpected source repository')
+          event = os.environ.get('GITHUB_EVENT_NAME')
+          dry = event == 'workflow_dispatch'
+          publish = event == 'push'
+          if dry:
+              ref = os.environ.get('REQUESTED_SOURCE_SHA', '')
+              if not re.fullmatch(r'[0-9a-f]{40}', ref):
+                  raise SystemExit('A full lowercase source SHA is required for dry-run')
+              tag = ''
+          elif event in {'push', 'release'}:
+              tag = os.environ.get('EVENT_SOURCE_TAG', '')
+              n = r'(?:0|[1-9][0-9]{0,8})'
+              if not re.fullmatch('v' + n + r'\.' + n + r'\.' + n, tag):
+                  raise SystemExit('Expected a numeric standard release tag vX.Y.Z')
+              if publish and os.environ.get('GITHUB_REF') != 'refs/tags/' + tag:
+                  raise SystemExit('Expected the exact source tag push')
+              if event == 'release':
+                  release = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())['release']
+                  expected = 'https://github.com/better-zslf/better-zslf/releases/tag/' + tag
+                  if release.get('draft') is not False or release.get('prerelease') is not False or release.get('html_url') != expected:
+                      raise SystemExit('Only the exact published stable release can notify Pro')
+              ref = 'refs/tags/' + tag
+          else:
+              raise SystemExit('Unexpected release trigger')
+          values = {'source_ref': ref, 'source_tag': tag,
+                    'publish_standard': str(publish).lower(), 'dry_run': str(dry).lower()}
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as stream:
+              for key, value in values.items():
+                  stream.write(key + '=' + value + '\n')
+          PY
+      - name: Bind the event to one complete source checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: better-zslf/better-zslf
+          ref: ${{ github.event_name == 'workflow_dispatch' && steps.request.outputs.source_ref || github.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve the fixed source commit and recheck the source tag
+        id: bound
+        env:
+          REQUESTED_REF: ${{ steps.request.outputs.source_ref }}
+          SOURCE_TAG: ${{ steps.request.outputs.source_tag }}
+          PUBLISH_STANDARD: ${{ steps.request.outputs.publish_standard }}
+          DRY_RUN: ${{ steps.request.outputs.dry_run }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess
+          def revision(ref):
+              value = subprocess.check_output(['git', '-C', 'source', 'rev-parse', '--verify', ref], text=True).strip()
+              if not re.fullmatch(r'[0-9a-f]{40}', value):
+                  raise SystemExit('Expected one complete source commit SHA')
+              return value
+          sha = revision('HEAD^{commit}')
+          tag = os.environ['SOURCE_TAG']
+          if tag and revision('refs/tags/' + tag + '^{commit}') != sha:
+              raise SystemExit('Source tag changed after the event')
+          if os.environ['DRY_RUN'] == 'true' and sha != os.environ['REQUESTED_REF']:
+              raise SystemExit('Manual source checkout differs from the requested SHA')
+          values = {'source_ref': sha, 'source_tag': tag,
+                    'publish_standard': os.environ['PUBLISH_STANDARD'], 'dry_run': os.environ['DRY_RUN']}
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as stream:
+              for key, value in values.items():
+                  stream.write(key + '=' + value + '\n')
+          PY
+
+  build:
+    name: Required standard build
+    needs: intent
+    if: needs.intent.outputs.publish_standard == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      source_ref: ${{ needs.intent.outputs.source_ref }}
+    permissions:
+      contents: read
+
+  release:
+    name: Sign, verify and publish only a new standard release
+    needs: [intent, build]
+    if: needs.intent.outputs.publish_standard == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: release
+    permissions:
+      contents: write
+    env:
+      BETTER_ZSLF_EDITION: standard
+      ORG_GRADLE_PROJECT_betterZslfEdition: standard
+      SOURCE_COMMIT_SHA: ${{ needs.intent.outputs.source_ref }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.intent.outputs.source_ref }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Validate the standard tag and version source
+        id: version
+        env:
+          RELEASE_TAG: ${{ needs.intent.outputs.source_tag }}
+        run: python3 scripts/release_metadata.py --edition standard --tag "$RELEASE_TAG" --github-output --output .local/release-version.json
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify pinned Gradle wrapper
+        run: python3 scripts/verify-wrapper.py
+      - uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
+        with:
+          cache-read-only: true
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          cmdline-tools-version: '15859902'
+          log-accepted-android-sdk-licenses: false
+          packages: 'platform-tools platforms;android-37.2 build-tools;36.0.0'
+      - name: Validate the existing stable signing identity
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_SIGNING_CERT_SHA256: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
+        run: python3 scripts/prepare_signing.py
+      - name: Build, lint and verify signed standard assets
+        env:
+          RELEASE_VERSION_NAME: ${{ steps.version.outputs.version_name }}
+          RELEASE_VERSION_CODE: ${{ steps.version.outputs.version_code }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: bash scripts/ci-android-release.sh
+      - name: Delete the temporary Android signing key
+        if: always()
+        shell: bash
+        run: rm -f "${ANDROID_KEYSTORE_PATH:-$RUNNER_TEMP/better-zslf-release.jks}"
+      - name: Upload only verified standard release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: better-zslf-${{ steps.version.outputs.tag }}
+          include-hidden-files: true # Only verified release-dist assets, never RUNNER_TEMP.
+          path: .local/release-dist/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish only a new standard GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_VERSION_NAME: ${{ steps.version.outputs.version_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo better-zslf/better-zslf >/dev/null 2>&1; then
+            echo 'Release already exists; published standard artifacts are immutable.' >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" .local/release-dist/* \
+            --repo better-zslf/better-zslf --verify-tag --generate-notes \
+            --title "better-zslf $RELEASE_VERSION_NAME"
+
+  notify:
+    name: Explicit repository-scoped dispatch to Pro CI
+    needs: [intent, release]
+    # A release created using GITHUB_TOKEN does not start release.published.
+    # Tag-push publishing therefore notifies HERE after success. A manually
+    # published release only notifies; it never builds/publishes a second release.
+    if: >-
+      ${{ always() && needs.intent.result == 'success' &&
+          ((needs.intent.outputs.publish_standard == 'true' && needs.release.result == 'success') ||
+           needs.intent.outputs.publish_standard == 'false') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Dispatch uses only a job-local App Actions token, not the signing environment.
+    # Source release deployment policy allows v* tags; manual main dry-runs must
+    # remain usable without creating a formal source tag or exposing signing keys.
+    permissions:
+      contents: read
+    steps:
+      - name: Mint a single-repository Pro dispatch App token
+        id: pro-dispatch-token
+        if: github.repository == 'better-zslf/better-zslf'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          client-id: ${{ vars.CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+          owner: better-zslf
+          repositories: pro-ci
+          permission-actions: write
+      - name: Dispatch only the trusted Pro main workflow with the job-local App token
+        env:
+          PRO_CI_DISPATCH_TOKEN: ${{ steps.pro-dispatch-token.outputs.token }}
+          SOURCE_RELEASE_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ needs.intent.outputs.source_tag }}
+          SOURCE_COMMIT: ${{ needs.intent.outputs.source_ref }}
+          DRY_RUN: ${{ needs.intent.outputs.dry_run }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, re, urllib.error, urllib.request
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  raise SystemExit('GitHub API redirects are not accepted')
+          def request(path, token, body=None):
+              if not token:
+                  raise SystemExit('Required job-local workflow token is missing')
+              data = None if body is None else json.dumps(body).encode('utf-8')
+              req = urllib.request.Request('https://api.github.com/repos/' + path, data=data,
+                  method='GET' if body is None else 'POST',
+                  headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json',
+                           'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28'})
+              try:
+                  with urllib.request.build_opener(NoRedirect()).open(req, timeout=30) as response:
+                      if body is not None:
+                          if response.status != 204:
+                              raise SystemExit('Pro dispatch did not return the required acceptance status')
+                          return None
+                      raw = response.read(1048577)
+                      if len(raw) > 1048576:
+                          raise SystemExit('GitHub response exceeded the expected bound')
+                      return json.loads(raw)
+              except (urllib.error.URLError, ValueError):
+                  raise SystemExit('GitHub dispatch/read failed; check scoped token permissions; no raw response is logged') from None
+          if os.environ.get('GITHUB_REPOSITORY') != 'better-zslf/better-zslf':
+              raise SystemExit('Unexpected source repository')
+          sha, tag, dry = os.environ['SOURCE_COMMIT'], os.environ['SOURCE_TAG'], os.environ['DRY_RUN']
+          if not re.fullmatch(r'[0-9a-f]{40}', sha) or dry not in {'true', 'false'}:
+              raise SystemExit('Expected the fixed source commit and a bounded dispatch mode')
+          publish = dry == 'false'
+          url = ''
+          if publish:
+              n = r'(?:0|[1-9][0-9]{0,8})'
+              if not re.fullmatch('v' + n + r'\.' + n + r'\.' + n, tag):
+                  raise SystemExit('Expected the exact numeric source release tag')
+              url = 'https://github.com/better-zslf/better-zslf/releases/tag/' + tag
+              release = request('better-zslf/better-zslf/releases/tags/' + tag, os.environ.get('SOURCE_RELEASE_TOKEN'))
+              if not isinstance(release, dict) or release.get('tag_name') != tag or release.get('html_url') != url or release.get('draft') is not False or release.get('prerelease') is not False or not release.get('published_at'):
+                  raise SystemExit('Source release is not the exact published stable release')
+          elif tag != '':
+              raise SystemExit('Tests-only notifications require an empty source tag')
+          payload = {'ref': 'main', 'inputs': {'source_tag': tag, 'source_commit': sha,
+                     'release_url': url, 'publish': publish}}
+          request('better-zslf/pro-ci/actions/workflows/release.yml/dispatches',
+                  os.environ.get('PRO_CI_DISPATCH_TOKEN'), payload)
+          print('Pro workflow dispatch accepted; this is not a Pro test/build/release success result')
+          PY

@@ -47,11 +47,12 @@ private class IosFilePicker(
     private val presenter: UIViewController,
     private val scope: CoroutineScope,
     private var onResult: ((FilePickResult) -> Unit)?,
-) : NSObject(), UserRequestLauncher, UIDocumentPickerDelegateProtocol, UIAdaptivePresentationControllerDelegateProtocol {
+) : UserRequestLauncher {
     private var picker: UIDocumentPickerViewController? = null
     private var readJob: Job? = null
     private var coordinator: NSFileCoordinator? = null
     private var disposed = false
+    private val nativeDelegate = DocumentPickerDelegate(::onDocumentsPicked, ::onPickerCancelled, ::onPickerDismissed)
 
     override fun launch() {
         scope.launch(Dispatchers.Main.immediate) {
@@ -68,17 +69,17 @@ private class IosFilePicker(
             ).apply {
                 allowsMultipleSelection = false
                 shouldShowFileExtensions = true
-                delegate = this@IosFilePicker
+                delegate = nativeDelegate
             }
             picker = next
-            next.presentationController?.delegate = this@IosFilePicker
+            next.presentationController?.delegate = nativeDelegate
             presenter.presentViewController(next, animated = true) {
-                if (!disposed && picker == next) next.presentationController?.delegate = this@IosFilePicker
+                if (!disposed && picker == next) next.presentationController?.delegate = nativeDelegate
             }
         }
     }
 
-    override fun documentPicker(controller: UIDocumentPickerViewController, didPickDocumentsAtURLs: List<*>) {
+    private fun onDocumentsPicked(controller: UIDocumentPickerViewController, didPickDocumentsAtURLs: List<*>) {
         if (disposed || picker != controller) return
         releasePicker(controller)
         val url = didPickDocumentsAtURLs.singleOrNull() as? NSURL
@@ -113,13 +114,13 @@ private class IosFilePicker(
         }
     }
 
-    override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
+    private fun onPickerCancelled(controller: UIDocumentPickerViewController) {
         if (disposed || picker != controller) return
         releasePicker(controller)
         onResult?.invoke(FilePickResult.Cancelled)
     }
 
-    override fun presentationControllerDidDismiss(presentationController: UIPresentationController) {
+    private fun onPickerDismissed(presentationController: UIPresentationController) {
         val current = picker ?: return
         if (disposed || presentationController.presentedViewController != current) return
         releasePicker(current)
@@ -142,6 +143,31 @@ private class IosFilePicker(
         coordinator?.cancel()
         coordinator = null
         picker?.let(::releasePicker)
+        nativeDelegate.clear()
+    }
+}
+
+private class DocumentPickerDelegate(
+    private var onPicked: ((UIDocumentPickerViewController, List<*>) -> Unit)?,
+    private var onCancelled: ((UIDocumentPickerViewController) -> Unit)?,
+    private var onDismissed: ((UIPresentationController) -> Unit)?,
+) : NSObject(), UIDocumentPickerDelegateProtocol, UIAdaptivePresentationControllerDelegateProtocol {
+    override fun documentPicker(controller: UIDocumentPickerViewController, didPickDocumentsAtURLs: List<*>) {
+        onPicked?.invoke(controller, didPickDocumentsAtURLs)
+    }
+
+    override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
+        onCancelled?.invoke(controller)
+    }
+
+    override fun presentationControllerDidDismiss(presentationController: UIPresentationController) {
+        onDismissed?.invoke(presentationController)
+    }
+
+    fun clear() {
+        onPicked = null
+        onCancelled = null
+        onDismissed = null
     }
 }
 

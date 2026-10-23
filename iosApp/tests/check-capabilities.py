@@ -26,6 +26,14 @@ permission = files["LocationPermission.ios.kt"]
 tracker = files["LocationTracker.ios.kt"]
 bluetooth = files["BluetoothAccess.ios.kt"]
 rules = files["IosCapabilityRules.kt"]
+for filename, owner, capability in (
+    ("BluetoothAccess.ios.kt", "IosBluetoothAccess", "BluetoothAccess"),
+    ("FilePicker.ios.kt", "IosFilePicker", "UserRequestLauncher"),
+    ("LocationPermission.ios.kt", "IosLocationPermissionLauncher", "UserRequestLauncher"),
+    ("LocationTracker.ios.kt", "IosLocationTracker", "NativeLocationTracker"),
+):
+    header = files[filename].split(f"private class {owner}", 1)[1].split("{", 1)[0]
+    check(f"{owner} separates native delegate and clears callbacks", capability in header and "NSObject" not in header and "DelegateProtocol" not in header and "nativeDelegate.clear()" in files[filename])
 check("all platform actuals present", all(signature in "\n".join(files.values()) for signature in (
     "actual fun rememberFilePicker", "actual fun rememberLocationPermissionRequester",
     "actual fun createLocationTracker", "actual fun rememberBluetoothAccess", "actual fun createWaterEpilogueContext",

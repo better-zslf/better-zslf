@@ -18,6 +18,7 @@ import platform.CoreLocation.CLLocationManagerDelegateProtocol
 import platform.CoreLocation.kCLAuthorizationStatusAuthorizedAlways
 import platform.CoreLocation.kCLAuthorizationStatusAuthorizedWhenInUse
 import platform.CoreLocation.kCLAuthorizationStatusNotDetermined
+import platform.Foundation.NSError
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationState
 import platform.UIKit.UIViewController
@@ -39,10 +40,11 @@ private class IosLocationPermissionLauncher(
     private val presenter: UIViewController,
     private val scope: CoroutineScope,
     private var onResult: ((Boolean) -> Unit)?,
-) : NSObject(), UserRequestLauncher, CLLocationManagerDelegateProtocol {
+) : UserRequestLauncher {
     private var manager: CLLocationManager? = null
     private var pending = false
     private var disposed = false
+    private val nativeDelegate = IosLocationDelegate(onAuthorizationChanged = ::onAuthorizationChanged)
 
     override fun launch() {
         scope.launch(Dispatchers.Main.immediate) {
@@ -65,7 +67,7 @@ private class IosLocationPermissionLauncher(
             // Manager construction/delegates and the system prompt remain on the main run loop.
             val next = CLLocationManager()
             manager = next
-            next.delegate = this@IosLocationPermissionLauncher
+            next.delegate = nativeDelegate
             if (next.authorizationStatus == kCLAuthorizationStatusNotDetermined) {
                 next.requestWhenInUseAuthorization()
             } else {
@@ -74,7 +76,7 @@ private class IosLocationPermissionLauncher(
         }
     }
 
-    override fun locationManagerDidChangeAuthorization(manager: CLLocationManager) {
+    private fun onAuthorizationChanged(manager: CLLocationManager) {
         if (disposed || !pending || manager != this.manager) return
         // A newly-created manager can report notDetermined before the user answers the prompt.
         if (manager.authorizationStatus == kCLAuthorizationStatusNotDetermined) return
@@ -94,6 +96,32 @@ private class IosLocationPermissionLauncher(
         manager?.delegate = null
         manager = null
         pending = false
+        nativeDelegate.clear()
+    }
+}
+
+/** Kept strongly by the Kotlin owner; native CLLocationManager holds its delegate weakly. */
+internal class IosLocationDelegate(
+    private var onAuthorizationChanged: ((CLLocationManager) -> Unit)? = null,
+    private var onLocations: ((CLLocationManager, List<*>) -> Unit)? = null,
+    private var onFailure: ((CLLocationManager, NSError) -> Unit)? = null,
+) : NSObject(), CLLocationManagerDelegateProtocol {
+    override fun locationManagerDidChangeAuthorization(manager: CLLocationManager) {
+        onAuthorizationChanged?.invoke(manager)
+    }
+
+    override fun locationManager(manager: CLLocationManager, didUpdateLocations: List<*>) {
+        onLocations?.invoke(manager, didUpdateLocations)
+    }
+
+    override fun locationManager(manager: CLLocationManager, didFailWithError: NSError) {
+        onFailure?.invoke(manager, didFailWithError)
+    }
+
+    fun clear() {
+        onAuthorizationChanged = null
+        onLocations = null
+        onFailure = null
     }
 }
 

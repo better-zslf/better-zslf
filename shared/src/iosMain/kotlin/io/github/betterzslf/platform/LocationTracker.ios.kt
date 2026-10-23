@@ -29,7 +29,6 @@ import platform.Foundation.NSThread
 import platform.Foundation.timeIntervalSince1970
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationState
-import platform.darwin.NSObject
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 
@@ -38,7 +37,7 @@ private val processLocationTracker: NativeLocationTracker by lazy { IosLocationT
 actual fun createLocationTracker(): NativeLocationTracker = processLocationTracker
 
 /** One process-wide tracker; creating/observing it never requests permission or starts a sensor. */
-private class IosLocationTracker : NSObject(), NativeLocationTracker, CLLocationManagerDelegateProtocol {
+private class IosLocationTracker : NativeLocationTracker {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutableState = MutableStateFlow(LocationTrackingState())
     private val mutableSamples = MutableSharedFlow<RunLocationSample>(replay = 0)
@@ -52,6 +51,11 @@ private class IosLocationTracker : NSObject(), NativeLocationTracker, CLLocation
     private var active = false
     private var closed = false
     private var generation = 0L
+    private val nativeDelegate = IosLocationDelegate(
+        onAuthorizationChanged = ::onAuthorizationChanged,
+        onLocations = ::onLocations,
+        onFailure = ::onFailure,
+    )
 
     override fun start(samplingSeconds: Int) = onMain {
         if (closed) {
@@ -82,7 +86,7 @@ private class IosLocationTracker : NSObject(), NativeLocationTracker, CLLocation
             }
             val next = CLLocationManager()
             manager = next
-            next.delegate = this@IosLocationTracker
+            next.delegate = nativeDelegate
             if (!hasPreciseLocationPermission(next)) {
                 terminate(LocationPhase.PermissionRequired, "请先允许使用期间的精确定位，再明确开始记录")
                 return@launch
@@ -108,15 +112,16 @@ private class IosLocationTracker : NSObject(), NativeLocationTracker, CLLocation
         if (closed) return@onMain
         closed = true
         terminate(LocationPhase.Unavailable, "定位记录器已关闭")
+        nativeDelegate.clear()
         scope.cancel()
     }
 
-    override fun locationManagerDidChangeAuthorization(manager: CLLocationManager) {
+    private fun onAuthorizationChanged(manager: CLLocationManager) {
         if (!active || manager != this.manager || closed) return
         if (!hasPreciseLocationPermission(manager)) haltForAccessChange()
     }
 
-    override fun locationManager(manager: CLLocationManager, didUpdateLocations: List<*>) {
+    private fun onLocations(manager: CLLocationManager, didUpdateLocations: List<*>) {
         if (!active || manager != this.manager || closed) return
         if (!hasPreciseLocationPermission(manager)) {
             haltForAccessChange()
@@ -156,7 +161,7 @@ private class IosLocationTracker : NSObject(), NativeLocationTracker, CLLocation
         }
     }
 
-    override fun locationManager(manager: CLLocationManager, didFailWithError: NSError) {
+    private fun onFailure(manager: CLLocationManager, didFailWithError: NSError) {
         if (!active || manager != this.manager || closed) return
         when {
             didFailWithError.domain == kCLErrorDomain && didFailWithError.code == kCLErrorDenied -> haltForAccessChange()

@@ -32,12 +32,12 @@ actual fun rememberBluetoothAccess(): BluetoothAccess {
     return access
 }
 
-private class IosBluetoothAccess(private val scope: CoroutineScope) :
-    NSObject(), BluetoothAccess, CBCentralManagerDelegateProtocol {
+private class IosBluetoothAccess(private val scope: CoroutineScope) : BluetoothAccess {
     private val mutableState = MutableStateFlow(BluetoothAccessState(message = "请明确请求蓝牙权限后再开始扫描"))
     override val state: StateFlow<BluetoothAccessState> = mutableState.asStateFlow()
     private var manager: CBCentralManager? = null
     private var disposed = false
+    private val nativeDelegate = BluetoothAuthorizationDelegate(::onCentralStateChanged)
 
     override fun requestPermissions() {
         scope.launch(Dispatchers.Main.immediate) {
@@ -49,7 +49,7 @@ private class IosBluetoothAccess(private val scope: CoroutineScope) :
             // This is the ONLY creation site: initialization can display the OS authorization UI.
             // A null queue delivers delegate events on main. No scanning or connection is performed.
             val current = manager ?: CBCentralManager(
-                delegate = this@IosBluetoothAccess,
+                delegate = nativeDelegate,
                 queue = null,
                 options = mapOf(CBCentralManagerOptionShowPowerAlertKey to false),
             ).also { manager = it }
@@ -67,7 +67,7 @@ private class IosBluetoothAccess(private val scope: CoroutineScope) :
         }
     }
 
-    override fun centralManagerDidUpdateState(central: CBCentralManager) {
+    private fun onCentralStateChanged(central: CBCentralManager) {
         if (!disposed && central == manager) refresh(central)
     }
 
@@ -98,7 +98,19 @@ private class IosBluetoothAccess(private val scope: CoroutineScope) :
         disposed = true
         manager?.delegate = null
         manager = null
+        nativeDelegate.clear()
     }
+}
+
+/** Native delegates implement only Objective-C protocols, never the common Kotlin capability. */
+private class BluetoothAuthorizationDelegate(
+    private var onStateChanged: ((CBCentralManager) -> Unit)?,
+) : NSObject(), CBCentralManagerDelegateProtocol {
+    override fun centralManagerDidUpdateState(central: CBCentralManager) {
+        onStateChanged?.invoke(central)
+    }
+
+    fun clear() { onStateChanged = null }
 }
 
 /** Only an explicit protocol operation invokes this function; never sample time/seeds on remember. */

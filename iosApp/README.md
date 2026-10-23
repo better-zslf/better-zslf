@@ -90,7 +90,8 @@ Xcode build phase 将最终展开的版本原样作为 `-P` 参数传给 Gradle�
 
 ## 验证状态
 
-实现环境为 Windows/WSL，**尚未执行 Xcode、Kotlin/Native 编译或 iOS 运行验收**。
+本机实现环境为 Windows/WSL；macOS CI 已实际进入 Kotlin/Native 编译，
+当前原生编译/链接与 Xcode app 构建仍待下一轮 CI 确认，**尚未执行 iOS 运行验收**。
 本次已在 WSL 通过 16 项离线脚本测试、4 个脚本的 `bash -n`、plist/YAML 解析与关键配置断言；
 实际 XcodeGen 工程生成仍待 macOS CI。可在 macOS 或 WSL 离线复现
 [`version-scripts-test.sh`](<tests/version-scripts-test.sh>)：
@@ -103,7 +104,7 @@ bash iosApp/tests/version-scripts-test.sh
 不代表 iOS 编译成功。待 macOS CI 完成模拟器编译；运行验收还应覆盖：
 Keychain CRUD/空字符串/重启恢复/登出删除/服务隔离、浅深色文章、页内锚点、`target=_blank`、
 HTTPS 外链、自定义 scheme/脚本/表单/自动重定向受限、VoiceOver 与退出页面清理。
-新增能力已通过 **28 项实际纯 Kotlin 规则 JVM 测试**与 **33 项源码/plist 守卫**。
+新增能力已通过 **28 项实际纯 Kotlin 规则 JVM 测试**与 **37 项源码/plist 守卫**。
 真实测试源为 [`CapabilityRulesTest.kt`](<tests/CapabilityRulesTest.kt>)，直接编译
 [`IosCapabilityRules.kt`](<../shared/src/iosMain/kotlin/io/github/betterzslf/platform/IosCapabilityRules.kt>)，
 不执行 Gradle、不编译 UIKit/Core Location/Core Bluetooth actual：

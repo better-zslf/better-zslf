@@ -13,12 +13,13 @@ import platform.Foundation.NSURL
 import platform.WebKit.WKNavigationAction
 import platform.WebKit.WKNavigationActionPolicy
 import platform.WebKit.WKNavigationDelegateProtocol
-import platform.WebKit.WKNavigationType
+import platform.WebKit.WKNavigationTypeLinkActivated
 import platform.WebKit.WKUserContentController
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
 import platform.WebKit.WKWebpagePreferences
 import platform.WebKit.WKWebsiteDataStore
+import platform.WebKit.javaScriptEnabled
 import platform.darwin.NSObject
 
 @Composable
@@ -79,7 +80,7 @@ private class ArticleRenderer : NSObject(), WKNavigationDelegateProtocol {
         val action = decidePolicyForNavigationAction
         val url = action.request.URL
         val absoluteUrl = url?.absoluteString
-        val isUserLink = action.navigationType == WKNavigationType.WKNavigationTypeLinkActivated
+        val isUserLink = action.navigationType == WKNavigationTypeLinkActivated
         val isMainFrame = action.targetFrame?.mainFrame == true
         val isLocalDocument = absoluteUrl == ARTICLE_BASE_URL || absoluteUrl == "about:blank"
 

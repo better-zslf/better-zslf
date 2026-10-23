@@ -6,7 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.uikit.LocalUIViewController
 import platform.UIKit.UIApplication
-import platform.UIKit.UISceneActivationState
+import platform.UIKit.UISceneActivationStateForegroundActive
+import platform.UIKit.UISceneActivationStateForegroundInactive
 import platform.UIKit.UIUserInterfaceStyle
 import platform.UIKit.UIWindowLevelNormal
 import platform.UIKit.UIWindowSceneSessionRoleApplication
@@ -27,8 +28,8 @@ actual fun PlatformAppearance(dark: Boolean?) {
         val scene = window.windowScene ?: return@SideEffect
         if (!UIApplication.sharedApplication.connectedScenes.contains(scene)) return@SideEffect
         if (scene.session.role != UIWindowSceneSessionRoleApplication) return@SideEffect
-        if (scene.activationState != UISceneActivationState.UISceneActivationStateForegroundActive &&
-            scene.activationState != UISceneActivationState.UISceneActivationStateForegroundInactive
+        if (scene.activationState != UISceneActivationStateForegroundActive &&
+            scene.activationState != UISceneActivationStateForegroundInactive
         ) return@SideEffect
         if (!scene.windows.contains(window) || window.hidden || window.windowLevel != UIWindowLevelNormal ||
             window.rootViewController == null

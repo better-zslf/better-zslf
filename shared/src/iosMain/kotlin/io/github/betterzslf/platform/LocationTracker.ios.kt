@@ -26,6 +26,7 @@ import platform.Foundation.NSDate
 import platform.Foundation.NSError
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSThread
+import platform.Foundation.timeIntervalSince1970
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationState
 import platform.darwin.NSObject
@@ -89,7 +90,7 @@ private class IosLocationTracker : NSObject(), NativeLocationTracker, CLLocation
             gate = IosLocationSampleGate(samplingSeconds, currentWallMillis())
             next.desiredAccuracy = kCLLocationAccuracyBestForNavigation
             next.distanceFilter = kCLDistanceFilterNone
-            next.activityType = CLActivityType.CLActivityTypeFitness
+            next.activityType = CLActivityTypeFitness
             next.pausesLocationUpdatesAutomatically = false
             next.showsBackgroundLocationIndicator = true
             next.allowsBackgroundLocationUpdates = true

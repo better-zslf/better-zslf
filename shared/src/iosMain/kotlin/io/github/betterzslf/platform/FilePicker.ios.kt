@@ -166,10 +166,11 @@ private fun readPickedFile(
             ) { readableUrl ->
                 try {
                     context.ensureActive()
-                    val metadata = readableUrl.resourceValuesForKeys(listOf(NSURLFileSizeKey), error = null)
+                    val coordinatedUrl = readableUrl ?: throw PickedFileReadFailure()
+                    val metadata = coordinatedUrl.resourceValuesForKeys(listOf(NSURLFileSizeKey), error = null)
                     val knownSize = (metadata?.get(NSURLFileSizeKey) as? NSNumber)?.longLongValue
                     if (knownSize != null && knownSize > MAX_PICKED_FILE_BYTES) throw PickedFileTooLarge()
-                    val input = NSInputStream.inputStreamWithURL(readableUrl) ?: throw PickedFileReadFailure()
+                    val input = NSInputStream.inputStreamWithURL(coordinatedUrl) ?: throw PickedFileReadFailure()
                     try {
                         input.open()
                         content = readBoundedPickedBytes(

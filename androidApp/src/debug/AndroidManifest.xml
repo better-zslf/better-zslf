@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug-only, explicit UI actions. Absent from release APKs. -->
+        <activity android:name=".CapabilityProbeActivity" android:exported="true"
+            android:launchMode="singleTask" android:label="Local capability probe" />
+    </application>
+</manifest>

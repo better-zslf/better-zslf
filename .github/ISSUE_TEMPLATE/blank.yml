@@ -3,6 +3,9 @@ description: 不属于上述两类的问题
 title: "[Other] "
 labels: ["question"]
 body:
+  - type: markdown
+    attributes:
+      value: 请移除账号凭据、个人信息、位置轨迹和设备密钥后提交。
   - type: textarea
     id: body
     attributes:

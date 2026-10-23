@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: better-zslf 文档
-    url: https://github.com/better-zslf
-    about: 架构分析与 API 文档
+  - name: better-zslf 使用与开发文档
+    url: https://github.com/better-zslf/better-zslf#readme
+    about: 查看客户端说明、开发步骤和测试状态

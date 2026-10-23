@@ -1,0 +1,6 @@
+.generated/
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+xcuserdata/
+.DS_Store

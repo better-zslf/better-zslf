@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Verify signed Android output, version and signer before copying release assets."""
+import argparse
+import base64
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+from pathlib import Path
+
+from release_metadata import ROOT, load_version
+
+
+def run(command: list[str]) -> str:
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode:
+        # Avoid echoing subprocess arguments/output: aliases and paths may be private.
+        raise ValueError(f"Release verification tool failed: {Path(command[0]).name}")
+    return result.stdout
+
+
+def only_file(pattern: str) -> Path:
+    files = sorted(ROOT.glob(pattern))
+    if len(files) != 1:
+        raise ValueError(f"Expected exactly one release artifact matching {pattern}")
+    return files[0]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--metadata", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    try:
+        metadata = json.loads(args.metadata.read_text(encoding="utf-8"))
+        if metadata != load_version(ROOT / "version.properties", metadata.get("tag")):
+            raise ValueError("Release metadata changed after tag validation")
+        expected_cert = os.environ.get("ANDROID_EXPECTED_CERT_SHA256", "").lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", expected_cert):
+            raise ValueError("Validated signing certificate fingerprint is missing")
+        sdk_root = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
+        if not sdk_root:
+            raise ValueError("Android SDK path is missing")
+        tools = Path(sdk_root) / "build-tools/36.0.0"
+        apk = only_file("androidApp/build/outputs/apk/release/*.apk")
+        aab = only_file("androidApp/build/outputs/bundle/release/*.aab")
+        apk_signature = run([str(tools / "apksigner"), "verify", "--verbose", "--print-certs", str(apk)])
+        certs = re.findall(r"Signer #[0-9]+ certificate SHA-256 digest: ([a-fA-F0-9]+)", apk_signature)
+        if certs != [expected_cert]:
+            raise ValueError("APK signer differs from the configured release certificate")
+        badging = run([str(tools / "aapt"), "dump", "badging", str(apk)])
+        package = re.search(r"^package: name='([^']+)' versionCode='([^']+)' versionName='([^']*)'", badging, re.M)
+        if not package or package[2] != str(metadata["versionCode"]) or package[3] != metadata["versionName"]:
+            raise ValueError("APK versionCode/versionName differs from the validated release version")
+        jarsigner = shutil.which("jarsigner")
+        keytool = shutil.which("keytool")
+        if not jarsigner or not keytool:
+            raise ValueError("Full JDK signing tools are missing")
+        bundle_verification = run([jarsigner, "-J-Duser.language=en", "-J-Duser.country=US", "-verify", str(aab)])
+        if "jar verified." not in bundle_verification:
+            raise ValueError("AAB is unsigned or its JAR signature is invalid")
+        certificate_text = run([keytool, "-printcert", "-rfc", "-jarfile", str(aab)])
+        pem = re.search(r"-----BEGIN CERTIFICATE-----\s*(.*?)\s*-----END CERTIFICATE-----", certificate_text, re.S)
+        if not pem:
+            raise ValueError("AAB signing certificate is missing")
+        bundle_certificate = base64.b64decode("".join(pem[1].split()), validate=True)
+        if hashlib.sha256(bundle_certificate).hexdigest() != expected_cert:
+            raise ValueError("APK and AAB signing certificates differ")
+        args.output.mkdir(parents=True, exist_ok=True)
+        if any(args.output.iterdir()):
+            raise ValueError("Release output directory must be empty")
+        for original, suffix in ((apk, "apk"), (aab, "aab")):
+            shutil.copyfile(original, args.output / f"better-zslf-{metadata['versionName']}.{suffix}")
+        manifest = dict(metadata, applicationId=package[1], signingCertificateSha256=expected_cert,
+                        gitCommit=os.environ.get("GITHUB_SHA", "unknown"))
+        (args.output / "release.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        checksum_lines = [f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n"
+                          for path in sorted(args.output.iterdir())]
+        (args.output / "SHA256SUMS").write_text("".join(checksum_lines), encoding="utf-8")
+        print("Release APK/AAB signatures, matching signer, APK version and artifact SHA256 verified")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise SystemExit(str(error)) from None
+
+
+if __name__ == "__main__":
+    main()

@@ -127,6 +127,20 @@ def parse_launch_pid(output, bundle):
     return int(matches[0])
 
 
+def parse_launchctl_table(output):
+    """Absence needs a complete successful process table, not empty/partial stdout."""
+    if not isinstance(output, str) or not output.endswith("\n"):
+        raise ValueError("Incomplete launchctl process table")
+    rows = [line.split() for line in output.splitlines() if line.strip()]
+    if len(rows) < 2 or rows[0] != ["PID", "Status", "Label"]:
+        raise ValueError("Missing launchctl process table header or entries")
+    for columns in rows[1:]:
+        if (len(columns) != 3 or not re.fullmatch(r"-|[1-9][0-9]*", columns[0])
+                or not re.fullmatch(r"-?[0-9]+", columns[1])):
+            raise ValueError("Malformed launchctl process table entry")
+    return rows[1:]
+
+
 def process_is_alive(output, bundle, pid):
     label_pattern = re.compile(r"(?:UIKitApplication:|application\.)" + re.escape(bundle) + r"(?:\[|\.|$)")
     for line in output.splitlines():
@@ -238,7 +252,17 @@ def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=Fa
     if (artifacts / "owner.json").exists():
         raise ValueError("Ownership directory must be fresh for this invocation")
     app_path, bundle, executable = app_metadata(app)
-    inventory = json.loads(runner.call(["list", "--json"], "inventory-before", 30))
+    # CI8: initial cold read timed out before any owned device existed. Retry only
+    # TimeoutExpired once, never nonzero output/bad JSON, without touching services/devices.
+    for attempt in range(2):
+        label = "inventory-before" + ("-retry" if attempt else "")
+        try:
+            output = runner.call(["list", "--json"], label, 30)
+            break
+        except subprocess.TimeoutExpired:
+            if attempt:
+                raise
+    inventory = json.loads(output)
     save_json(artifacts / "inventory-before.json", inventory)
     runtime, device_type = choose_destination(inventory)
     token = str(uuid.uuid4())

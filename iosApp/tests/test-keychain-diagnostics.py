@@ -40,18 +40,28 @@ class FakeRunner:
         self.omit_unsigned = False
         self.timeout_labels = set()
         self.launch_failure_labels = set()
+        self.fail_labels = set()
+        self.process_outputs = {}
 
     def call(self, args, label, timeout=60):
         self.calls.append((list(args), label))
         self.timeouts[label] = timeout
         if label in self.timeout_labels:
             raise smoke.subprocess.TimeoutExpired("synthetic read-only command", timeout)
+        if label in self.fail_labels:
+            raise RuntimeError("Synthetic command failure: " + label)
+        if label in self.process_outputs:
+            return self.process_outputs[label]
+        if args[0] == "uninstall":
+            shutil.rmtree(self.container)
+            self.container = self.container.with_name("fresh-signed-container")
+            self.container.mkdir()
         if args[0] == "get_app_container":
             return str(self.container) + "\n"
         if args[0] == "terminate":
             self.pid = None
         if args[:3] == ["spawn", OWN, "launchctl"]:
-            return "PID\tStatus\tLabel\n" + (f"{self.pid}\t0\tUIKitApplication:{BUNDLE}[fixture]\n" if self.pid else "")
+            return "PID\tStatus\tLabel\n-\t0\tcom.apple.fixture.daemon\n" + (f"{self.pid}\t0\tUIKitApplication:{BUNDLE}[fixture]\n" if self.pid else "")
         if args[0] == "io":
             Path(args[3]).write_bytes(b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 390, 844))
         return ""
@@ -120,9 +130,99 @@ class DiagnosticsTests(unittest.TestCase):
         for label in ("unsigned-launch", "signed-seed-launch", "signed-verify-launch"):
             self.assertEqual(self.runner.timeouts[label], 30)
         self.assertEqual(self.runner.timeouts["signed-verify-container"], 15)
-        self.assertEqual(self.runner.timeouts["signed-seed-after-terminate"], 5)
+        self.assertEqual(self.runner.timeouts["signed-seed-after-terminate"], 15)
         self.assertTrue(all(args[1] == OWN for args, _ in self.runner.calls))
         self.assertFalse((self.artifacts / "startup.png").exists())  # Parent takes final stability screenshot.
+
+    def test_clean_reinstall_exports_a_before_one_owned_uninstall_and_keeps_b_install(self):
+        value = self.run_probe()
+        labels = [label for _, label in self.runner.calls]
+        self.assertLess(labels.index("unsigned-screenshot"), labels.index("between-uninstall-unsigned"))
+        self.assertLess(labels.index("unsigned-after-terminate"), labels.index("between-uninstall-unsigned"))
+        self.assertLess(labels.index("between-uninstall-unsigned"), labels.index("signed-install"))
+        self.assertLess(labels.index("signed-install"), labels.index("signed-seed-launch"))
+        self.assertLess(labels.index("signed-seed-after-terminate"), labels.index("signed-verify-launch"))
+        self.assertEqual([args for args, _ in self.runner.calls if args[0] == "uninstall"], [["uninstall", OWN, BUNDLE]])
+        self.assertEqual(sum(args[0] == "install" for args, _ in self.runner.calls), 2)
+        self.assertFalse(self.container.exists())  # The old container really disappeared in the fixture.
+        self.assertTrue((self.artifacts / "unsigned-startup-report.json").is_file())
+        self.assertEqual(smoke.png_dimensions(self.artifacts / "unsigned-startup.png"), (390, 844))
+        transition = value["between_phases"]
+        self.assertEqual(transition["result"], "completed")
+        self.assertIn("not an established", transition["interpretation"])
+        self.assertEqual([entry["action"] for entry in transition["actions"]],
+                         ["export-unsigned-evidence", "confirm-unsigned-absence", "uninstall-unsigned-owned-app", "install-signed-copy"])
+        for entry in transition["actions"][2:]:
+            self.assertIn("started_at_utc", entry)
+            self.assertIn("finished_at_utc", entry)
+
+    def test_pid_query_timeout_recovers_once_without_second_terminate_or_launch(self):
+        self.runner.timeout_labels.add("unsigned-after-terminate")
+        value = self.run_probe()
+        self.assertEqual(value["unsigned"]["termination"]["process_query_attempts"], 2)
+        self.assertEqual(self.runner.timeouts["unsigned-after-terminate"], 15)
+        self.assertEqual(self.runner.timeouts["unsigned-after-terminate-retry"], 15)
+        self.assertEqual(sum(label == "unsigned-terminate" for _, label in self.runner.calls), 1)
+        self.assertEqual(len(self.runner.launches), 3)
+
+    def test_exhausted_pid_query_blocks_b_before_uninstall_or_sign(self):
+        self.runner.timeout_labels.update(("unsigned-after-terminate", "unsigned-after-terminate-retry"))
+        with self.assertRaisesRegex(RuntimeError, "absence is unconfirmed"):
+            self.run_probe()
+        value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+        self.assertEqual(value["signed"]["result"], "blocked")
+        self.assertEqual(value["between_phases"]["result"], "blocked")
+        self.assertFalse(any(args[0] == "uninstall" for args, _ in self.runner.calls))
+        self.assertFalse((self.artifacts / "signed").exists())
+        self.assertEqual(len(self.runner.launches), 1)
+
+    def test_empty_partial_header_or_still_live_bundle_never_proves_absence(self):
+        for output in ("", "PID\tStatus\tLabel\n", "PID\tStatus\tLabel\n- 0 com.apple.fixture",
+                       "PID\tStatus\tLabel\n- 0 com.apple.fixture\n1234 0\n",
+                       f"PID\tStatus\tLabel\n2222 0 UIKitApplication:{BUNDLE}[fixture]\n"):
+            with self.subTest(output=output):
+                self.runner.process_outputs["check-after-terminate"] = output
+                with self.assertRaises((ValueError, RuntimeError)):
+                    diag._terminate_and_confirm(self.runner, OWN, BUNDLE, 1001, "check")
+                self.assertNotIn("check-after-terminate-retry", self.runner.timeouts)
+
+    def test_uninstall_failure_is_not_retried_and_never_installs_signed_copy(self):
+        self.runner.fail_labels.add("between-uninstall-unsigned")
+        with self.assertRaisesRegex(RuntimeError, "Synthetic command failure"):
+            self.run_probe()
+        self.assertEqual(sum(args[0] == "uninstall" for args, _ in self.runner.calls), 1)
+        self.assertNotIn("signed-install", self.runner.timeouts)
+        value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+        self.assertEqual(value["between_phases"]["result"], "failed")
+        self.assertTrue((self.artifacts / "unsigned-startup-report.json").is_file())
+
+    def test_seed_absence_failure_blocks_verify_without_another_uninstall(self):
+        self.runner.timeout_labels.update(("signed-seed-after-terminate", "signed-seed-after-terminate-retry"))
+        with self.assertRaises(smoke.subprocess.TimeoutExpired):
+            self.run_probe()
+        self.assertNotIn("signed-verify-launch", self.runner.timeouts)
+        self.assertEqual(len(self.runner.launches), 2)
+        self.assertEqual(sum(args[0] == "uninstall" for args, _ in self.runner.calls), 1)
+        labels = [label for _, label in self.runner.calls]
+        self.assertEqual(labels[labels.index("signed-seed-after-terminate-retry") + 1], "signed-seed-launch-system-log")
+
+    def test_log_timeout_is_partial_and_keeps_original_denial_before_screenshot(self):
+        self.runner.launch_failure_labels.add("signed-seed-launch")
+        self.runner.timeout_labels.add("signed-seed-launch-system-log")
+        with self.assertRaisesRegex(RuntimeError, "Synthetic launch denied"):
+            self.run_probe()
+        value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+        seed = value["signed"]["seed"]
+        self.assertFalse(seed["failure_launch_log_complete"])
+        self.assertTrue(seed["failure_launch_log_partial"])
+        self.assertEqual(seed["failure_launch_log_window_seconds"], 30)
+        self.assertEqual(seed["failure_launch_log_error"]["type"], "TimeoutExpired")
+        for field in ("launch_started_at_utc", "launch_finished_at_utc", "failure_observed_at_utc",
+                      "failure_launch_log_started_at_utc", "failure_launch_log_finished_at_utc"):
+            self.assertIn(field, seed)
+        labels = [label for _, label in self.runner.calls]
+        self.assertLess(labels.index("signed-seed-launch-system-log"), labels.index("signed-seed-failure-screenshot"))
+        self.assertEqual(value["error"]["message"], "Synthetic launch denied before PID")
 
     def test_container_timeout_is_retried_before_one_unsigned_launch(self):
         self.runner.timeout_labels.add("unsigned-container")
@@ -142,9 +242,10 @@ class DiagnosticsTests(unittest.TestCase):
         value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
         self.assertIsNone(value["unsigned"]["report"])
         self.assertEqual(value["unsigned"]["error"]["type"], "TimeoutExpired")
-        self.assertEqual(value["signed"]["result"], "passed")
+        self.assertEqual(value["signed"]["result"], "blocked")
         self.assertEqual(value["result"], "keychain-diagnostics-failed")
-        self.assertEqual(len(self.runner.launches), 2)
+        self.assertEqual(len(self.runner.launches), 0)
+        self.assertFalse(any(args[0] == "uninstall" for args, _ in self.runner.calls))
 
     def test_launch_denial_gets_scoped_logs_without_relaunch(self):
         self.runner.launch_failure_labels.add("signed-seed-launch")
@@ -155,7 +256,7 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(len(logs), 1)
         args = logs[0][0]
         self.assertEqual(args[:3], ["spawn", OWN, "log"])
-        self.assertEqual(args[args.index("--last") + 1], "3m")
+        self.assertEqual(args[args.index("--last") + 1], "30s")
         predicate = args[args.index("--predicate") + 1]
         for part in ("SpringBoard", "runningboardd", "amfid", "installd", BUNDLE):
             self.assertIn(part, predicate)
@@ -190,9 +291,11 @@ class DiagnosticsTests(unittest.TestCase):
         self.runner.omit_unsigned = True
         with self.assertRaisesRegex(RuntimeError, "Unsigned baseline"):
             self.run_probe()
-        self.assertEqual(len(self.runner.launches), 3)
+        self.assertEqual(len(self.runner.launches), 1)
         value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
         self.assertEqual(value["result"], "keychain-diagnostics-failed")
+        self.assertEqual(value["signed"]["result"], "blocked")
+        self.assertFalse(any(args[0] == "uninstall" for args, _ in self.runner.calls))
 
     def test_event_limit_matches_native_256(self):
         value = report()
@@ -239,7 +342,12 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertIn("-", next(c for c in calls if "--sign" in c))
         with (target.parent / "CI-simulator-entitlements.plist").open("rb") as stream:
             entitlements = plistlib.load(stream)
-        self.assertEqual(entitlements["keychain-access-groups"], ["CIKEYCHAIN." + BUNDLE])
+        self.assertNotIn("keychain-access-groups", entitlements)
+        self.assertEqual(entitlements, {"application-identifier": "CIKEYCHAIN." + BUNDLE,
+                                        "com.apple.developer.team-identifier": "CIKEYCHAIN", "get-task-allow": True})
+        evidence = json.loads((target.parent / "signing.json").read_text())
+        self.assertEqual(evidence["profile"], "simulator-single-app")
+        self.assertIs(evidence["keychain_sharing"], False)
 
     def test_release_and_non_simulator_products_rejected(self):
         other = self.root / "Release-iphonesimulator" / self.app.name

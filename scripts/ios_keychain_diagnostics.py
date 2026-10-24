@@ -8,6 +8,7 @@ into a pass. The smoke owner remains responsible for device ownership/cleanup
 and the final PID stability window/startup.png.
 """
 import argparse
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -233,12 +234,12 @@ def sign_simulator_copy(artifacts, app_path, bundle=None, *, run=None):
     evidence.mkdir()
     copy = evidence / source.name
     record = {"schema": 1, "result": "running", "source_unchanged": True, "app": str(copy),
-              "team": TEAM_ID, "identity": "ad-hoc", "signed_targets": []}
+              "team": TEAM_ID, "identity": "ad-hoc", "profile": "simulator-single-app",
+              "keychain_sharing": False, "signed_targets": []}
     _save_json(evidence / "signing.json", record)
     try:
         shutil.copytree(source, copy, symlinks=False)
         entitlements = {"application-identifier": TEAM_ID + "." + bundle,
-                        "keychain-access-groups": [TEAM_ID + "." + bundle],
                         "com.apple.developer.team-identifier": TEAM_ID,
                         "get-task-allow": True}
         entitlement_path = evidence / "CI-simulator-entitlements.plist"
@@ -333,7 +334,33 @@ def _screenshot(artifacts, runner, udid, filename, label):
     return filename
 
 
+def _utc_now():
+    return datetime.now(timezone.utc).isoformat()
+
+
 def _capture_failure(artifacts, runner, udid, label, record, container, phase, save, bundle):
+    # Collect the failing operation first: CI7's ascending 3m output timed out in old A logs.
+    record["failure_observed_at_utc"] = _utc_now()
+    record["failure_launch_log"] = label + "-launch-system-log.stdout.log"
+    record["failure_launch_log_window_seconds"] = 30
+    record["failure_launch_log_complete"] = False
+    record["failure_launch_log_started_at_utc"] = _utc_now()
+    save()
+    try:
+        # Only this owned Simulator and fixed launch/security processes; never host/global logs.
+        predicate = ('process == "BetterZslf" OR ((process == "SpringBoard" OR '
+                     'process == "runningboardd" OR process == "amfid" OR process == "installd" OR '
+                     'process == "launchd_sim") AND (eventMessage CONTAINS[c] "' + bundle +
+                     '" OR eventMessage CONTAINS[c] "BetterZslf"))')
+        runner.call(["spawn", udid, "log", "show", "--style", "compact", "--last", "30s",
+                     "--predicate", predicate], label + "-launch-system-log", 15)
+        record["failure_launch_log_complete"] = True
+    except Exception as error:
+        record["failure_launch_log_error"] = _error(error)
+    finally:
+        record["failure_launch_log_finished_at_utc"] = _utc_now()
+        record["failure_launch_log_partial"] = not record["failure_launch_log_complete"]
+        save()
     if container is not None:
         try:
             report = read_native_report(container, phase)
@@ -344,21 +371,9 @@ def _capture_failure(artifacts, runner, udid, label, record, container, phase, s
             record["failure_report_error"] = _error(error)
     try:
         record["failure_screenshot"] = _screenshot(artifacts, runner, udid, label + "-failure.png",
-                                                       label + "-failure-screenshot")
+                                                  label + "-failure-screenshot")
     except Exception as error:
         record["failure_screenshot_error"] = _error(error)
-    try:
-        # Only this owned Simulator and fixed launch/security processes; never host/global logs.
-        # Keep the bundle filter even for daemon logs; the application process is app-private.
-        predicate = ('process == "BetterZslf" OR ((process == "SpringBoard" OR '
-                     'process == "runningboardd" OR process == "amfid" OR process == "installd" OR '
-                     'process == "launchd_sim") AND (eventMessage CONTAINS[c] "' + bundle +
-                     '" OR eventMessage CONTAINS[c] "BetterZslf"))')
-        runner.call(["spawn", udid, "log", "show", "--style", "compact", "--last", "3m",
-                     "--predicate", predicate], label + "-launch-system-log", 15)
-        record["failure_launch_log"] = label + "-launch-system-log.stdout.log"
-    except Exception as error:
-        record["failure_launch_log_error"] = _error(error)
     save()
 
 
@@ -368,20 +383,30 @@ def _terminate_and_confirm(runner, udid, bundle, pid, label):
         runner.call(["terminate", udid, bundle], label + "-terminate", COMMAND_TIMEOUT)
     except Exception as error:
         terminate_error = _error(error)
-    output = runner.call(["spawn", udid, "launchctl", "list"], label + "-after-terminate", COMMAND_TIMEOUT)
-    lines = [line.split() for line in output.splitlines() if line.strip()]
-    if not lines or lines[0] != ["PID", "Status", "Label"]:
-        raise RuntimeError("Cannot confirm terminated PID from launchctl evidence")
-    if pid is not None and any(len(columns) == 3 and columns[0] == str(pid) for columns in lines[1:]):
+    for attempt in range(2):
+        query_label = label + "-after-terminate" + ("-retry" if attempt else "")
+        try:
+            output = runner.call(["spawn", udid, "launchctl", "list"], query_label, 15)
+            break
+        except subprocess.TimeoutExpired:
+            if attempt:
+                raise
+    from ios_simulator_smoke import parse_launchctl_table
+    rows = parse_launchctl_table(output)
+    if pid is not None and any(columns[0] == str(pid) for columns in rows):
         raise RuntimeError("Previous probe PID is still alive after terminate")
-    # A crashed app can make terminate return nonzero. Confirmed absence, not the
-    # terminate exit alone, is the evidence that permits the next launch.
-    return {"pid": pid, "confirmed_absent": True, "terminate_error": terminate_error}
+    label_pattern = re.compile(r"(?:UIKitApplication:|application\.)" + re.escape(bundle) + r"(?:\[|\.|$)")
+    if any(columns[0] != "-" and label_pattern.match(columns[2]) for columns in rows):
+        raise RuntimeError("Bundle process is still alive after terminate")
+    # A crashed app can make terminate return nonzero. Only a complete, successful
+    # table proving both original-PID and bundle-process absence permits B/verify.
+    return {"pid": pid, "confirmed_absent": True, "terminate_error": terminate_error,
+            "process_query_attempts": attempt + 1}
 
 
 def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep=time.sleep,
                     *, signer=None, clock=time.monotonic):
-    """Run A unsigned(seed), then B signed(seed -> terminated PID -> verify).
+    """Run A unsigned(seed), export/confirm/uninstall A, then B signed(seed -> restart -> verify).
 
     runner.call(args, label, timeout) is the smoke schema. Its call_env takes
     (args, label, env: dict[str, str], timeout=60) and applies only those supplied
@@ -407,11 +432,28 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
     result = {"schema": 1, "result": "running", "udid": udid, "bundle": bundle, "pid": None,
               "namespaces": {"unsigned": uuid.uuid4().hex + "_unsigned", "signed": uuid.uuid4().hex + "_signed"},
               "unsigned": {}, "signed": {"seed": {}, "verify": {}},
+              "between_phases": {"experiment": "owned-app-clean-reinstall", "result": "pending", "actions": [],
+                                 "interpretation": "Clean reinstall plus simulator-single-app profile; not an established LS/sharing/signature root cause"},
               "coverage": "Synthetic keychain probe plus actual AppGraphGuard; no account login or credentials"}
     summary = artifacts / "keychain-diagnostics.json"
 
     def save():
         _save_json(summary, result)
+
+    def transition_call(action, args, label, timeout):
+        entry = {"action": action, "result": "running", "started_at_utc": _utc_now()}
+        result["between_phases"]["actions"].append(entry)
+        save()
+        try:
+            runner.call(args, label, timeout)
+            entry["result"] = "passed"
+        except BaseException as error:
+            entry.update(result="failed", error=_error(error))
+            result["between_phases"]["result"] = "failed"
+            raise
+        finally:
+            entry["finished_at_utc"] = _utc_now()
+            save()
 
     def launch_phase(kind, phase, require_checks):
         label = kind if kind == "unsigned" else kind + "-" + phase
@@ -425,7 +467,13 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
             record["stale_report_removed"] = _clear_report(container)
             env = {"SIMCTL_CHILD_BETTER_ZSLF_STARTUP_PROBE": phase,
                    "SIMCTL_CHILD_BETTER_ZSLF_PROBE_NAMESPACE": result["namespaces"][kind]}
-            output = runner.call_env(["launch", udid, bundle], label + "-launch", env, timeout=30)
+            record["launch_started_at_utc"] = _utc_now()
+            save()
+            try:
+                output = runner.call_env(["launch", udid, bundle], label + "-launch", env, timeout=30)
+            finally:
+                record["launch_finished_at_utc"] = _utc_now()
+                save()
             pid = parse_launch_pid(output, bundle)
             record["pid"] = pid
             result["pid"] = pid
@@ -467,10 +515,29 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
         unsigned_errors.append(_error(error))
         result["unsigned"]["termination_error"] = _error(error)
     result["unsigned"]["evidence_errors"] = unsigned_errors
-    save()  # Baseline failure is retained and never short-circuits B.
+    baseline = result["unsigned"]
+    exported = (baseline.get("report") is not None and
+                (artifacts / "unsigned-startup-report.json").is_file() and
+                (artifacts / "unsigned-startup.png").is_file())
+    absent = baseline.get("termination", {}).get("confirmed_absent") is True
+    result["between_phases"]["actions"].extend([
+        {"action": "export-unsigned-evidence", "result": "passed" if exported else "failed"},
+        {"action": "confirm-unsigned-absence", "result": "passed" if absent else "failed"},
+    ])
+    if absent:
+        result["pid"] = None  # Keep A's historical PID in its record, not as a live B PID.
+    save()
 
-    active_phase = "sign"
+    active_phase = "transition"
     try:
+        if not exported or not absent or unsigned_errors:
+            result["signed"]["result"] = "blocked"
+            result["between_phases"]["result"] = "blocked"
+            raise RuntimeError("Unsigned baseline evidence/termination absence is unconfirmed; signed experiment blocked")
+        active_phase = "uninstall"
+        transition_call("uninstall-unsigned-owned-app", ["uninstall", udid, bundle],
+                        "between-uninstall-unsigned", 30)
+        active_phase = "sign"
         signed_app = Path(signer(artifacts, source, bundle)).resolve(strict=True)
         signed_root = (artifacts / "signed").resolve(strict=True)
         if signed_app == source or not signed_app.is_dir() or not signed_app.is_relative_to(signed_root):
@@ -483,7 +550,9 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
         result["signed"]["app"] = str(signed_app.relative_to(artifacts))
         save()
         active_phase = "seed"
-        runner.call(["install", udid, str(signed_app)], "signed-install", 90)
+        transition_call("install-signed-copy", ["install", udid, str(signed_app)], "signed-install", 90)
+        result["between_phases"]["result"] = "completed"
+        save()
         seed_pid = launch_phase("signed", "seed", True)
         result["signed"]["seed"]["screenshot"] = _screenshot(
             artifacts, runner, udid, "signed-seed.png", "signed-seed-screenshot")
@@ -503,7 +572,7 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
     except BaseException as error:
         result["result"] = "keychain-diagnostics-failed"
         result["error"] = _error(error)
-        if result["signed"].get("result") != "passed":
+        if result["signed"].get("result") not in ("passed", "blocked"):
             result["signed"]["result"] = "failed"
             record = result["signed"].setdefault(active_phase, {})
             record["result"] = "failed"
@@ -511,13 +580,9 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
             # launch_phase already captured its failure. Also cover signing,
             # install, seed screenshot, terminate and cross-PID checks here.
             if "failure_screenshot" not in record and "failure_screenshot_error" not in record:
-                container = None
-                if active_phase in ("seed", "verify"):
-                    try:
-                        container = _container(runner, udid, bundle, "signed-" + active_phase + "-failure")
-                    except Exception as capture_error:
-                        record["failure_container_error"] = _error(capture_error)
-                _capture_failure(artifacts, runner, udid, "signed-" + active_phase, record, container,
+                # launch_phase already exported any native report. Do not put another
+                # potentially slow container lookup ahead of the short failure log window.
+                _capture_failure(artifacts, runner, udid, "signed-" + active_phase, record, None,
                                  active_phase if active_phase in ("seed", "verify") else "seed", save, bundle)
         save()
         raise

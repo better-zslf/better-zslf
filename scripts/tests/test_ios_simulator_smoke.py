@@ -61,7 +61,7 @@ class FakeSimctl:
             return f"{args[2]}: 4321\n"
         if args[:3] == ["spawn", OWN, "launchctl"]:
             pid = "-" if label == self.dead_sample else "4321"
-            return f"PID Status Label\n{pid}\t0\tUIKitApplication:{BUNDLE}[fixture][rb-legacy]\n"
+            return f"PID\tStatus\tLabel\n{pid}\t0\tUIKitApplication:{BUNDLE}[fixture][rb-legacy]\n"
         if args[0] == "io":
             # A synthetic PNG header, not an image from a native UI.
             Path(args[3]).write_bytes(b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 390, 844))
@@ -118,6 +118,15 @@ class SimulatorSelectionTests(unittest.TestCase):
         self.assertEqual(smoke.canonical_udid(OWN.lower()), OWN)
         self.assertEqual(smoke.version_code(smoke.version("26.4")), 1704960)
 
+    def test_absence_parser_requires_complete_header_and_valid_nonempty_table(self):
+        self.assertEqual(smoke.parse_launchctl_table("PID\tStatus\tLabel\n-\t0\tcom.apple.fixture\n"),
+                         [["-", "0", "com.apple.fixture"]])
+        for value in ("", "PID Status Label\n", "PID Status Label\n- 0 com.apple.fixture",
+                      "PID Status Label\n0 0 com.apple.fixture\n", "PID Status Label\n- bad com.apple.fixture\n",
+                      "PID Status Label\n1234 0\n", "Wrong Status Label\n- 0 com.apple.fixture\n"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                smoke.parse_launchctl_table(value)
+
     def test_pid_parser_and_liveness_require_same_bundle_and_pid(self):
         self.assertEqual(smoke.parse_launch_pid(f"{BUNDLE}: 4321\n", BUNDLE), 4321)
         for value in (f"{BUNDLE}: 0", "other.bundle: 4321", f"{BUNDLE}: 1\n{BUNDLE}: 2"):
@@ -164,6 +173,37 @@ class SimulatorCommandFlowTests(unittest.TestCase):
             self.assertNotIn(args[0], {"erase", "privacy", "download", "pair"})
             self.assertNotIn("all", args)
             self.assertNotIn("booted", args)
+
+    def test_initial_inventory_cold_timeout_retries_once_before_any_creation(self):
+        self.runner.timeout_labels.add("inventory-before")
+        self.run_smoke()
+        first, second = self.runner.calls[:2]
+        self.assertEqual(first, (["list", "--json"], "inventory-before", 30))
+        self.assertEqual(second, (["list", "--json"], "inventory-before-retry", 30))
+        self.assertEqual(sum(args[0] == "create" for args, _, _ in self.runner.calls), 1)
+        self.assert_only_owned_mutations()
+
+    def test_initial_inventory_exhausted_timeouts_never_create_or_mutate_devices(self):
+        self.runner.timeout_labels.update(("inventory-before", "inventory-before-retry"))
+        with self.assertRaises(smoke.subprocess.TimeoutExpired):
+            self.run_smoke()
+        self.assertEqual(len(self.runner.calls), 2)
+        self.assertTrue(all(args == ["list", "--json"] for args, _, _ in self.runner.calls))
+        self.assertEqual(sum(timeout for _, _, timeout in self.runner.calls), 60)
+        self.assertFalse((self.artifacts / "owner.json").exists())
+        self.assertEqual(smoke.all_udids(self.runner.inventory), self.prior)
+
+    def test_initial_inventory_nonzero_or_bad_json_is_not_retried(self):
+        self.runner.fail.add("inventory-before")
+        with self.assertRaises(RuntimeError):
+            self.run_smoke()
+        self.assertEqual(len(self.runner.calls), 1)
+        self.assertFalse((self.artifacts / "owner.json").exists())
+        with mock.patch.object(self.runner, "call", return_value="not JSON") as call:
+            with self.assertRaises(json.JSONDecodeError):
+                self.run_smoke()
+            call.assert_called_once_with(["list", "--json"], "inventory-before", 30)
+        self.assertFalse((self.artifacts / "owner.json").exists())
 
     def test_success_records_pid_screenshot_and_only_cleans_its_new_device(self):
         result = self.run_smoke()

@@ -65,7 +65,7 @@ class RepositoryContractTest {
             Contract("/app/appFind/getAppFindById") { it.discover.menu() },
             Contract("/app/appFind/getDictTips", mapOf("code" to "attendanceRadius", "num" to "1")) { it.discover.dictionary("attendanceRadius") },
             Contract("/run/errand/getErrandList", mapOf("userId" to "fixture-user-id", "offset" to "0", "limit" to "20", "isFinish" to "0")) { it.run.tasks("fixture-user-id") },
-            Contract("/run/errand/getErrandDetail", mapOf("trid" to "fixture-task")) { it.run.detail("fixture-task") },
+            Contract("/run/errand/getErrandDetail", mapOf("errandId" to "fixture-errand", "userId" to "fixture-user-id", "errandScheduleId" to "fixture-schedule")) { it.run.detail("fixture-errand", "fixture-user-id", "fixture-schedule") },
             Contract("/run/errand/getUserErrandTrackRecord", mapOf("userId" to "fixture-user-id")) { it.run.records("fixture-user-id") },
             Contract("/run/errand/getTrackByTrid", mapOf("trid" to "fixture-task")) { it.run.track("fixture-task") },
             Contract("/run/errand/getTrackRecordByTrid", mapOf("trid" to "fixture-task")) { it.run.record("fixture-task") },

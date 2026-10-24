@@ -9,6 +9,14 @@ import io.github.betterzslf.core.net.ApiClient
 import io.github.betterzslf.core.storage.SessionStore
 import io.github.betterzslf.data.AppRepositories
 import io.github.betterzslf.feature.settings.SettingsStore
+import io.github.betterzslf.feature.runui.RunRuntime
+import io.github.betterzslf.feature.update.GithubReleaseRepository
+import io.github.betterzslf.platform.NativeAppUpdater
+import io.github.betterzslf.platform.createNativeAppUpdater
+import io.github.betterzslf.platform.createLocationTracker
+import io.github.betterzslf.ui.run.RunTaskList
+import kotlin.time.Clock
+import kotlinx.coroutines.launch
 import io.github.betterzslf.feature.water.KableWaterBleTransport
 import io.github.betterzslf.feature.water.WaterBleController
 import io.github.betterzslf.platform.createWaterEpilogueContext
@@ -38,6 +46,27 @@ class AppGraph(val platform: PlatformServices) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     // Construction of the transport is inert; scanning is only collected after an explicit UI action.
     val water: WaterBleController by lazy { WaterBleController(applicationScope, KableWaterBleTransport(), ::createWaterEpilogueContext) }
+    private var runRuntimeInstance: RunRuntime? = null
+    val runRuntime: RunRuntime
+        get() = runRuntimeInstance ?: RunRuntime(applicationScope, platform.storage, repositories.run,
+            createLocationTracker(), { Clock.System.now().toEpochMilliseconds() }, sessions.session
+        ).also { runRuntimeInstance = it }
+    // Public release traffic has its own client and never borrows school authentication.
+    private var githubUpdatesInstance: GithubReleaseRepository? = null
+    val githubUpdates: GithubReleaseRepository
+        get() = githubUpdatesInstance ?: GithubReleaseRepository(platform.httpClient()).also { githubUpdatesInstance = it }
+    private var appUpdaterInstance: NativeAppUpdater? = null
+    val appUpdater: NativeAppUpdater
+        get() = appUpdaterInstance ?: createNativeAppUpdater().also { appUpdaterInstance = it }
+    private fun closeUpdateOwners(): Boolean {
+        val nativeOk = runCatching { appUpdaterInstance?.close() }.isSuccess
+        if (nativeOk) appUpdaterInstance = null
+        val repositoryOk = runCatching { githubUpdatesInstance?.close() }.isSuccess
+        if (repositoryOk) githubUpdatesInstance = null
+        return nativeOk && repositoryOk
+    }
+    var clearingLocalData by mutableStateOf(false)
+        private set
     var storageNotice by mutableStateOf<String?>(null)
         private set
     fun clearStorageNotice() { storageNotice = null }
@@ -47,12 +76,32 @@ class AppGraph(val platform: PlatformServices) {
         }
     }
     fun clearLocalData() {
-        val sessionOk = runCatching { sessions.clear() }.isSuccess
-        val storageOk = runCatching { platform.storage.clear() }.isSuccess
-        val settingsOk = settings.reset()
-        storageNotice = if (sessionOk && storageOk && settingsOk) null else "部分本机数据清理失败，请重试。"
+        if (clearingLocalData) return
+        clearingLocalData = true
+        applicationScope.launch {
+            try {
+                // Await native capture and any ambiguous in-flight upload cleanup BEFORE erasing storage.
+                // A fresh runtime is created only after the old one has become quiescent.
+                val stopped = runCatching { runRuntimeInstance?.close() }.isSuccess
+                if (!stopped) {
+                    storageNotice = "运动记录尚未停止，本机数据暂未清空，请重试。"
+                    return@launch
+                }
+                if (!closeUpdateOwners()) {
+                    storageNotice = "更新任务尚未停止，本机数据暂未清空，请重试。"
+                    return@launch
+                }
+                val sessionOk = runCatching { sessions.clear() }.isSuccess
+                val storageOk = runCatching { platform.storage.clear() }.isSuccess
+                val settingsOk = settings.reset()
+                runRuntimeInstance = null
+                storageNotice = if (sessionOk && storageOk && settingsOk) null else "部分本机数据清理失败，请重试。"
+            } finally {
+                clearingLocalData = false
+            }
+        }
     }
-    fun close() { applicationScope.cancel(); api.close(); http.close() }
+    fun close() { closeUpdateOwners(); applicationScope.cancel(); api.close(); http.close() }
 }
 
 @Serializable
@@ -69,6 +118,16 @@ fun MutableList<NavKey>.pushUnique(route: Route) {
     if (existing >= 0) {
         while (lastIndex > existing) removeAt(lastIndex)
     } else add(route)
+}
+
+/** Preserve an explicit offline page across Activity recreation while keeping login underneath it. */
+fun MutableList<NavKey>.reconcileLoggedOutRoute() {
+    val top = lastOrNull() as? Route.Page
+    if (top?.kind in setOf("water", "document", "resetpassword")) {
+        if (none { it == Route.Login }) add(lastIndex.coerceAtLeast(0), Route.Login)
+    } else {
+        pushUnique(Route.Login)
+    }
 }
 
 @Composable
@@ -107,7 +166,7 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
     var previousOwner by rememberSaveable { mutableStateOf(session?.userId) }
     LaunchedEffect(session?.token) {
         if (session == null) {
-            root.pushUnique(Route.Login)
+            root.reconcileLoggedOutRoute()
         } else {
             val owner = session?.userId
             if (previousOwner != null && previousOwner != owner) {
@@ -131,7 +190,7 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
                 LoginScreen(graph, onDocument = { root.pushUnique(Route.Page("document", it, it)) },
                     onWater = { root.pushUnique(Route.Page("water", title = "宿舍热水器")) })
             }
-            entry<Route.Page>(swipeDismiss = if ((root.lastOrNull() as? Route.Page)?.kind == "water") NavSwipeDirection.None else NavSwipeDirection.LeftToRight) {
+            entry<Route.Page>(swipeDismiss = if ((root.lastOrNull() as? Route.Page)?.kind in setOf("water", "runtracker")) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) {
                 FeaturePage(graph, it, onOpen = root::pushUnique, onBack = { root.removeLastOrNull() })
             }
         }
@@ -155,12 +214,12 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
                 entry<Route.TabRoot> { route ->
                     when (route.index) {
                         0 -> HomeScreen(graph, stack::pushUnique)
-                        1 -> RunTasksScreen(graph, stack::pushUnique)
+                        1 -> RunTaskList(graph, stack::pushUnique)
                         2 -> CommunityScreen(graph, stack::pushUnique)
                         3 -> ProfileScreen(graph, stack::pushUnique)
                     }
                 }
-                entry<Route.Page>(swipeDismiss = if ((stack.lastOrNull() as? Route.Page)?.kind == "water") NavSwipeDirection.None else NavSwipeDirection.LeftToRight) { route ->
+                entry<Route.Page>(swipeDismiss = if ((stack.lastOrNull() as? Route.Page)?.kind in setOf("water", "runtracker")) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) { route ->
                     FeaturePage(graph, route, stack::pushUnique) { stack.removeLastOrNull() }
                 }
             }

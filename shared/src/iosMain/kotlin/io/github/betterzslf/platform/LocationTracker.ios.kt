@@ -32,11 +32,15 @@ import platform.UIKit.UIApplicationState
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 
-private val processLocationTracker: NativeLocationTracker by lazy { IosLocationTracker() }
+private var processLocationTracker: IosLocationTracker? = null
 
-actual fun createLocationTracker(): NativeLocationTracker = processLocationTracker
+actual fun createLocationTracker(): NativeLocationTracker {
+    check(NSThread.isMainThread) { "Acquire the location tracker on the main thread" }
+    return processLocationTracker?.takeUnless { it.isClosed }
+        ?: IosLocationTracker().also { processLocationTracker = it }
+}
 
-/** One process-wide tracker; creating/observing it never requests permission or starts a sensor. */
+/** One live process-wide tracker; an explicitly closed owner is replaced after local-data reset. */
 private class IosLocationTracker : NativeLocationTracker {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutableState = MutableStateFlow(LocationTrackingState())
@@ -50,6 +54,7 @@ private class IosLocationTracker : NativeLocationTracker {
     private var gate: IosLocationSampleGate? = null
     private var active = false
     private var closed = false
+    val isClosed: Boolean get() = closed
     private var generation = 0L
     private val nativeDelegate = IosLocationDelegate(
         onAuthorizationChanged = ::onAuthorizationChanged,

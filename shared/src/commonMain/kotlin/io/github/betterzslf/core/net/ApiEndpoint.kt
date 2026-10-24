@@ -47,7 +47,7 @@ enum class ApiEndpoint(
     DICTIONARY("/app/appFind/getDictTips", required = listOf("code", "num")),
 
     RUN_TASKS("/run/errand/getErrandList", required = listOf("userId", "offset", "limit", "isFinish")),
-    RUN_DETAIL("/run/errand/getErrandDetail", required = listOf("trid")),
+    RUN_DETAIL("/run/errand/getErrandDetail", required = listOf("errandId", "userId", "errandScheduleId")),
     RUN_RECORDS("/run/errand/getUserErrandTrackRecord", required = listOf("userId")),
     RUN_TRACK("/run/errand/getTrackByTrid", required = listOf("trid")),
     RUN_RECORD("/run/errand/getTrackRecordByTrid", required = listOf("trid")),

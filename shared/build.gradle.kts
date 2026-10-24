@@ -12,6 +12,7 @@ kotlin {
         namespace = "io.github.betterzslf.shared"
         compileSdk { version = release(37) { minorApiLevel = 2 } }
         minSdk = 33
+        androidResources { enable = true }
         withHostTest {}
     }
     // JVM is a host test target, not a distributed desktop application.

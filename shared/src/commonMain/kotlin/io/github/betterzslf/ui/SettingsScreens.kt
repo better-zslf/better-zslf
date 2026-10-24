@@ -47,7 +47,8 @@ fun SettingsScreen(graph: AppGraph, open: (Route) -> Unit, back: () -> Unit) {
                     onCheckedChange = { checked -> graph.settings.update { it.copy(metricUnits = checked) } })
             } }
             item { Text("本地数据") }
-            item { SectionCard("清除本机数据", "退出登录并恢复设置，不改动学校账号或服务器记录。", { clear = true }) }
+            graph.storageNotice?.let { notice -> item { SectionCard("本机数据提示", notice) } }
+            item { SectionCard(if (graph.clearingLocalData) "正在清理本机数据" else "清除本机数据", "会先停止运动记录与后续上传，再退出登录并恢复设置；学校记录保持原样。", { if (!graph.clearingLocalData) clear = true }) }
             item { Text("关于与版本") }
             item { SectionCard("better-zslf", graph.platform.versionName, { open(Route.Page("about", title = "关于应用")) }) }
             item { SectionCard("检查更新", onClick = { open(Route.Page("updates", title = "版本更新")) }) }

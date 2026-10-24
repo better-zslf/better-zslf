@@ -11,6 +11,10 @@ import io.github.betterzslf.platform.HtmlPanel
 import io.github.betterzslf.ui.content.ContentPage
 import io.github.betterzslf.ui.booking.BookingPage
 import io.github.betterzslf.ui.water.WaterHeaterScreen
+import io.github.betterzslf.ui.run.RunFeaturePage
+import io.github.betterzslf.ui.run.RunTaskList
+import io.github.betterzslf.ui.campusnet.CampusNetworkFeaturePage
+import io.github.betterzslf.ui.update.AppUpdatePage
 import io.ktor.http.encodeURLParameter
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
@@ -35,12 +39,13 @@ fun FeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBa
         "password" -> PasswordScreen(graph, onBack)
         "columns", "articles", "article", "document", "history", "notices", "messages", "discover" -> ContentPage(graph, page, onOpen, onBack)
         "venues", "venue", "venuetimes", "venueapply", "myvenues", "venueapplication", "fitness", "fitnessitems", "fitnessenrol" -> BookingPage(graph, page, onOpen, onBack)
-        "runs" -> RunTasksScreen(graph, onOpen, onBack)
+        "runs", "rundetail", "runrecords", "runrecord", "runtracker", "runimport" -> RunFeaturePage(graph, page, onOpen, onBack, graph.runRuntime)
         "community" -> CommunityScreen(graph, onOpen)
         "water" -> WaterHeaterScreen(graph.water, onBack)
-        "campusnet" -> CampusNetworkScreen(graph, onBack)
+        "campusnet" -> CampusNetworkFeaturePage(graph, onBack)
         "feedback" -> FeedbackScreen(graph, onBack)
-        "updates", "about" -> AboutScreen(graph, page.kind == "updates", onBack)
+        "updates" -> AppUpdatePage(graph.platform.versionName, graph.githubUpdates, graph.appUpdater, graph.platform::openUrl, onBack)
+        "about" -> AboutScreen(graph, onBack) { onOpen(Route.Page("updates", title = "版本更新")) }
         else -> DataPage(graph, page, onOpen, onBack)
     }
 }
@@ -63,9 +68,6 @@ private fun DataPage(graph: AppGraph, page: Route.Page, open: (Route) -> Unit, b
         "myvenues" -> ({ repo.venues.applications(userId) })
         "fitness" -> ({ repo.fitness.tests() })
         "fitnessitems" -> ({ repo.fitness.items(page.id.ifBlank { null }) })
-        "rundetail" -> ({ repo.run.detail(page.id) })
-        "runrecords" -> ({ repo.run.records(userId) })
-        "runrecord" -> ({ repo.run.record(page.id) })
         else -> ({ ApiResult.Success(JsonNull) })
     }
     Screen(page.title, back, actions = { TextButton("刷新", onClick = { refresh++ }) }) { padding ->
@@ -211,59 +213,14 @@ private fun FeedbackScreen(graph: AppGraph, back: () -> Unit) {
 }
 
 @Composable
-private fun AboutScreen(graph: AppGraph, updates: Boolean, back: () -> Unit) {
-    Screen(if (updates) "版本更新" else "关于应用", back) { padding -> PageList(padding) {
+private fun AboutScreen(graph: AppGraph, back: () -> Unit, openUpdates: () -> Unit) {
+    Screen("关于应用", back) { padding -> PageList(padding) {
         item { SectionCard("better-zslf", "${graph.platform.versionName}\n电子科技大学中山学院第三方校园客户端。与学校及官方客户端无隶属关系。") }
         item { SectionCard("你的数据，只在需要时使用", "无广告、无统计和崩溃上报。校园功能直连学校服务；热水器协议完全离线。") }
-        if (updates) item { AsyncContent("upstream-version", { graph.repositories.updates.check() }) { data ->
-            SectionCard("学校服务公布的官方版本", data.text("version") + "\n" + data.text("contents") + "\n此版本号属于官方应用，不用于覆盖安装 better-zslf。")
-        } }
-        item { ArrowPreference("better-zslf 发布与更新", summary = "GitHub Releases", onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf/releases/latest") }) }
+        item { ArrowPreference("better-zslf 发布与更新", summary = "手动检查 GitHub Releases", onClick = openUpdates) }
         item { ArrowPreference("项目源码", onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf") }) }
     } }
 }
 
 @Composable
-fun RunTasksScreen(graph: AppGraph, open: (Route) -> Unit, back: (() -> Unit)? = null) {
-    var group by remember { mutableStateOf("0") }
-    var refresh by remember { mutableIntStateOf(0) }
-    val userId = graph.sessions.session.value?.userId.orEmpty()
-    Screen("校园跑", back, actions = { TextButton("记录", onClick = { open(Route.Page("runrecords", title = "我的跑步记录")) }) }) { padding ->
-        PageList(padding) {
-            item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("0" to "未完成", "1" to "已完成").forEach { (value, title) -> TextButton(title, onClick = { group = value }) } } }
-            item { AsyncContent(group to refresh, { graph.repositories.run.tasks(userId, 0, 20, group) }) { data ->
-                val rows = data.rows("errandList")
-                if (rows.isEmpty()) EmptyCard("暂无跑步任务")
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { rows.forEach { item ->
-                    val id = item.text("trid").ifBlank { item.text("id") }
-                    SectionCard(labelOf(item, "errandName", "name", "title"), detailOf(item, "runLength", "startTime", "endTime"), {
-                        if (id.isNotBlank()) open(Route.Page("rundetail", id, "任务详情"))
-                    })
-                } }
-            } }
-            item { TextButton("刷新", onClick = { refresh++ }) }
-        }
-    }
-}
-
-@Composable
-private fun WaterScreen(graph: AppGraph, back: () -> Unit) {
-    Screen("宿舍热水器", back) { padding -> PageList(padding) {
-        item { SectionCard("蓝牙直连，离线使用", "未连接设备。协议移植与模拟器验证进行中，当前构建不向真实设备发送开启指令。") }
-        item { SectionCard("连接前", "多次认证失败可能锁定水控器，需等待约 1 小时。认证失败后立即断开，不自动重试。") }
-    } }
-}
-
-@Composable
-private fun CampusNetworkScreen(graph: AppGraph, back: () -> Unit) {
-    Screen("校园网", back) { padding -> PageList(padding) {
-        item { SectionCard("宽带账号", "仅查询当前登录账号已办理的校园宽带，不修改密码或联网状态。") }
-        item { AsyncContent("campus-accounts", { graph.repositories.campusNetwork.accounts() }) { data ->
-            val rows = data.rows("operatorAccount")
-            if (rows.isEmpty()) EmptyCard("暂无已办理的宽带账号")
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { rows.forEach { item ->
-                SectionCard("宽带账号", item.text("operatorAccount"))
-            } }
-        } }
-    } }
-}
+fun RunTasksScreen(graph: AppGraph, open: (Route) -> Unit, back: (() -> Unit)? = null) = RunTaskList(graph, open, back)

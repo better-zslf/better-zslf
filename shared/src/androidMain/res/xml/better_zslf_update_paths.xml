@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Only verified, randomly named APK copies in the application's private cache. -->
+    <cache-path name="verified_updates" path="updates/" />
+</paths>

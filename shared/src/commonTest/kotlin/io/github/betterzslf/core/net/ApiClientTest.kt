@@ -39,7 +39,7 @@ class ApiClientTest {
         })
         try {
             assertIs<ApiResult.Success<*>>(fixture.repositories.profile.photo())
-            assertIs<ApiResult.Success<*>>(fixture.repositories.run.detail("task-fixture"))
+            assertIs<ApiResult.Success<*>>(fixture.repositories.run.detail("fixture-errand", "fixture-user-id", "fixture-schedule"))
             assertEquals(listOf(
                 "app.fixture.invalid/app/appUser/getUserPhotoURL",
                 "run.fixture.invalid/run/errand/getErrandDetail",

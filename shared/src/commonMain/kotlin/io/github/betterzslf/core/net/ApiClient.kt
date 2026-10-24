@@ -42,6 +42,19 @@ class ApiClient(
     val config: ApiConfig = ApiConfig(),
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) {
+    private val bindingAuthority = Any()
+
+    /** Owner and token are captured together, from this single StateFlow value read. */
+    fun captureSessionBinding(): ApiSessionBinding? {
+        val snapshot = sessionStore.session.value ?: return null
+        val owner = snapshot.userId?.takeIf { it.isNotBlank() } ?: return null
+        if (snapshot.token.isBlank()) return null
+        return ApiSessionBinding(bindingAuthority, owner, snapshot.token)
+    }
+
+    internal fun boundOwnerId(binding: ApiSessionBinding): String? = binding.ownerFor(bindingAuthority)
+    internal fun isBindingCurrent(binding: ApiSessionBinding): Boolean = binding.matches(bindingAuthority, sessionStore.session.value)
+
     private val client = httpClient.config {
         expectSuccess = false
         // Do not forward a bare token (or credential query) to a redirect destination.
@@ -57,6 +70,7 @@ class ApiClient(
         endpoint: ApiEndpoint,
         query: JsonObject = JsonObject(emptyMap()),
         body: JsonObject? = null,
+        expectedSession: ApiSessionBinding? = null,
     ): ApiResult<JsonElement> {
         if (endpoint.location == ParameterLocation.MULTIPART) {
             return invalid(listOf("file"), "上传接口请使用 multipart 方法")
@@ -73,7 +87,7 @@ class ApiClient(
         if (endpoint.requiresParameters && parameters.values.all { it.isMissingParameter() }) {
             return invalid(listOf("parameters"))
         }
-        return perform(endpoint) {
+        return perform(endpoint, expectedSession) {
             url.parameters.appendQuery(query)
             if (body != null) {
                 contentType(ContentType.Application.Json)
@@ -158,9 +172,20 @@ class ApiClient(
 
     private suspend fun perform(
         endpoint: ApiEndpoint,
+        expectedSession: ApiSessionBinding? = null,
         configure: HttpRequestBuilder.() -> Unit,
     ): ApiResult<JsonElement> {
-        val token = if (endpoint.authentication == Authentication.NONE) null else sessionStore.session.value?.token
+        // Read once: a later account change must never replace the authorization for this request.
+        val snapshot = sessionStore.session.value
+        if (expectedSession != null && !expectedSession.matches(bindingAuthority, snapshot)) {
+            // This is a local stale-operation result, not a server 401; leave the current login alone.
+            return ApiResult.Failure(ApiError.Authentication("本次操作的登录会话已变化，请重新确认后继续"))
+        }
+        val token = when {
+            endpoint.authentication == Authentication.NONE -> null
+            expectedSession != null -> expectedSession.tokenFor(bindingAuthority)
+            else -> snapshot?.token
+        }
         if (endpoint.authentication == Authentication.REQUIRED && token.isNullOrBlank()) {
             return ApiResult.Failure(ApiError.Authentication())
         }
@@ -182,13 +207,13 @@ class ApiClient(
             when {
                 status == 401 -> {
                     response.bodyAsChannel().cancel(null)
-                    authenticationFailure(token)
+                    authenticationFailure(token, expectedSession)
                 }
                 status !in 200..299 -> {
                     response.bodyAsChannel().cancel(null)
                     ApiResult.Failure(ApiError.Http(status))
                 }
-                else -> parseEnvelope(response.bodyAsText(), endpoint, token)
+                else -> parseEnvelope(response.bodyAsText(), endpoint, token, expectedSession)
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -204,7 +229,7 @@ class ApiClient(
         }
     }
 
-    private fun parseEnvelope(text: String, endpoint: ApiEndpoint, token: String?): ApiResult<JsonElement> {
+    private fun parseEnvelope(text: String, endpoint: ApiEndpoint, token: String?, expectedSession: ApiSessionBinding?): ApiResult<JsonElement> {
         if (text.isBlank()) {
             return if (endpoint.acceptsEmptyResponse) ApiResult.Success(JsonNull)
             else ApiResult.Failure(ApiError.Decode())
@@ -222,14 +247,17 @@ class ApiClient(
             ?: (envelope["msg"] as? JsonPrimitive)?.contentOrNull.orEmpty()
         return when (code) {
             200 -> ApiResult.Success(envelope["data"] ?: JsonNull, message)
-            401 -> authenticationFailure(token)
+            401 -> authenticationFailure(token, expectedSession)
             else -> ApiResult.Failure(ApiError.Business(code, message.ifBlank { "操作未成功，请稍后重试" }))
         }
     }
 
-    private fun authenticationFailure(token: String?): ApiResult.Failure {
+    private fun authenticationFailure(token: String?, expectedSession: ApiSessionBinding?): ApiResult.Failure {
         try {
-            sessionStore.clearIfTokenMatches(token)
+            // Also compare owner: even a synthetic same-token/different-owner login is distinct.
+            if (expectedSession == null || expectedSession.matches(bindingAuthority, sessionStore.session.value)) {
+                sessionStore.clearIfTokenMatches(token)
+            }
         } catch (_: Exception) {
             // SessionStore has already cleared its StateFlow even if private storage failed.
         }

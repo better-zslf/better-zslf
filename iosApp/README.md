@@ -90,18 +90,20 @@ Xcode build phase 将最终展开的版本原样作为 `-P` 参数传给 Gradle�
 
 ## 验证状态
 
-本机实现环境为 Windows/WSL；macOS CI 已实际进入 Kotlin/Native 编译，
-当前原生编译/链接与 Xcode app 构建仍待下一轮 CI 确认，**尚未执行 iOS 运行验收**。
-本次已在 WSL 通过 16 项离线脚本测试、4 个脚本的 `bash -n`、plist/YAML 解析与关键配置断言；
-实际 XcodeGen 工程生成仍待 macOS CI。可在 macOS 或 WSL 离线复现
+2026-10-24，提交 `bfcb613` 的[第 4 轮 CI](https://github.com/better-zslf/better-zslf/actions/runs/40039619033)
+已在[真实 macOS job](https://github.com/better-zslf/better-zslf/actions/runs/40039619033/job/120707347678)
+通过 **Kotlin/Native 编译、Shared framework 链接、XcodeGen 工程生成及 unsigned simulator app 构建**。
+本次成功证据覆盖构建，**未覆盖 iOS app 启动/运行、权限交互或真机验收**。
+本机实现环境为 Windows/WSL，另已通过 16 项离线脚本测试、4 个脚本的 `bash -n`、plist/YAML 解析与关键配置断言。
+可在 macOS 或 WSL 离线复现
 [`version-scripts-test.sh`](<tests/version-scripts-test.sh>)：
 
 ```bash
 bash iosApp/tests/version-scripts-test.sh
 ```
 
-这些测试只验证属性解析、覆盖优先级、输入校验和 XcodeGen/Gradle 调用参数（工具使用 stub），
-不代表 iOS 编译成功。待 macOS CI 完成模拟器编译；运行验收还应覆盖：
+这些离线测试只验证属性解析、覆盖优先级、输入校验和 XcodeGen/Gradle 调用参数（工具使用 stub），
+不作为原生编译证据；真实原生构建以上述 macOS CI 为准。待执行的运行验收还应覆盖：
 Keychain CRUD/空字符串/重启恢复/登出删除/服务隔离、浅深色文章、页内锚点、`target=_blank`、
 HTTPS 外链、自定义 scheme/脚本/表单/自动重定向受限、VoiceOver 与退出页面清理。
 新增能力已通过 **28 项实际纯 Kotlin 规则 JVM 测试**与 **37 项源码/plist 守卫**。
@@ -121,7 +123,7 @@ python3 iosApp/tests/check-capabilities.py
 原生待验：真机本地/iCloud/provider 文件选择取消与 8 MiB 边界、页面退出释放；
 首次/拒绝/近似权限、关闭系统定位、后台指示与持续样本、暂停/恢复/退出不再回调；
 蓝牙初次授权/拒绝/power 状态与惰性初始化、非公历设备的 Shanghai 协议时间。
-源码守卫仅检查实现形态；原生编译与这些交互验收仍需独立完成。
+源码守卫仅检查实现形态；原生构建已由上述 CI 确认，这些交互验收仍待独立执行。
 无真实网络写接口、真实定位或真实蓝牙设备被调用。
 
 ## 官方依据

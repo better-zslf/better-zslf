@@ -92,6 +92,9 @@ jobs:
         run: command -v xcodegen >/dev/null || brew install xcodegen
       - name: Build iOS on macOS
         run: bash scripts/ci-ios.sh
+      - name: Smoke launch on an owned iOS Simulator
+        timeout-minutes: 12
+        run: bash scripts/ci-ios-smoke.sh
       - name: Upload simulator app and build diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

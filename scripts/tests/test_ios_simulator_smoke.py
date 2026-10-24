@@ -27,6 +27,7 @@ class FakeSimctl:
         self.inventory = inventory()
         self.calls = []
         self.fail = set()
+        self.timeout_labels = set()
         self.dead_sample = None
         self.bad_create_output = False
         self.delay_create_polls = 0
@@ -44,6 +45,8 @@ class FakeSimctl:
             if label in self.fail:
                 raise TimeoutError("Synthetic interrupted create after device registration")
             return "lost stdout" if self.bad_create_output else OWN + "\n"
+        if label in self.timeout_labels:
+            raise smoke.subprocess.TimeoutExpired("synthetic owned command", timeout)
         if label in self.fail:
             raise RuntimeError("Synthetic command failure: " + label)
         if args[0] == "list":
@@ -190,6 +193,39 @@ class SimulatorCommandFlowTests(unittest.TestCase):
         smoke.cleanup(self.artifacts, self.runner)
         self.assertEqual(smoke.all_udids(self.runner.inventory), self.prior)
         self.assert_only_owned_mutations()
+
+    def test_cleanup_inventory_timeout_retries_then_deletes_only_owned_device(self):
+        self.run_smoke()
+        self.runner.calls.clear()
+        self.runner.timeout_labels.add("cleanup-inventory")
+        smoke.cleanup(self.artifacts, self.runner, sleep=lambda _: None)
+        value = json.loads((self.artifacts / "cleanup.json").read_text())
+        self.assertTrue(value["deleted"])
+        self.assertEqual(value["recovery_attempts"], 2)
+        self.assertEqual(value["inventory_errors"], [{"attempt": 1, "type": "TimeoutExpired"}])
+        self.assertEqual(smoke.all_udids(self.runner.inventory), self.prior)
+        self.assert_only_owned_mutations()
+
+    def test_cleanup_exhausted_timeouts_persist_uncertainty_without_cached_uuid_mutation(self):
+        self.run_smoke()
+        for fast, budget in ((False, 24.0), (True, 2.0)):
+            with self.subTest(fast=fast):
+                self.runner.calls.clear()
+                now = [0.0]
+                def call(args, label, timeout=60):
+                    self.runner.calls.append((list(args), label, timeout))
+                    now[0] += timeout
+                    raise smoke.subprocess.TimeoutExpired("synthetic inventory", timeout)
+                with mock.patch.object(self.runner, "call", side_effect=call):
+                    with self.assertRaisesRegex(RuntimeError, "inventory unavailable"):
+                        smoke.cleanup(self.artifacts, self.runner, fast=fast, sleep=lambda _: None,
+                                      clock=lambda: now[0])
+                value = json.loads((self.artifacts / "cleanup.json").read_text())
+                self.assertTrue(value["uncertain"])
+                self.assertFalse(value["deleted"])
+                self.assertEqual(value["actions"], [])
+                self.assertTrue(all(args == ["list", "devices", "--json"] for args, _, _ in self.runner.calls))
+                self.assertLessEqual(sum(timeout for _, _, timeout in self.runner.calls), budget)
 
     def test_cleanup_still_deletes_if_terminate_or_shutdown_fails(self):
         self.run_smoke()

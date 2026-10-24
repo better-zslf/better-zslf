@@ -38,10 +38,14 @@ class FakeRunner:
         self.next_pid = 1000
         self.fail_signed = False
         self.omit_unsigned = False
+        self.timeout_labels = set()
+        self.launch_failure_labels = set()
 
     def call(self, args, label, timeout=60):
         self.calls.append((list(args), label))
         self.timeouts[label] = timeout
+        if label in self.timeout_labels:
+            raise smoke.subprocess.TimeoutExpired("synthetic read-only command", timeout)
         if args[0] == "get_app_container":
             return str(self.container) + "\n"
         if args[0] == "terminate":
@@ -56,6 +60,8 @@ class FakeRunner:
         self.calls.append((list(args), label))
         self.timeouts[label] = timeout
         self.launches.append(copy.deepcopy(env))
+        if label in self.launch_failure_labels:
+            raise RuntimeError("Synthetic launch denied before PID")
         self.next_pid += 1
         self.pid = self.next_pid
         signed = env["SIMCTL_CHILD_BETTER_ZSLF_PROBE_NAMESPACE"].endswith("_signed")
@@ -113,10 +119,63 @@ class DiagnosticsTests(unittest.TestCase):
             self.assertEqual(self.runner.timeouts[label], 90)
         for label in ("unsigned-launch", "signed-seed-launch", "signed-verify-launch"):
             self.assertEqual(self.runner.timeouts[label], 30)
-        self.assertEqual(self.runner.timeouts["signed-verify-container"], 5)
+        self.assertEqual(self.runner.timeouts["signed-verify-container"], 15)
         self.assertEqual(self.runner.timeouts["signed-seed-after-terminate"], 5)
         self.assertTrue(all(args[1] == OWN for args, _ in self.runner.calls))
         self.assertFalse((self.artifacts / "startup.png").exists())  # Parent takes final stability screenshot.
+
+    def test_container_timeout_is_retried_before_one_unsigned_launch(self):
+        self.runner.timeout_labels.add("unsigned-container")
+        value = self.run_probe()
+        self.assertEqual(value["result"], "keychain-diagnostics-passed")
+        labels = [label for _, label in self.runner.calls]
+        self.assertLess(labels.index("unsigned-container"), labels.index("unsigned-container-retry"))
+        self.assertLess(labels.index("unsigned-container-retry"), labels.index("unsigned-launch"))
+        self.assertEqual(self.runner.timeouts["unsigned-container"], 15)
+        self.assertEqual(self.runner.timeouts["unsigned-container-retry"], 15)
+        self.assertEqual(len(self.runner.launches), 3)
+
+    def test_exhausted_container_timeout_does_not_hide_unlaunched_a(self):
+        self.runner.timeout_labels.update(("unsigned-container", "unsigned-container-retry"))
+        with self.assertRaisesRegex(RuntimeError, "Unsigned baseline"):
+            self.run_probe()
+        value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+        self.assertIsNone(value["unsigned"]["report"])
+        self.assertEqual(value["unsigned"]["error"]["type"], "TimeoutExpired")
+        self.assertEqual(value["signed"]["result"], "passed")
+        self.assertEqual(value["result"], "keychain-diagnostics-failed")
+        self.assertEqual(len(self.runner.launches), 2)
+
+    def test_launch_denial_gets_scoped_logs_without_relaunch(self):
+        self.runner.launch_failure_labels.add("signed-seed-launch")
+        with self.assertRaisesRegex(RuntimeError, "Synthetic launch denied"):
+            self.run_probe()
+        self.assertEqual(len(self.runner.launches), 2)
+        logs = [(args, label) for args, label in self.runner.calls if label == "signed-seed-launch-system-log"]
+        self.assertEqual(len(logs), 1)
+        args = logs[0][0]
+        self.assertEqual(args[:3], ["spawn", OWN, "log"])
+        self.assertEqual(args[args.index("--last") + 1], "3m")
+        predicate = args[args.index("--predicate") + 1]
+        for part in ("SpringBoard", "runningboardd", "amfid", "installd", BUNDLE):
+            self.assertIn(part, predicate)
+        self.assertEqual(self.runner.timeouts[logs[0][1]], 15)
+        value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+        self.assertIn("failure_launch_log", value["signed"]["seed"])
+        self.assertEqual(value["error"]["message"], "Synthetic launch denied before PID")
+
+    def test_signing_failure_outer_capture_preserves_original_error(self):
+        def fail_signer(*_):
+            raise RuntimeError("Synthetic signing failure")
+        with self.assertRaisesRegex(RuntimeError, "Synthetic signing failure"):
+            diag.run_diagnostics(self.artifacts, self.app, BUNDLE, OWN, self.runner,
+                                 self.pids.append, sleep=lambda _: None, signer=fail_signer,
+                                 clock=lambda: 0.0)
+        value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+        self.assertEqual(value["error"]["message"], "Synthetic signing failure")
+        self.assertTrue(any(label.startswith("signed-") and label.endswith("-launch-system-log")
+                            for _, label in self.runner.calls))
+        self.assertEqual(len(self.runner.launches), 1)
 
     def test_signed_failure_never_becomes_pass_and_captures_evidence(self):
         self.runner.fail_signed = True

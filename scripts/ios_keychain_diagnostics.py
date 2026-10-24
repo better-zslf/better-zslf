@@ -285,7 +285,16 @@ def sign_simulator_copy(artifacts, app_path, bundle=None, *, run=None):
 
 
 def _container(runner, udid, bundle, label):
-    output = runner.call(["get_app_container", udid, bundle, "data"], label + "-container", COMMAND_TIMEOUT)
+    # CI6: this read-only lookup timed out before A could even launch. Retry only timeouts,
+    # never malformed paths or an actual nonzero command/launch result (2 x 15s maximum).
+    for attempt in range(2):
+        command_label = label + "-container" + ("-retry" if attempt else "")
+        try:
+            output = runner.call(["get_app_container", udid, bundle, "data"], command_label, 15)
+            break
+        except subprocess.TimeoutExpired:
+            if attempt:
+                raise
     if not isinstance(output, str) or len(output.splitlines()) != 1 or any(ord(character) < 32 for character in output.strip()):
         raise ReportError("simctl did not return one absolute app-data container")
     path = Path(output.strip())
@@ -324,7 +333,7 @@ def _screenshot(artifacts, runner, udid, filename, label):
     return filename
 
 
-def _capture_failure(artifacts, runner, udid, label, record, container, phase, save):
+def _capture_failure(artifacts, runner, udid, label, record, container, phase, save, bundle):
     if container is not None:
         try:
             report = read_native_report(container, phase)
@@ -338,6 +347,18 @@ def _capture_failure(artifacts, runner, udid, label, record, container, phase, s
                                                        label + "-failure-screenshot")
     except Exception as error:
         record["failure_screenshot_error"] = _error(error)
+    try:
+        # Only this owned Simulator and fixed launch/security processes; never host/global logs.
+        # Keep the bundle filter even for daemon logs; the application process is app-private.
+        predicate = ('process == "BetterZslf" OR ((process == "SpringBoard" OR '
+                     'process == "runningboardd" OR process == "amfid" OR process == "installd" OR '
+                     'process == "launchd_sim") AND (eventMessage CONTAINS[c] "' + bundle +
+                     '" OR eventMessage CONTAINS[c] "BetterZslf"))')
+        runner.call(["spawn", udid, "log", "show", "--style", "compact", "--last", "3m",
+                     "--predicate", predicate], label + "-launch-system-log", 15)
+        record["failure_launch_log"] = label + "-launch-system-log.stdout.log"
+    except Exception as error:
+        record["failure_launch_log_error"] = _error(error)
     save()
 
 
@@ -420,7 +441,7 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
         except BaseException as error:
             record["result"] = "failed"
             record["error"] = _error(error)
-            _capture_failure(artifacts, runner, udid, label, record, container, phase, save)
+            _capture_failure(artifacts, runner, udid, label, record, container, phase, save, bundle)
             raise
 
     save()
@@ -433,7 +454,7 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
         unsigned_errors.append(_error(error))
         if not result["unsigned"]:
             result["unsigned"].update({"phase": "seed", "result": "failed", "report": None, "error": _error(error)})
-            _capture_failure(artifacts, runner, udid, "unsigned", result["unsigned"], None, "seed", save)
+            _capture_failure(artifacts, runner, udid, "unsigned", result["unsigned"], None, "seed", save, bundle)
     try:
         result["unsigned"]["screenshot"] = _screenshot(artifacts, runner, udid, "unsigned-startup.png", "unsigned-screenshot")
     except Exception as error:
@@ -497,7 +518,7 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
                     except Exception as capture_error:
                         record["failure_container_error"] = _error(capture_error)
                 _capture_failure(artifacts, runner, udid, "signed-" + active_phase, record, container,
-                                 active_phase if active_phase in ("seed", "verify") else "seed", save)
+                                 active_phase if active_phase in ("seed", "verify") else "seed", save, bundle)
         save()
         raise
 

@@ -306,28 +306,50 @@ def cleanup(artifacts, runner=None, fast=False, sleep=time.sleep, clock=time.mon
         return
     state = json.loads(owner.read_text(encoding="utf-8"))
     pending = state.get("create_attempted") and not state.get("creation_confirmed")
-    deadline = clock() + (2.0 if fast else 8.0)
-    report = dict(udid=None, actions=[], deleted=False, recovery_attempts=0)
+    # Normal inventory may retry within 24s, leaving >90s of the existing 120s cleanup
+    # reserve for logs/terminate/shutdown/delete. Signal cleanup retains its 2s budget.
+    deadline = clock() + (2.0 if fast else 24.0)
+    report = dict(udid=None, actions=[], deleted=False, recovery_attempts=0, inventory_errors=[])
     udid = None
+    inventory_observed = False
     for attempt in range(5 if fast else 6):
         remaining = deadline - clock()
         if remaining <= 0:
             break
         label = "cleanup-inventory" if attempt == 0 else f"cleanup-inventory-{attempt}"
-        inventory = json.loads(runner.call(["list", "devices", "--json"], label,
-                                          min(0.5 if fast else 2.0, remaining)))
         report["recovery_attempts"] += 1
-        udid = owned_udid(state, inventory)
+        try:
+            inventory = json.loads(runner.call(["list", "devices", "--json"], label,
+                                              min(0.5 if fast else 8.0, remaining)))
+        except subprocess.TimeoutExpired:
+            report["inventory_errors"].append({"attempt": attempt + 1, "type": "TimeoutExpired"})
+            save_json(artifacts / "cleanup.json", report)
+            continue
+        except Exception as error:
+            report["uncertain"] = True
+            report["inventory_errors"].append({"attempt": attempt + 1, "type": type(error).__name__})
+            save_json(artifacts / "cleanup.json", report)
+            raise
+        try:
+            udid = owned_udid(state, inventory)
+        except Exception as error:
+            report["uncertain"] = True
+            report["ownership_error"] = type(error).__name__
+            save_json(artifacts / "cleanup.json", report)
+            raise
+        inventory_observed = True
         if udid is not None or not pending:
             break
         if attempt < (4 if fast else 5):
             sleep(min(0.15 if fast else 1.0, max(0, deadline - clock())))
     report["udid"] = udid
     if udid is None:
-        # A killed client does not prove the CoreSimulator server abandoned create.
-        report["uncertain"] = bool(pending)
-        report["deleted"] = not pending
+        # Neither timeout nor a killed create client proves that the owned device is absent.
+        report["uncertain"] = bool(pending) or not inventory_observed
+        report["deleted"] = not report["uncertain"]
         save_json(artifacts / "cleanup.json", report)
+        if not inventory_observed:
+            raise RuntimeError("Owned simulator inventory unavailable after bounded timeout recovery; cleanup uncertain")
         if pending:
             raise RuntimeError("Interrupted create outcome remains uncertain after bounded exact-name recovery")
         return

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Startup-only evidence, not a functional/UI assertion. No login or permission input.
+# CI Keychain A/B plus startup evidence; Login screenshot still needs review. No account or permission input.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 [[ "$(uname -s)" == Darwin ]] || { echo 'Native simulator smoke requires macOS.' >&2; exit 1; }
 [[ $# -le 1 ]] || { echo 'Usage: ci-ios-smoke.sh [built-simulator.app]' >&2; exit 2; }
+python3 iosApp/tests/test-keychain-diagnostics.py
 mkdir -p .local/ios-ci/Logs
 artifacts="$(mktemp -d "$PWD/.local/ios-ci/Logs/simulator-smoke.XXXXXX")"
 interrupted=0
@@ -27,7 +28,7 @@ trap cleanup EXIT
 trap 'interrupted=1; exit 130' INT
 trap 'interrupted=1; exit 143' TERM
 if [[ $# == 1 ]]; then
-  python3 scripts/ios_simulator_smoke.py smoke --artifacts "$artifacts" --app "$1"
+  python3 scripts/ios_simulator_smoke.py smoke --keychain-diagnostics --artifacts "$artifacts" --app "$1"
 else
-  python3 scripts/ios_simulator_smoke.py smoke --artifacts "$artifacts"
+  python3 scripts/ios_simulator_smoke.py smoke --keychain-diagnostics --artifacts "$artifacts"
 fi

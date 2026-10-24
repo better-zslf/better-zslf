@@ -17,6 +17,9 @@ import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.value
 import platform.CoreFoundation.CFDictionaryCreate
+import platform.CoreFoundation.CFDictionaryGetCount
+import platform.CoreFoundation.CFGetTypeID
+import platform.CoreFoundation.CFStringGetTypeID
 import platform.CoreFoundation.CFDictionaryRef
 import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.CFStringRef
@@ -65,17 +68,23 @@ internal class KeychainKeyValueStore(private val service: String) : KeyValueStor
         val status = withDictionary(
             attributes + mapOf(kSecReturnData to kCFBooleanTrue, kSecMatchLimit to kSecMatchLimitOne),
         ) { SecItemCopyMatching(it, result.ptr) }
+        IosStartupDiagnostics.keychainStatus(service, "read", status)
         if (status == errSecItemNotFound) return@withItemAttributes null
         checkStatus("read", status)
-        val data = CFBridgingRelease(result.value) as? NSData
-            ?: error("Keychain read returned an unexpected data type")
-        (NSString.create(data, NSUTF8StringEncoding) as String?)
-            ?: error("Keychain read returned invalid UTF-8")
+        val bridged = CFBridgingRelease(result.value)
+        IosStartupDiagnostics.bridgeType("READ_DATA_BRIDGE", bridged is NSData)
+        val data = bridged as? NSData ?: error("Keychain read returned an unexpected data type")
+        IosStartupDiagnostics.stage("READ_STRING_BRIDGE") {
+            (NSString.create(data, NSUTF8StringEncoding) as String?)
+                ?: error("Keychain read returned invalid UTF-8")
+        }
     }
 
     override fun put(key: String, value: String) {
-        val data = (value as NSString).dataUsingEncoding(NSUTF8StringEncoding)
-            ?: error("Keychain value could not be encoded as UTF-8")
+        val data = IosStartupDiagnostics.stage("WRITE_STRING_BRIDGE") {
+            (value as NSString).dataUsingEncoding(NSUTF8StringEncoding)
+                ?: error("Keychain value could not be encoded as UTF-8")
+        }
         val retainedData = CFBridgingRetain(data)
         try {
             withItemAttributes(key) { attributes ->
@@ -84,10 +93,13 @@ internal class KeychainKeyValueStore(private val service: String) : KeyValueStor
                     kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
                 )
                 val status = withDictionary(attributes + update) { SecItemAdd(it, null) }
+                IosStartupDiagnostics.keychainStatus(service, "write", status)
                 if (status == errSecDuplicateItem) {
                     withDictionary(attributes) { query ->
                         withDictionary(update) { changes ->
-                            checkStatus("update", SecItemUpdate(query, changes))
+                            val updated = SecItemUpdate(query, changes)
+                            IosStartupDiagnostics.keychainStatus(service, "update", updated)
+                            checkStatus("update", updated)
                         }
                     }
                 } else {
@@ -106,6 +118,7 @@ internal class KeychainKeyValueStore(private val service: String) : KeyValueStor
     private fun delete(key: String?) {
         withItemAttributes(key) { attributes ->
             val status = withDictionary(attributes) { SecItemDelete(it) }
+            IosStartupDiagnostics.keychainStatus(service, "delete", status)
             if (status != errSecItemNotFound) checkStatus("delete", status)
         }
     }
@@ -117,6 +130,10 @@ internal class KeychainKeyValueStore(private val service: String) : KeyValueStor
         val retainedService = CFBridgingRetain(service)
         val retainedKey = key?.let { CFBridgingRetain(it) }
         try {
+            if (IosStartupDiagnostics.enabled) {
+                IosStartupDiagnostics.bridgeType("SERVICE_CF_STRING", retainedService != null && CFGetTypeID(retainedService) == CFStringGetTypeID())
+                IosStartupDiagnostics.bridgeType("ACCOUNT_CF_STRING", key == null || (retainedKey != null && CFGetTypeID(retainedKey) == CFStringGetTypeID()))
+            }
             val attributes = mutableMapOf<CFStringRef?, CFTypeRef?>(
                 kSecClass to kSecClassGenericPassword,
                 kSecAttrService to retainedService,
@@ -146,6 +163,9 @@ internal class KeychainKeyValueStore(private val service: String) : KeyValueStor
             null,
         ) ?: error("Keychain query allocation failed")
         try {
+            if (IosStartupDiagnostics.enabled) {
+                IosStartupDiagnostics.bridgeType("QUERY_CF_DICTIONARY", CFDictionaryGetCount(dictionary) == attributes.size.toLong())
+            }
             return operation(dictionary)
         } finally {
             CFRelease(dictionary)

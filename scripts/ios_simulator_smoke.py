@@ -170,11 +170,26 @@ class Simctl:
         (self.artifacts / (label + ".stderr.log")).write_bytes(stderr or b"")
 
     def call(self, args, label, timeout=60):
+        return self._call(args, label, timeout)
+
+    def call_env(self, args, label, env, timeout=60):
+        """Only the explicit synthetic probe gate may be added to one owned app launch."""
+        if not args or args[0] != "launch" or set(env) != {
+            "SIMCTL_CHILD_BETTER_ZSLF_STARTUP_PROBE", "SIMCTL_CHILD_BETTER_ZSLF_PROBE_NAMESPACE"
+        }:
+            raise ValueError("Unexpected simulator probe environment")
+        if env["SIMCTL_CHILD_BETTER_ZSLF_STARTUP_PROBE"] not in ("seed", "verify") or not re.fullmatch(
+            r"[A-Za-z0-9_-]{1,80}", env["SIMCTL_CHILD_BETTER_ZSLF_PROBE_NAMESPACE"]
+        ):
+            raise ValueError("Invalid synthetic probe gate")
+        return self._call(args, label, timeout, {**os.environ, **env})
+
+    def _call(self, args, label, timeout, environment=None):
         command = ["xcrun", "simctl", *map(str, args)]
         save_json(self.artifacts / (label + ".command.json"), command)
         # Do not use Popen's context manager: its implicit wait has no timeout.
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, start_new_session=True)
+                                   stderr=subprocess.PIPE, start_new_session=True, env=environment)
         grace = 0.25 if timeout <= 5 else 1.0
         try:
             stdout, stderr = process.communicate(timeout=timeout)
@@ -218,7 +233,7 @@ def png_dimensions(path):
     return dimensions
 
 
-def smoke(artifacts, app, runner=None, sleep=time.sleep):
+def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=False):
     runner = runner or Simctl(artifacts)
     if (artifacts / "owner.json").exists():
         raise ValueError("Ownership directory must be fresh for this invocation")
@@ -244,8 +259,19 @@ def smoke(artifacts, app, runner=None, sleep=time.sleep):
     runner.call(["bootstatus", created, "-b"], "bootstatus", 240)
     state["booted"] = True
     save_json(artifacts / "owner.json", state)
-    runner.call(["install", created, app_path], "install", 90)
-    state["pid"] = parse_launch_pid(runner.call(["launch", created, bundle], "launch", 60), bundle)
+    keychain_evidence = None
+    if keychain_diagnostics:
+        from ios_keychain_diagnostics import run_diagnostics
+
+        def update_pid(pid):
+            state["pid"] = pid
+            save_json(artifacts / "owner.json", state)
+
+        keychain_evidence = run_diagnostics(artifacts, app_path, bundle, created, runner, update_pid, sleep=sleep)
+        state["pid"] = keychain_evidence["pid"]
+    else:
+        runner.call(["install", created, app_path], "install", 90)
+        state["pid"] = parse_launch_pid(runner.call(["launch", created, bundle], "launch", 60), bundle)
     save_json(artifacts / "owner.json", state)
     for index in range(3):
         if index:
@@ -265,6 +291,10 @@ def smoke(artifacts, app, runner=None, sleep=time.sleep):
                   runtime=runtime, device_type=device_type, screenshot=screenshot.name,
                   screenshot_dimensions=dimensions, stability_seconds=6,
                   coverage="Install/launch/PID liveness/screenshot only; image needs manual review, not full functionality")
+    if keychain_evidence is not None:
+        result.update(result="startup-keychain-smoke-passed", keychain_diagnostics=keychain_evidence,
+                      login_ui_verified=False,
+                      coverage="Synthetic Keychain CRUD/empty/namespace/restart/delete and real Graph initialization; screenshot still needs manual Login review; no credentials, HTTP or permission input")
     save_json(artifacts / "result.json", result)
     return result
 
@@ -344,6 +374,7 @@ def main():
     parser.add_argument("--artifacts", type=Path, required=True)
     parser.add_argument("--app", type=Path)
     parser.add_argument("--fast", action="store_true", help="Skip diagnostics during signal cleanup")
+    parser.add_argument("--keychain-diagnostics", action="store_true", help="Explicit debug-Simulator-only synthetic Keychain/signing A-B path")
     args = parser.parse_args()
     if sys.platform != "darwin":
         raise SystemExit("Native simulator smoke requires macOS; use offline fixture unit tests elsewhere")
@@ -361,7 +392,7 @@ def main():
         signal.alarm(600)  # 10-minute body inside the 12-minute step; cleanup has 2 minutes.
         try:
             app, _, _ = select_app(args.app)
-            print(json.dumps(smoke(args.artifacts.resolve(), app), indent=2))
+            print(json.dumps(smoke(args.artifacts.resolve(), app, keychain_diagnostics=args.keychain_diagnostics), indent=2))
         except Exception as error:
             save_json(args.artifacts / "error.json", {"result": "startup-smoke-failed", "error": str(error)})
             raise

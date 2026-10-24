@@ -29,15 +29,19 @@ private object IosPlatformServices : PlatformServices {
     override val description: String
         get() = UIDevice.currentDevice.let { "${it.systemName} ${it.systemVersion} (${it.model})" }
 
-    override fun httpClient(): HttpClient = HttpClient(Darwin) {
-        engine {
-            configureSession {
-                // Authorization is managed by ApiClient, not a shared cookie jar or disk cache.
-                HTTPShouldSetCookies = false
-                HTTPCookieStorage = null
-                URLCredentialStorage = null
-                URLCache = null
-                requestCachePolicy = NSURLRequestReloadIgnoringLocalCacheData
+    override fun httpClient(): HttpClient = IosStartupDiagnostics.stage("HTTP_CLIENT") {
+        HttpClient(Darwin) {
+            // Only triple-gated synthetic CI probes install this; normal/release networking is unchanged.
+            if (IosStartupDiagnostics.enabled) install(IosStartupDiagnostics.offlinePlugin)
+            engine {
+                configureSession {
+                    // Authorization is managed by ApiClient, not a shared cookie jar or disk cache.
+                    HTTPShouldSetCookies = false
+                    HTTPCookieStorage = null
+                    URLCredentialStorage = null
+                    URLCache = null
+                    requestCachePolicy = NSURLRequestReloadIgnoringLocalCacheData
+                }
             }
         }
     }

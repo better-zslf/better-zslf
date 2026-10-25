@@ -1,5 +1,6 @@
 package io.github.betterzslf.ui
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
@@ -19,41 +20,41 @@ fun SettingsScreen(graph: AppGraph, open: (Route) -> Unit, back: () -> Unit) {
     val settings by graph.settings.settings.collectAsState()
     val storageError by graph.settings.error.collectAsState()
     var clear by remember { mutableStateOf(false) }
-    Screen("设置", back) { padding ->
+    Screen(AppText.Settings.SETTINGS_TITLE, back) { padding ->
         PageList(padding) {
-            storageError?.let { error -> item { SectionCard("本机数据提示", error) } }
-            item { Text("外观") }
+            storageError?.let { error -> item { SectionCard(AppText.App.LOCAL_DATA_NOTICE, error) } }
+            item { Text(AppText.Settings.APPEARANCE_TITLE) }
             item { Card {
-                val names = mapOf("System" to "跟随系统", "Light" to "浅色", "Dark" to "深色")
-                ArrowPreference("深色模式", summary = names[settings.theme] ?: "跟随系统", onClick = {
+                val names = mapOf("System" to AppText.Settings.FOLLOW_SYSTEM, "Light" to AppText.Settings.LIGHT_THEME, "Dark" to AppText.Settings.DARK_THEME)
+                ArrowPreference(AppText.Settings.DARK_MODE_TITLE, summary = names[settings.theme] ?: AppText.Settings.FOLLOW_SYSTEM, onClick = {
                     val modes = listOf("System", "Light", "Dark")
                     val next = modes[(modes.indexOf(settings.theme).coerceAtLeast(0) + 1) % modes.size]
                     graph.settings.update { it.copy(theme = next) }
                 })
-                SwitchPreference(title = "动态取色", summary = "使用系统壁纸配色", checked = settings.dynamicColor,
+                SwitchPreference(title = AppText.Settings.DYNAMIC_COLOR_TITLE, summary = AppText.Settings.SYSTEM_WALLPAPER_COLOR_HINT, checked = settings.dynamicColor,
                     onCheckedChange = { checked -> graph.settings.update { it.copy(dynamicColor = checked) } })
             } }
-            item { Text("校园跑") }
+            item { Text(AppText.Navigation.CAMPUS_RUN) }
             item { Card {
-                ArrowPreference("跑步默认模式", summary = if (settings.preferredRunMode == "ask") "进入时询问（仍默认真实跑步）" else "真实跑步", onClick = {
+                ArrowPreference(AppText.Settings.DEFAULT_RUN_MODE_TITLE, summary = if (settings.preferredRunMode == "ask") AppText.Settings.ASK_RUN_MODE_DEFAULT_REAL else AppText.Run.REAL_RUNNING_MODE_LABEL, onClick = {
                     graph.settings.update { it.copy(preferredRunMode = if (it.preferredRunMode == "real") "ask" else "real") }
                 })
-                ArrowPreference("定位采样间隔", summary = "${settings.samplingSeconds} 秒", onClick = {
+                ArrowPreference(AppText.Settings.LOCATION_SAMPLING_INTERVAL_TITLE, summary = AppText.Settings.samplingInterval((settings.samplingSeconds)), onClick = {
                     val values = listOf(10, 15, 30, 60)
                     val next = values[(values.indexOf(settings.samplingSeconds).coerceAtLeast(0) + 1) % values.size]
                     graph.settings.update { it.copy(samplingSeconds = next) }
                 })
-                SwitchPreference(title = "公制单位", summary = "米、千米；关闭后显示英里", checked = settings.metricUnits,
+                SwitchPreference(title = AppText.Settings.METRIC_UNITS_TITLE, summary = AppText.Settings.METRIC_AND_IMPERIAL_UNITS_HINT, checked = settings.metricUnits,
                     onCheckedChange = { checked -> graph.settings.update { it.copy(metricUnits = checked) } })
             } }
-            item { Text("本地数据") }
-            graph.storageNotice?.let { notice -> item { SectionCard("本机数据提示", notice) } }
-            item { SectionCard(if (graph.clearingLocalData) "正在清理本机数据" else "清除本机数据", "会先停止运动记录与后续上传，再退出登录并恢复设置；学校记录保持原样。", { if (!graph.clearingLocalData) clear = true }) }
-            item { Text("关于与版本") }
-            item { SectionCard("better-zslf", graph.platform.versionName, { open(Route.Page("about", title = "关于应用")) }) }
-            item { SectionCard("检查更新", onClick = { open(Route.Page("updates", title = "版本更新")) }) }
+            item { Text(AppText.Settings.LOCAL_DATA_TITLE) }
+            graph.storageNotice?.let { notice -> item { SectionCard(AppText.App.LOCAL_DATA_NOTICE, notice) } }
+            item { SectionCard(if (graph.clearingLocalData) AppText.Settings.CLEARING_LOCAL_DATA else AppText.Settings.CLEAR_LOCAL_DATA, AppText.Settings.CLEAR_DATA_STOPS_ACTIVITY_AND_LOGS_OUT_HINT, { if (!graph.clearingLocalData) clear = true }) }
+            item { Text(AppText.Settings.ABOUT_AND_VERSION_TITLE) }
+            item { SectionCard("better-zslf", graph.platform.versionName, { open(Route.Page("about", title = AppText.App.ABOUT_APP_TITLE)) }) }
+            item { SectionCard(AppText.Updates.CHECK_FOR_UPDATES, onClick = { open(Route.Page("updates", title = AppText.Updates.VERSION_UPDATE_TITLE)) }) }
         }
-        ConfirmDialog(clear, "清除本机数据？", "会移除本机的会话、设置和离线数据。请先确认没有尚未同步的运动记录。", { clear = false }) {
+        ConfirmDialog(clear, AppText.Settings.CLEAR_LOCAL_DATA_CONFIRM_TITLE, AppText.Settings.CLEAR_LOCAL_DATA_CONFIRM_DESCRIPTION, { clear = false }) {
             graph.clearLocalData()
             clear = false
         }
@@ -61,9 +62,9 @@ fun SettingsScreen(graph: AppGraph, open: (Route) -> Unit, back: () -> Unit) {
 }
 
 fun passwordValidation(password: String, confirmation: String): String? = when {
-    password.length < 8 -> "新密码至少 8 位"
-    !io.github.betterzslf.data.AuthRepository.isValidNewPassword(password) -> "新密码需含字母、数字和符号，且不含空白字符"
-    password != confirmation -> "两次输入的新密码不一致"
+    password.length < 8 -> AppText.Auth.NEW_PASSWORD_MINIMUM_LENGTH_ERROR
+    !io.github.betterzslf.data.AuthRepository.isValidNewPassword(password) -> AppText.Auth.NEW_PASSWORD_COMPLEXITY_ERROR
+    password != confirmation -> AppText.Auth.NEW_PASSWORD_CONFIRMATION_MISMATCH
     else -> null
 }
 
@@ -76,22 +77,22 @@ fun PasswordScreen(graph: AppGraph, back: () -> Unit) {
     var confirming by remember { mutableStateOf(false) }
     var submitting by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    Screen("修改密码", back) { padding ->
+    Screen(AppText.Auth.CHANGE_PASSWORD_TITLE, back) { padding ->
         PageList(padding) {
-            item { SectionCard("修改账号密码", "此操作会实际修改学校账号密码，成功后需要重新登录。") }
-            item { TextField(old, { old = it }, label = "原密码", singleLine = true, enabled = !submitting,
+            item { SectionCard(AppText.Auth.CHANGE_ACCOUNT_PASSWORD_TITLE, AppText.Auth.CHANGE_SCHOOL_PASSWORD_RELOGIN_HINT) }
+            item { TextField(old, { old = it }, label = AppText.Auth.CURRENT_PASSWORD_FIELD, singleLine = true, enabled = !submitting,
                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth()) }
-            item { TextField(new, { new = it }, label = "新密码", singleLine = true, enabled = !submitting,
+            item { TextField(new, { new = it }, label = AppText.Auth.NEW_PASSWORD_FIELD, singleLine = true, enabled = !submitting,
                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth()) }
-            item { TextField(confirmation, { confirmation = it }, label = "确认新密码", singleLine = true, enabled = !submitting,
+            item { TextField(confirmation, { confirmation = it }, label = AppText.Auth.CONFIRM_NEW_PASSWORD_FIELD, singleLine = true, enabled = !submitting,
                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth()) }
-            if (message.isNotEmpty()) item { SectionCard("提示", message) }
+            if (message.isNotEmpty()) item { SectionCard(AppText.Common.NOTICE_TITLE, message) }
             item { Button(enabled = !submitting && old.isNotBlank(), onClick = {
                 val error = passwordValidation(new, confirmation)
                 if (error != null) message = error else confirming = true
-            }) { Text(if (submitting) "提交中…" else "修改密码") } }
+            }) { Text(if (submitting) AppText.Common.SUBMITTING else AppText.Auth.CHANGE_PASSWORD_TITLE) } }
         }
-        ConfirmDialog(confirming, "确认修改学校账号密码？", "这不是测试操作，服务端会立即修改密码。", { confirming = false }) {
+        ConfirmDialog(confirming, AppText.Auth.CHANGE_SCHOOL_PASSWORD_CONFIRM_TITLE, AppText.Auth.PASSWORD_CHANGE_IMMEDIATE_EFFECT_HINT, { confirming = false }) {
             confirming = false
             submitting = true
             scope.launch {

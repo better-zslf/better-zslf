@@ -1,0 +1,293 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/content/ContentPage.kt",
+      "kind": "string",
+      "source": "\"新生攻略\"",
+      "context": {
+        "before": "Y_LABEL, onClick = { open(Route.Page(\"columns\", ",
+        "after": ", AppText.Content.FRESHMAN_GUIDE_DISPLAY_LABEL))"
+      },
+      "position": {
+        "start": 13426,
+        "end": 13432,
+        "line": 196,
+        "column": 121
+      },
+      "category": "lookup",
+      "reason": "Exact content column lookup id; third argument is display title",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingForms.kt",
+      "kind": "string",
+      "source": "\"男\"",
+      "context": {
+        "before": "12.dp)) {\n                TextButton(if (sex == ",
+        "after": ") AppText.Booking.SEX_MALE_SELECTED_LABEL else A"
+      },
+      "position": {
+        "start": 17702,
+        "end": 17705,
+        "line": 213,
+        "column": 39
+      },
+      "category": "protocol",
+      "reason": "Exact sex comparison/request state value; display label is independent",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingForms.kt",
+      "kind": "string",
+      "source": "\"男\"",
+      "context": {
+        "before": "enabled = !frozen, onClick = { changed(); sex = ",
+        "after": " })\n                TextButton(if (sex == \"女\") A"
+      },
+      "position": {
+        "start": 17840,
+        "end": 17843,
+        "line": 213,
+        "column": 177
+      },
+      "category": "protocol",
+      "reason": "Exact sex comparison/request state value; display label is independent",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingForms.kt",
+      "kind": "string",
+      "source": "\"女\"",
+      "context": {
+        "before": " = \"男\" })\n                TextButton(if (sex == ",
+        "after": ") AppText.Booking.SEX_FEMALE_SELECTED_LABEL else"
+      },
+      "position": {
+        "start": 17885,
+        "end": 17888,
+        "line": 214,
+        "column": 39
+      },
+      "category": "protocol",
+      "reason": "Exact sex comparison/request state value; display label is independent",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingForms.kt",
+      "kind": "string",
+      "source": "\"女\"",
+      "context": {
+        "before": "enabled = !frozen, onClick = { changed(); sex = ",
+        "after": " })\n            } }\n            item(\"date\") { T"
+      },
+      "position": {
+        "start": 18027,
+        "end": 18030,
+        "line": 214,
+        "column": 181
+      },
+      "category": "protocol",
+      "reason": "Exact sex comparison/request state value; display label is independent",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingForms.kt",
+      "kind": "string",
+      "source": "\"上午\"",
+      "context": {
+        "before": "ement.spacedBy(12.dp)) {\n                listOf(",
+        "after": " to AppText.Booking.MORNING_DISPLAY_LABEL, \"下午\" "
+      },
+      "position": {
+        "start": 18350,
+        "end": 18354,
+        "line": 218,
+        "column": 24
+      },
+      "category": "protocol",
+      "reason": "Exact period request state value retained in approved wire/display pair",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingForms.kt",
+      "kind": "string",
+      "source": "\"下午\"",
+      "context": {
+        "before": "(\"上午\" to AppText.Booking.MORNING_DISPLAY_LABEL, ",
+        "after": " to AppText.Booking.AFTERNOON_DISPLAY_LABEL).for"
+      },
+      "position": {
+        "start": 18397,
+        "end": 18401,
+        "line": 218,
+        "column": 71
+      },
+      "category": "protocol",
+      "reason": "Exact period request state value retained in approved wire/display pair",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/MainScreens.kt",
+      "kind": "string",
+      "source": "\"学校动态\"",
+      "context": {
+        "before": "t(refresh, { graph.repositories.content.columns(",
+        "after": ") }) { columns ->\n                    val column"
+      },
+      "position": {
+        "start": 4120,
+        "end": 4126,
+        "line": 58,
+        "column": 76
+      },
+      "category": "lookup",
+      "reason": "Exact school content column name, not the visible title",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/MainScreens.kt",
+      "kind": "string",
+      "source": "\"学校动态\"",
+      "context": {
+        "before": "FORMATION_SUMMARY, { open(Route.Page(\"columns\", ",
+        "after": ", AppText.Content.SCHOOL_NEWS_DISPLAY_LABEL)) })"
+      },
+      "position": {
+        "start": 5309,
+        "end": 5315,
+        "line": 79,
+        "column": 157
+      },
+      "category": "lookup",
+      "reason": "Exact school content column name, not the visible title",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/MainScreens.kt",
+      "kind": "string",
+      "source": "\"新生攻略\"",
+      "context": {
+        "before": "CE_CAMPUS_SUMMARY, { open(Route.Page(\"columns\", ",
+        "after": ", AppText.Content.FRESHMAN_GUIDE_DISPLAY_LABEL))"
+      },
+      "position": {
+        "start": 5514,
+        "end": 5520,
+        "line": 80,
+        "column": 149
+      },
+      "category": "lookup",
+      "reason": "Exact second Route.Page argument remains backend/document lookup id; display title is independent",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/MainScreens.kt",
+      "kind": "string",
+      "source": "\"使用帮助\"",
+      "context": {
+        "before": "_LABEL, onClick = { open(Route.Page(\"document\", ",
+        "after": ", AppText.App.USER_GUIDE_DISPLAY_LABEL)) }) }\n  "
+      },
+      "position": {
+        "start": 6898,
+        "end": 6904,
+        "line": 90,
+        "column": 110
+      },
+      "category": "lookup",
+      "reason": "Exact second Route.Page argument remains backend/document lookup id; display title is independent",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/LoginScreen.kt",
+      "kind": "string",
+      "source": "\"用户协议\"",
+      "context": {
+        "before": "AGREEMENT_DISPLAY_LABEL, onClick = { onDocument(",
+        "after": ") })\n                TextButton(AppText.App.PRIV"
+      },
+      "position": {
+        "start": 4269,
+        "end": 4275,
+        "line": 64,
+        "column": 93
+      },
+      "category": "lookup",
+      "reason": "Exact document callback id is forwarded to content.document, not translated button label",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/LoginScreen.kt",
+      "kind": "string",
+      "source": "\"隐私政策\"",
+      "context": {
+        "before": "CY_POLICY_DISPLAY_LABEL, onClick = { onDocument(",
+        "after": ") })\n            } }\n        }\n    }\n}\n"
+      },
+      "position": {
+        "start": 4372,
+        "end": 4378,
+        "line": 65,
+        "column": 93
+      },
+      "category": "lookup",
+      "reason": "Exact document callback id is forwarded to content.document, not translated button label",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/profile/ProfileFeatureScreen.kt",
+      "kind": "string",
+      "source": "\"用户协议\"",
+      "context": {
+        "before": "TS_AND_HELP_SECTION_TITLE) }\n            listOf(",
+        "after": " to AppText.App.USER_AGREEMENT_DISPLAY_LABEL, \"隐"
+      },
+      "position": {
+        "start": 6141,
+        "end": 6147,
+        "line": 98,
+        "column": 20
+      },
+      "category": "lookup",
+      "reason": "Protocol document id retained in approved wire/display pair; visible label is catalog-owned",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/profile/ProfileFeatureScreen.kt",
+      "kind": "string",
+      "source": "\"隐私政策\"",
+      "context": {
+        "before": "议\" to AppText.App.USER_AGREEMENT_DISPLAY_LABEL, ",
+        "after": " to AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, \"使"
+      },
+      "position": {
+        "start": 6193,
+        "end": 6199,
+        "line": 98,
+        "column": 72
+      },
+      "category": "lookup",
+      "reason": "Protocol document id retained in approved wire/display pair; visible label is catalog-owned",
+      "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/profile/ProfileFeatureScreen.kt",
+      "kind": "string",
+      "source": "\"使用帮助\"",
+      "context": {
+        "before": "策\" to AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, ",
+        "after": " to AppText.App.USER_GUIDE_DISPLAY_LABEL).forEac"
+      },
+      "position": {
+        "start": 6245,
+        "end": 6251,
+        "line": 98,
+        "column": 124
+      },
+      "category": "lookup",
+      "reason": "Protocol document id retained in approved wire/display pair; visible label is catalog-owned",
+      "owner": "task38/build-ci"
+    }
+  ]
+}

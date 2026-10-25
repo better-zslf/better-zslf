@@ -62,12 +62,14 @@ jobs:
           retention-days: 14
 
   ios:
-    name: iOS framework and unsigned simulator app
+    name: iOS framework and Xcode Simulator app
     runs-on: macos-26
     timeout-minutes: 60
     env:
       # Kotlin 2.4.21's supported Xcode line. Never silently fall back to latest.
       DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
+      # Build and smoke select the same explicit multi-condition method, not an AB root-cause claim.
+      BETTER_ZSLF_CI_SIGNING_METHOD: xcode-simulator
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

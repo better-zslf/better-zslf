@@ -1,5 +1,6 @@
 package io.github.betterzslf.ui
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
@@ -24,24 +25,24 @@ fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit, onWater: (() -> U
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
-    Screen("欢迎使用") { padding ->
+    Screen(AppText.Auth.WELCOME_TITLE) { padding ->
         PageList(padding) {
             item {
                 Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("better-zslf", style = MiuixTheme.textStyles.title1)
-                    Text("轻一点的校园生活", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    Text(AppText.Auth.LIGHTER_CAMPUS_LIFE_TAGLINE, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 }
             }
-            item { TextField(value = username, onValueChange = { username = it }, label = "学号", singleLine = true,
+            item { TextField(value = username, onValueChange = { username = it }, label = AppText.Auth.STUDENT_NUMBER_FIELD, singleLine = true,
                 enabled = !loading, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth().testTag("username")) }
-            item { TextField(value = password, onValueChange = { password = it }, label = "密码", singleLine = true,
+            item { TextField(value = password, onValueChange = { password = it }, label = AppText.Auth.PASSWORD_FIELD, singleLine = true,
                 enabled = !loading, visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth().testTag("password")) }
-            item { SwitchPreference(title = "显示密码", checked = visible, onCheckedChange = { visible = it }) }
-            graph.storageNotice?.let { notice -> item { SectionCard("本机数据提示", notice) } }
-            if (message.isNotBlank()) item { SectionCard("登录提示", message) }
+            item { SwitchPreference(title = AppText.Auth.SHOW_PASSWORD, checked = visible, onCheckedChange = { visible = it }) }
+            graph.storageNotice?.let { notice -> item { SectionCard(AppText.App.LOCAL_DATA_NOTICE, notice) } }
+            if (message.isNotBlank()) item { SectionCard(AppText.Auth.LOGIN_NOTICE_TITLE, message) }
             item {
                 Button(modifier = Modifier.fillMaxWidth().testTag("loginButton"), enabled = !loading && username.isNotBlank() && password.isNotEmpty(), onClick = {
                     loading = true
@@ -54,14 +55,14 @@ fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit, onWater: (() -> U
                             }
                         } finally { loading = false }
                     }
-                }) { if (loading) CircularProgressIndicator(Modifier.size(20.dp)) else Text("登录") }
+                }) { if (loading) CircularProgressIndicator(Modifier.size(20.dp)) else Text(AppText.Auth.LOG_IN) }
             }
-            item { Text("账号仅用于直连学校服务；本机保存登录会话，不保存密码。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
-            onResetPassword?.let { openReset -> item { TextButton("找回密码", onClick = openReset, modifier = Modifier.fillMaxWidth()) } }
-            onWater?.let { openWater -> item { TextButton("离线热水器", onClick = openWater, modifier = Modifier.fillMaxWidth()) } }
+            item { Text(AppText.Auth.SESSION_STORAGE_WITHOUT_PASSWORD_HINT, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
+            onResetPassword?.let { openReset -> item { TextButton(AppText.Recovery.RECOVER_PASSWORD_TITLE, onClick = openReset, modifier = Modifier.fillMaxWidth()) } }
+            onWater?.let { openWater -> item { TextButton(AppText.Water.OFFLINE_HEATER_ENTRY, onClick = openWater, modifier = Modifier.fillMaxWidth()) } }
             item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton("用户协议", onClick = { onDocument("用户协议") })
-                TextButton("隐私政策", onClick = { onDocument("隐私政策") })
+                TextButton(AppText.App.USER_AGREEMENT_DISPLAY_LABEL, onClick = { onDocument("用户协议") })
+                TextButton(AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, onClick = { onDocument("隐私政策") })
             } }
         }
     }

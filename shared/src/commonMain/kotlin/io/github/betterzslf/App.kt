@@ -1,5 +1,6 @@
 package io.github.betterzslf
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -73,7 +74,7 @@ class AppGraph(val platform: PlatformServices) {
     fun clearStorageNotice() { storageNotice = null }
     fun logout() {
         if (runCatching { repositories.auth.logout() }.isFailure) {
-            storageNotice = "本机会话清理失败，请重试；下次启动可能仍读到旧会话。"
+            storageNotice = AppText.App.SESSION_CLEANUP_FAILED_OLD_SESSION_MAY_REAPPEAR_HINT
         }
     }
     fun clearLocalData() {
@@ -85,18 +86,18 @@ class AppGraph(val platform: PlatformServices) {
                 // A fresh runtime is created only after the old one has become quiescent.
                 val stopped = runCatching { runRuntimeInstance?.close() }.isSuccess
                 if (!stopped) {
-                    storageNotice = "运动记录尚未停止，本机数据暂未清空，请重试。"
+                    storageNotice = AppText.App.LOCAL_DATA_CLEAR_BLOCKED_BY_ACTIVITY_HINT
                     return@launch
                 }
                 if (!closeUpdateOwners()) {
-                    storageNotice = "更新任务尚未停止，本机数据暂未清空，请重试。"
+                    storageNotice = AppText.App.LOCAL_DATA_CLEAR_BLOCKED_BY_UPDATE_HINT
                     return@launch
                 }
                 val sessionOk = runCatching { sessions.clear() }.isSuccess
                 val storageOk = runCatching { platform.storage.clear() }.isSuccess
                 val settingsOk = settings.reset()
                 runRuntimeInstance = null
-                storageNotice = if (sessionOk && storageOk && settingsOk) null else "部分本机数据清理失败，请重试。"
+                storageNotice = if (sessionOk && storageOk && settingsOk) null else AppText.App.PARTIAL_LOCAL_DATA_CLEAR_FAILED
             } finally {
                 clearingLocalData = false
             }
@@ -138,10 +139,10 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
     val graph = initialized.getOrNull()
     if (graph == null) {
         MiuixTheme(controller = remember { ThemeController(ColorSchemeMode.System) }) {
-            Screen("本机数据暂不可用") { padding ->
+            Screen(AppText.App.LOCAL_DATA_TEMPORARILY_UNAVAILABLE_TITLE) { padding ->
                 PageList(padding) {
-                    item { SectionCard("会话读取失败", "请先解锁设备或稍后重试。原有数据没有被自动删除。") }
-                    item { TextButton("重试", onClick = { startupAttempt++ }) }
+                    item { SectionCard(AppText.App.SESSION_READ_FAILED_TITLE, AppText.App.UNLOCK_OR_RETRY_ORIGINAL_DATA_RETAINED_HINT) }
+                    item { TextButton(AppText.Common.RETRY, onClick = { startupAttempt++ }) }
                 }
             }
         }
@@ -187,12 +188,12 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
             transition = NavTransitions.MiuixDefault, effects = NavDisplayEffects(cornerClipRadius = 0.dp)) {
             entry<Route.Main> {
                 if (session != null) MainShell(graph, selected, { selected = it }, tabStacks,
-                    onAccountRecovery = { root.pushUnique(Route.Page("resetpassword", title = "找回密码")) })
+                    onAccountRecovery = { root.pushUnique(Route.Page("resetpassword", title = AppText.Recovery.RECOVER_PASSWORD_TITLE)) })
             }
             entry<Route.Login> {
                 LoginScreen(graph, onDocument = { root.pushUnique(Route.Page("document", it, it)) },
-                    onWater = { root.pushUnique(Route.Page("water", title = "宿舍热水器")) },
-                    onResetPassword = { root.pushUnique(Route.Page("resetpassword", title = "找回密码")) })
+                    onWater = { root.pushUnique(Route.Page("water", title = AppText.Water.DORMITORY_HEATER_TITLE)) },
+                    onResetPassword = { root.pushUnique(Route.Page("resetpassword", title = AppText.Recovery.RECOVER_PASSWORD_TITLE)) })
             }
             entry<Route.Page>(swipeDismiss = if ((root.lastOrNull() as? Route.Page)?.kind in setOf("water", "runtracker", "resetpassword")) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) {
                 FeaturePage(graph, it, onOpen = root::pushUnique, onBack = { root.removeLastOrNull() })
@@ -208,7 +209,7 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
     val open: (Route) -> Unit = { route ->
         if (route is Route.Page && route.kind == "resetpassword") onAccountRecovery() else stack.pushUnique(route)
     }
-    val titles = listOf("首页", "校园跑", "社区", "我的")
+    val titles = listOf(AppText.Navigation.HOME, AppText.Navigation.CAMPUS_RUN, AppText.Navigation.COMMUNITY, AppText.Navigation.PROFILE)
     val icons = listOf(MiuixIcons.Home, MiuixIcons.Location, MiuixIcons.Community, MiuixIcons.Contacts)
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
         val useRail = NavigationLayoutPolicy.useRail(maxWidth.value)

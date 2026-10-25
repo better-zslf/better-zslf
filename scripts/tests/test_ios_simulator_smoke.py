@@ -471,6 +471,14 @@ class SimulatorCommandFlowTests(unittest.TestCase):
                 smoke.smoke(self.artifacts, self.app, self.runner, **kwargs)
             self.assertEqual(self.runner.calls, [])
 
+    def test_invalid_signing_method_or_ab_combination_never_creates_device(self):
+        for kwargs in ({"signing_method": "unknown"},
+                       {"signing_method": "xcode-simulator", "keychain_diagnostics": True},
+                       {"signing_method": "xcode-simulator", "diagnostic_mode": "signed-positive"}):
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                smoke.smoke(self.artifacts, self.app, self.runner, **kwargs)
+            self.assertEqual(self.runner.calls, [])
+
     def test_command_timeout_does_not_wait_forever_for_inherited_pipes(self):
         process = mock.Mock()
         process.pid = 12345
@@ -493,6 +501,17 @@ class SimulatorCommandFlowTests(unittest.TestCase):
 
 
 class SmokeWiringTests(unittest.TestCase):
+    def test_xcode_method_is_shared_by_build_and_smoke_without_changing_manual_default(self):
+        workflow = (smoke.ROOT / ".github/workflows/ci.yml").read_text()
+        ios = workflow[workflow.index("  ios:"):]
+        self.assertEqual(ios.count("BETTER_ZSLF_CI_SIGNING_METHOD: xcode-simulator"), 1)
+        self.assertLess(ios.index("BETTER_ZSLF_CI_SIGNING_METHOD: xcode-simulator"), ios.index("    steps:"))
+        shell = (smoke.ROOT / "scripts/ci-ios.sh").read_text()
+        self.assertIn("${BETTER_ZSLF_CI_SIGNING_METHOD:-manual-ad-hoc}", shell)
+        self.assertIn("build-xcode --artifacts .local/ios-ci", shell)
+        self.assertIn("CODE_SIGNING_ALLOWED=NO", shell)
+        self.assertNotIn("DEVELOPMENT_TEAM=", shell)
+
     def test_shell_has_exit_signal_traps_and_ci_runs_after_native_build(self):
         shell = (smoke.ROOT / "scripts/ci-ios-smoke.sh").read_text()
         self.assertIn("trap cleanup EXIT", shell)

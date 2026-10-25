@@ -1,5 +1,6 @@
 package io.github.betterzslf.ui
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -26,8 +27,8 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 fun ConfirmDialog(show: Boolean, title: String, summary: String, dismiss: () -> Unit, confirm: () -> Unit) {
     OverlayDialog(show = show, title = title, summary = summary, onDismissRequest = dismiss) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TextButton("取消", onClick = dismiss, modifier = Modifier.weight(1f))
-            TextButton("确认", onClick = confirm, modifier = Modifier.weight(1f))
+            TextButton(AppText.Common.CANCEL, onClick = dismiss, modifier = Modifier.weight(1f))
+            TextButton(AppText.Common.CONFIRM, onClick = confirm, modifier = Modifier.weight(1f))
         }
     }
 }
@@ -46,7 +47,7 @@ fun FeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBa
         "campusnet" -> CampusNetworkFeaturePage(graph, onBack)
         "feedback" -> FeedbackScreen(graph, onBack)
         "updates" -> AppUpdatePage(graph.platform.versionName, graph.githubUpdates, graph.appUpdater, graph.platform::openUrl, onBack)
-        "about" -> AboutScreen(graph, onBack) { onOpen(Route.Page("updates", title = "版本更新")) }
+        "about" -> AboutScreen(graph, onBack) { onOpen(Route.Page("updates", title = AppText.Updates.VERSION_UPDATE_TITLE)) }
         else -> DataPage(graph, page, onOpen, onBack)
     }
 }
@@ -71,10 +72,10 @@ private fun DataPage(graph: AppGraph, page: Route.Page, open: (Route) -> Unit, b
         "fitnessitems" -> ({ repo.fitness.items(page.id.ifBlank { null }) })
         else -> ({ ApiResult.Success(JsonNull) })
     }
-    Screen(page.title, back, actions = { TextButton("刷新", onClick = { refresh++ }) }) { padding ->
+    Screen(page.title, back, actions = { TextButton(AppText.Common.REFRESH, onClick = { refresh++ }) }) { padding ->
         PageList(padding) {
-            if (page.kind == "notices") item { ArrowPreference("站内通知", onClick = { open(Route.Page("messages", "1", "站内通知")) }) }
-            if (page.kind == "fitness") item { ArrowPreference("体测项目", onClick = { open(Route.Page("fitnessitems", title = "体测项目")) }) }
+            if (page.kind == "notices") item { ArrowPreference(AppText.Content.INBOX_NOTIFICATIONS_TITLE, onClick = { open(Route.Page("messages", "1", AppText.Content.INBOX_NOTIFICATIONS_TITLE)) }) }
+            if (page.kind == "fitness") item { ArrowPreference(AppText.Booking.FITNESS_ITEMS_TITLE, onClick = { open(Route.Page("fitnessitems", title = AppText.Booking.FITNESS_ITEMS_TITLE)) }) }
             item {
                 AsyncContent(page to refresh, loader) { data ->
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -92,17 +93,17 @@ private fun DataPage(graph: AppGraph, page: Route.Page, open: (Route) -> Unit, b
                             "notices" -> {
                                 val rows = data.rows("announcementList")
                                 if (rows.isEmpty()) EmptyCard()
-                                rows.forEach { item -> HtmlCard(item.text("title").ifBlank { "校园公告" }, item.text("content")) }
+                                rows.forEach { item -> HtmlCard(item.text("title").ifBlank { AppText.Content.CAMPUS_ANNOUNCEMENTS_TITLE }, item.text("content")) }
                             }
                             "messages" -> {
                                 val rows = data.rows("noticeList")
-                                if (rows.isEmpty()) EmptyCard("暂无通知")
-                                rows.forEach { item -> HtmlCard(item.text("title").ifBlank { "通知" }, item.text("content")) }
+                                if (rows.isEmpty()) EmptyCard(AppText.Content.NO_NOTIFICATIONS)
+                                rows.forEach { item -> HtmlCard(item.text("title").ifBlank { AppText.Content.NOTIFICATION_FALLBACK_TITLE }, item.text("content")) }
                             }
                             "discover" -> DiscoverNodes(data.rows("findList"), graph)
                             "venues" -> {
                                 val rows = data.rows("siteList")
-                                if (rows.isEmpty()) EmptyCard("暂无开放场馆")
+                                if (rows.isEmpty()) EmptyCard(AppText.Booking.NO_OPEN_VENUES)
                                 rows.forEach { item -> SectionCard(labelOf(item, "venueName", "siteName", "name"), detailOf(item, "address", "venueAddress", "description"), {
                                     open(Route.Page("venue", item.text("id"), labelOf(item, "venueName", "siteName", "name")))
                                 }) }
@@ -110,30 +111,30 @@ private fun DataPage(graph: AppGraph, page: Route.Page, open: (Route) -> Unit, b
                             "venue" -> {
                                 val item = data.field("siteInfo").takeIf { it is JsonObject } ?: data.field("site").takeIf { it is JsonObject } ?: data
                                 SectionCard(labelOf(item, "venueName", "siteName", "name"), detailOf(item, "address", "venueAddress", "description", "notice"))
-                                ArrowPreference("查看预约时段", onClick = { open(Route.Page("venuetimes", page.id, "预约时段")) })
+                                ArrowPreference(AppText.Booking.VIEW_BOOKING_SLOTS, onClick = { open(Route.Page("venuetimes", page.id, AppText.Booking.BOOKING_SLOTS_TITLE)) })
                             }
                             "runrecord" -> {
                                 val record = data.field("recordMap")
-                                if (record !is JsonObject) EmptyCard("暂无跑步记录") else SectionCard("运动记录", detailOf(record, "runLength", "runTime", "startTime", "endTime", "result", "status"))
+                                if (record !is JsonObject) EmptyCard(AppText.Run.NO_RUN_RECORDS) else SectionCard(AppText.Run.ACTIVITY_RECORD_TITLE, detailOf(record, "runLength", "runTime", "startTime", "endTime", "result", "status"))
                             }
                             "venuetimes" -> {
                                 val explanation = data.text("text")
-                                if (explanation.isNotBlank()) SectionCard("预约说明", explanation)
+                                if (explanation.isNotBlank()) SectionCard(AppText.Booking.BOOKING_INSTRUCTIONS_TITLE, explanation)
                                 val rows = firstRows(data)
-                                if (rows.isEmpty() && explanation.isBlank()) EmptyCard("暂无可用时段")
+                                if (rows.isEmpty() && explanation.isBlank()) EmptyCard(AppText.Booking.NO_AVAILABLE_SLOTS)
                                 rows.forEach { item -> SectionCard(labelOf(item, "name", "timeName"), detailOf(item, "date", "startTime", "endTime", "status")) }
                             }
                             "rundetail" -> {
                                 val item = data.field("errandDetail")
                                 SectionCard(labelOf(item, "name", "errandName", "title"), detailOf(item, "runLength", "minDistance", "startTime", "endTime", "description"))
                                 val checkpoints = item.rows("geoCoorList")
-                                SectionCard("路线", "${checkpoints.size} 个打卡点" + if (item.field("walkPaths") is JsonArray) " · 有推荐路线" else " · 服务端未返回推荐路线")
+                                SectionCard(AppText.Run.ROUTE_TITLE, AppText.Content.checkpointCount((checkpoints.size)) + if (item.field("walkPaths") is JsonArray) AppText.Run.RECOMMENDED_ROUTE_AVAILABLE_SUFFIX else AppText.Run.SERVER_RECOMMENDED_ROUTE_MISSING_SUFFIX)
                                 checkpoints.forEachIndexed { index, point -> SectionCard("${index + 1}. ${point.text("name")}", "${point.text("lon")}, ${point.text("lat")}") }
                             }
                             else -> {
                                 val rows = firstRows(data)
                                 if (rows.isEmpty()) EmptyCard()
-                                if (rows.size > 50) SectionCard("共 ${rows.size} 条", "当前先展示前 50 条，完整筛选分页待补齐。")
+                                if (rows.size > 50) SectionCard(AppText.Content.recordCount((rows.size)), AppText.Common.PARTIAL_LIST_PAGINATION_PENDING_HINT)
                                 rows.take(50).forEach { item -> SectionCard(labelOf(item, "name", "title", "testName", "physicalName", "itemName", "venueName"), detailOf(item, "date", "startTime", "endTime", "status", "description")) }
                             }
                         }
@@ -149,13 +150,13 @@ private fun firstRows(data: JsonElement): List<JsonElement> = when (data) {
     is JsonObject -> data.values.firstOrNull { it is JsonArray }?.let { (it as JsonArray).toList() }.orEmpty()
     else -> emptyList()
 }
-private fun labelOf(item: JsonElement, vararg names: String) = names.firstNotNullOfOrNull { item.text(it).takeIf(String::isNotBlank) } ?: "详情"
+private fun labelOf(item: JsonElement, vararg names: String) = names.firstNotNullOfOrNull { item.text(it).takeIf(String::isNotBlank) } ?: AppText.Common.DETAILS_FALLBACK_LABEL
 private fun detailOf(item: JsonElement, vararg names: String) = names.map { item.text(it) }.filter(String::isNotBlank).joinToString(" · ")
 
 @Composable
 private fun HtmlCard(title: String, html: String) {
     var expanded by remember { mutableStateOf(false) }
-    SectionCard(title, if (expanded) "点按收起" else "点按查看内容", { expanded = !expanded })
+    SectionCard(title, if (expanded) AppText.Common.TAP_TO_COLLAPSE else AppText.Content.TAP_TO_VIEW_CONTENT, { expanded = !expanded })
     if (expanded) HtmlPanel(html, Modifier.fillMaxWidth().height(480.dp))
 }
 
@@ -166,7 +167,7 @@ private fun DiscoverNodes(nodes: List<JsonElement>, graph: AppGraph, depth: Int 
         var expanded by remember { mutableStateOf(false) }
         val children = node.rows("children").ifEmpty { node.rows("list") }
         val url = node.text("url").ifBlank { node.text("link") }
-        ArrowPreference(labelOf(node, "name", "title"), summary = if (children.isNotEmpty()) "展开分类" else "校园服务", onClick = {
+        ArrowPreference(labelOf(node, "name", "title"), summary = if (children.isNotEmpty()) AppText.Content.EXPAND_CATEGORY else AppText.Content.CAMPUS_SERVICE_LABEL, onClick = {
             if (children.isNotEmpty()) expanded = !expanded else if (url.startsWith("https://")) graph.platform.openUrl(url)
         }, enabled = children.isNotEmpty() || url.startsWith("https://"))
         if (expanded && depth < 5) Column(Modifier.padding(start = 12.dp)) { DiscoverNodes(children, graph, depth + 1) }
@@ -179,13 +180,13 @@ private fun DocumentScreen(graph: AppGraph, page: Route.Page, back: () -> Unit) 
     val scope = rememberCoroutineScope()
     var actionMessage by remember { mutableStateOf("") }
     var liking by remember { mutableStateOf(false) }
-    Screen(page.title.ifBlank { "详情" }, back, actions = {
-        if (page.kind == "article") TextButton("赞", enabled = !liking, onClick = {
+    Screen(page.title.ifBlank { AppText.Common.DETAILS_FALLBACK_LABEL }, back, actions = {
+        if (page.kind == "article") TextButton(AppText.Content.LIKE_SHORT_LABEL, enabled = !liking, onClick = {
             liking = true
             scope.launch {
                 try {
                     when (val result = graph.repositories.content.toggleLike(page.id)) {
-                        is ApiResult.Success -> { actionMessage = "操作成功"; revision++ }
+                        is ApiResult.Success -> { actionMessage = AppText.Common.OPERATION_SUCCEEDED; revision++ }
                         is ApiResult.Failure -> actionMessage = result.error.message
                     }
                 } finally { liking = false }
@@ -197,7 +198,7 @@ private fun DocumentScreen(graph: AppGraph, page: Route.Page, back: () -> Unit) 
             AsyncContent(page.id to revision, { if (page.kind == "article") graph.repositories.content.article(page.id) else graph.repositories.content.document(page.id) }) { data ->
                 val article = data.field("articleDetails")
                 val body = article.text("content")
-                if (body.isBlank()) EmptyCard("暂无正文") else HtmlPanel(body, Modifier.fillMaxSize())
+                if (body.isBlank()) EmptyCard(AppText.Content.NO_BODY_CONTENT) else HtmlPanel(body, Modifier.fillMaxSize())
             }
         }
     }
@@ -205,21 +206,21 @@ private fun DocumentScreen(graph: AppGraph, page: Route.Page, back: () -> Unit) 
 
 @Composable
 private fun FeedbackScreen(graph: AppGraph, back: () -> Unit) {
-    val body = "### App 版本\n${graph.platform.versionName}\n\n### 系统\n${graph.platform.description}\n\n### 问题描述\n\n\n请勿填写学号、密码、token 等敏感信息。"
-    Screen("意见反馈", back) { padding -> PageList(padding) {
-        item { SectionCard("一起让它更好", "反馈在 GitHub 公开展示。仅预填应用与系统版本，不附带账号或设备标识。") }
-        item { Button(onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf/issues/new?title=${"[功能异常] ".encodeURLParameter()}&body=${body.encodeURLParameter()}") }) { Text("反馈问题") } }
-        item { TextButton("查看现有问题", onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf/issues") }) }
+    val body = AppText.Content.feedbackBody((graph.platform.versionName), (graph.platform.description))
+    Screen(AppText.App.FEEDBACK_TITLE, back) { padding -> PageList(padding) {
+        item { SectionCard(AppText.App.FEEDBACK_IMPROVEMENT_TITLE, AppText.App.PUBLIC_FEEDBACK_DATA_SCOPE_HINT) }
+        item { Button(onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf/issues/new?title=${AppText.App.FEEDBACK_ISSUE_TITLE_PREFIX.encodeURLParameter()}&body=${body.encodeURLParameter()}") }) { Text(AppText.App.REPORT_ISSUE) } }
+        item { TextButton(AppText.App.VIEW_EXISTING_ISSUES, onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf/issues") }) }
     } }
 }
 
 @Composable
 private fun AboutScreen(graph: AppGraph, back: () -> Unit, openUpdates: () -> Unit) {
-    Screen("关于应用", back) { padding -> PageList(padding) {
-        item { SectionCard("better-zslf", "${graph.platform.versionName}\n电子科技大学中山学院第三方校园客户端。与学校及官方客户端无隶属关系。") }
-        item { SectionCard("你的数据，只在需要时使用", "无广告、无统计和崩溃上报。校园功能直连学校服务；热水器协议完全离线。") }
-        item { ArrowPreference("better-zslf 发布与更新", summary = "手动检查 GitHub Releases", onClick = openUpdates) }
-        item { ArrowPreference("项目源码", onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf") }) }
+    Screen(AppText.App.ABOUT_APP_TITLE, back) { padding -> PageList(padding) {
+        item { SectionCard("better-zslf", AppText.Content.aboutVersion((graph.platform.versionName))) }
+        item { SectionCard(AppText.App.DATA_USE_WHEN_NEEDED_TITLE, AppText.App.PRIVACY_AND_OFFLINE_WATER_PROTOCOL_HINT) }
+        item { ArrowPreference(AppText.Updates.PROJECT_RELEASES_AND_UPDATES_LABEL, summary = AppText.Updates.MANUAL_GITHUB_RELEASES_CHECK_SUMMARY, onClick = openUpdates) }
+        item { ArrowPreference(AppText.App.PROJECT_SOURCE_LABEL, onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf") }) }
     } }
 }
 

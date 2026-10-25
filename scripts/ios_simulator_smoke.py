@@ -354,7 +354,10 @@ def exported_png_is_valid(artifacts, filename):
     return True
 
 
-def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=False, diagnostic_mode="ab"):
+def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=False, diagnostic_mode="ab",
+          signing_method="manual-ad-hoc"):
+    from ios_keychain_diagnostics import validate_signing_method
+    validate_signing_method(signing_method, diagnostic_mode)
     if diagnostic_mode not in ("ab", "signed-positive"):
         raise ValueError("Expected ab or signed-positive diagnostic mode")
     if diagnostic_mode != "ab" and not keychain_diagnostics:
@@ -381,11 +384,13 @@ def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=Fa
                  device_type=device_type, prior_udids=sorted(all_udids(inventory)),
                  app=app_path, bundle=bundle, executable=executable, udid=None, pid=None,
                  booted=False, success=False, create_attempted=True, creation_confirmed=False,
-                 diagnostic_mode=diagnostic_mode if keychain_diagnostics else None)
+                 diagnostic_mode=diagnostic_mode if keychain_diagnostics else None, signing_method=signing_method)
     save_json(artifacts / "owner.json", state)  # Persist BEFORE invoking create.
     if keychain_diagnostics:
         (artifacts / "README.md").write_text(
-            "# Owned Simulator startup diagnostics\n\nExperiment: " + diagnostic_mode + "\n\n" +
+            "# Owned Simulator startup diagnostics\n\nExperiment: " + diagnostic_mode + "\nMethod: " + signing_method + "\n\n" +
+            ("Xcode Simulator packaging is a new multi-condition build, not byte-identical/single-key attribution.\n\n"
+             if signing_method == "xcode-simulator" else "") +
             ("A: not_run / historical-negative-only (CI7/CI9/CI10), not an A pass. "
              "Independent fresh-device signed positive; not single-factor signature/LS/resource attribution.\n\n"
              if diagnostic_mode == "signed-positive" else
@@ -393,7 +398,7 @@ def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=Fa
             "B seed/verify uses one signed installation and namespace, real PID restart and Native Keychain/Graph checks. "
             "No credentials or HTTP input; native offline gate remains enabled. "
             "Native checks/PID/screenshot are not verified Login: inspect startup.png manually. "
-            "The original unsigned app product is unchanged.\n", encoding="utf-8")
+            "The input app product is unchanged; previous CI12 artifacts are separate historical evidence.\n", encoding="utf-8")
     created = canonical_udid(runner.call(["create", state["name"], device_type, runtime], "create", 60).strip())
     after = json.loads(runner.call(["list", "devices", "--json"], "inventory-created", 30))
     claimed = owned_udid({**state, "udid": created}, after)
@@ -415,7 +420,7 @@ def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=Fa
             save_json(artifacts / "owner.json", state)
 
         keychain_evidence = run_diagnostics(artifacts, app_path, bundle, created, runner, update_pid,
-                                            sleep=sleep, mode=diagnostic_mode)
+                                            sleep=sleep, mode=diagnostic_mode, signing_method=signing_method)
         state["pid"] = keychain_evidence["pid"]
     else:
         runner.call(["install", created, app_path], "install", 90)
@@ -441,7 +446,7 @@ def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=Fa
                   coverage="Install/launch/PID liveness/screenshot only; image needs manual review, not full functionality")
     if keychain_evidence is not None:
         result.update(result="startup-keychain-smoke-passed", keychain_diagnostics=keychain_evidence,
-                      experiment_mode=diagnostic_mode, login_ui_verified=False, ui_review="pending",
+                      experiment_mode=diagnostic_mode, signing_method=signing_method, login_ui_verified=False, ui_review="pending",
                       coverage="Synthetic Keychain CRUD/empty/namespace/restart/delete and real Graph initialization; screenshot still needs manual Login review; no credentials, HTTP or permission input")
     save_json(artifacts / "result.json", result)
     return result
@@ -548,6 +553,9 @@ def main():
     parser.add_argument("--diagnostic-mode", choices=("ab", "signed-positive"),
                         default=os.environ.get("BETTER_ZSLF_CI_DIAGNOSTIC_MODE", "ab"),
                         help="Default AB is unchanged; CI may explicitly select independent signed-positive")
+    parser.add_argument("--signing-method", choices=("manual-ad-hoc", "xcode-simulator"),
+                        default=os.environ.get("BETTER_ZSLF_CI_SIGNING_METHOD", "manual-ad-hoc"),
+                        help="Explicit shared build/smoke method; historical AB stays manual")
     args = parser.parse_args()
     if sys.platform != "darwin":
         raise SystemExit("Native simulator smoke requires macOS; use offline fixture unit tests elsewhere")
@@ -566,7 +574,7 @@ def main():
         try:
             app, _, _ = select_app(args.app)
             print(json.dumps(smoke(args.artifacts.resolve(), app, keychain_diagnostics=args.keychain_diagnostics,
-                                   diagnostic_mode=args.diagnostic_mode), indent=2))
+                                   diagnostic_mode=args.diagnostic_mode, signing_method=args.signing_method), indent=2))
         except (Exception, SmokeDeadlineExceeded) as error:
             save_json(args.artifacts / "error.json", {"result": "startup-smoke-failed", "error": str(error)})
             raise

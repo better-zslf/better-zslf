@@ -2,6 +2,8 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 [[ "$(uname -s)" == Darwin ]] || { echo 'iOS build requires macOS.' >&2; exit 1; }
+method="${BETTER_ZSLF_CI_SIGNING_METHOD:-manual-ad-hoc}"
+case "$method" in manual-ad-hoc|xcode-simulator) ;; *) echo 'Unknown Simulator signing method.' >&2; exit 2 ;; esac
 : "${DEVELOPER_DIR:=/Applications/Xcode_26.4.1.app/Contents/Developer}"
 export DEVELOPER_DIR
 [[ -d "$DEVELOPER_DIR" ]] || { echo 'Pinned Xcode 26.4.1 is missing.' >&2; exit 1; }
@@ -14,6 +16,11 @@ bash ./gradlew --no-daemon --stacktrace :shared:linkDebugFrameworkIosSimulatorAr
 command -v xcodegen >/dev/null || { echo 'XcodeGen is missing.' >&2; exit 1; }
 bash iosApp/scripts/generate-project.sh
 mkdir -p .local/ios-ci
+if [[ "$method" == xcode-simulator ]]; then
+  # Xcode owns Simulator packaging/sections/signing; no manual restricted claims.
+  python3 scripts/ios_keychain_diagnostics.py build-xcode --artifacts .local/ios-ci
+  exit 0
+fi
 xcodebuild \
   -project iosApp/BetterZslf.xcodeproj \
   -scheme BetterZslf \

@@ -1,5 +1,6 @@
 package io.github.betterzslf.ui.booking
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -34,9 +35,9 @@ fun BookingPage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBa
             "fitness" -> FitnessList(graph, page, onOpen, onBack)
             "fitnessitems" -> FitnessItems(graph, page, onOpen, onBack)
             "fitnessenrol" -> FitnessEnrol(graph, page, onOpen, onBack)
-            else -> Screen(page.title.ifBlank { "预约与体测" }, onBack) { padding ->
+            else -> Screen(page.title.ifBlank { AppText.Booking.BOOKING_AND_FITNESS_TITLE }, onBack) { padding ->
                 LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp)) {
-                    item { SectionCard("页面类型未识别", "请从社区的场馆预约或体测报名入口重新进入。") }
+                    item { SectionCard(AppText.Common.UNKNOWN_PAGE_TYPE, AppText.Booking.REOPEN_FROM_COMMUNITY_HINT) }
                 }
             }
         }
@@ -48,20 +49,20 @@ private fun VenueList(graph: AppGraph, page: Route.Page, open: (Route) -> Unit, 
     val query = rememberBookingQuery(graph to "venues") { graph.repositories.venues.list("1") }
     val state by query.state.collectAsState()
     val scope = rememberCoroutineScope()
-    Screen(page.title.ifBlank { "场馆预约" }, back, actions = {
-        TextButton("刷新", enabled = !state.loading, onClick = { scope.launch { query.refresh() } })
+    Screen(page.title.ifBlank { AppText.Booking.VENUE_BOOKING_TITLE }, back, actions = {
+        TextButton(AppText.Common.REFRESH, enabled = !state.loading, onClick = { scope.launch { query.refresh() } })
     }) { padding ->
         BookingLazyList(padding, state, { scope.launch { query.refresh() } },
-            state.data?.let { bookingRows(it, "siteList") }.orEmpty(), "暂无开放场馆",
+            state.data?.let { bookingRows(it, "siteList") }.orEmpty(), AppText.Booking.NO_OPEN_VENUES,
             header = {
-                item("my-venues") { ArrowPreference("我的预约申请", onClick = { open(Route.Page("myvenues", title = "我的预约")) }) }
-                item("venue-contract") { SectionCard("开放场馆", "按已验证的 venueStatus=1 查询。状态和开放信息以服务端原值为准。") }
+                item("my-venues") { ArrowPreference(AppText.Booking.MY_BOOKING_APPLICATIONS_TITLE, onClick = { open(Route.Page("myvenues", title = AppText.Booking.MY_BOOKINGS_TITLE)) }) }
+                item("venue-contract") { SectionCard(AppText.Booking.OPEN_VENUES_TITLE, AppText.Booking.OPEN_VENUE_STATUS_QUERY_HINT) }
             }) { item, index ->
             val id = item.bookingId()
-            BookingRecordCard(item, item.bookingLabel("场馆 ${index + 1}"), if (id.isBlank()) null else ({
-                open(Route.Page("venue", id, item.bookingLabel("场馆详情")))
+            BookingRecordCard(item, item.bookingLabel(AppText.Booking.venueOrdinal((index + 1))), if (id.isBlank()) null else ({
+                open(Route.Page("venue", id, item.bookingLabel(AppText.Booking.VENUE_DETAIL_TITLE)))
             }))
-            if (id.isBlank()) Text("此记录未返回 id，暂仅展示。")
+            if (id.isBlank()) Text(AppText.Booking.RECORD_ID_MISSING_READ_ONLY)
         }
     }
 }
@@ -70,22 +71,22 @@ private fun VenueList(graph: AppGraph, page: Route.Page, open: (Route) -> Unit, 
 private fun VenueDetail(graph: AppGraph, page: Route.Page, open: (Route) -> Unit, back: () -> Unit) {
     val siteId = BookingSelection.decode(page.id).siteId
     val query = rememberBookingQuery(graph to siteId) {
-        if (siteId.isBlank()) ApiResult.Failure(ApiError.Validation(listOf("siteId"), "缺少场馆标识，请返回列表重新选择"))
+        if (siteId.isBlank()) ApiResult.Failure(ApiError.Validation(listOf("siteId"), AppText.Booking.VENUE_ID_MISSING_RESELECT_HINT))
         else graph.repositories.venues.info(siteId)
     }
     val state by query.state.collectAsState()
     val scope = rememberCoroutineScope()
-    Screen(page.title.ifBlank { "场馆详情" }, back, actions = {
-        TextButton("刷新", enabled = !state.loading, onClick = { scope.launch { query.refresh() } })
+    Screen(page.title.ifBlank { AppText.Booking.VENUE_DETAIL_TITLE }, back, actions = {
+        TextButton(AppText.Common.REFRESH, enabled = !state.loading, onClick = { scope.launch { query.refresh() } })
     }) { padding ->
         PullToRefresh(state.loading, { scope.launch { query.refresh() } }, Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item { ArrowPreference("查看预约时段", enabled = siteId.isNotBlank(), onClick = {
-                    open(Route.Page("venuetimes", siteId, "预约时段"))
+                item { ArrowPreference(AppText.Booking.VIEW_BOOKING_SLOTS, enabled = siteId.isNotBlank(), onClick = {
+                    open(Route.Page("venuetimes", siteId, AppText.Booking.BOOKING_SLOTS_TITLE))
                 }) }
                 bookingQueryFeedback(state, { scope.launch { query.refresh() } })
                 if (!state.loading && state.error == null && state.data?.let { bookingFields(it) }.isNullOrEmpty()) item {
-                    SectionCard("暂无场馆详情", "已保留场馆标识，可刷新详情或查看时段。")
+                    SectionCard(AppText.Booking.NO_VENUE_DETAILS, AppText.Booking.VENUE_ID_RETAINED_REFRESH_HINT)
                 }
                 bookingFieldsItems(state.data)
             }
@@ -99,8 +100,8 @@ private fun VenueTimes(graph: AppGraph, page: Route.Page, open: (Route) -> Unit,
     var dateInput by remember { mutableStateOf(selection.dateTime) }
     var requestedDate by remember { mutableStateOf(selection.dateTime) }
     val query = rememberBookingQuery(Triple(graph, selection.siteId, requestedDate)) {
-        if (selection.siteId.isBlank()) ApiResult.Failure(ApiError.Validation(listOf("siteId"), "缺少场馆标识"))
-        else if (!validBookingDate(requestedDate)) ApiResult.Failure(ApiError.Validation(listOf("dateTime"), "请先填写预约日期并点击查询"))
+        if (selection.siteId.isBlank()) ApiResult.Failure(ApiError.Validation(listOf("siteId"), AppText.Booking.VENUE_ID_MISSING))
+        else if (!validBookingDate(requestedDate)) ApiResult.Failure(ApiError.Validation(listOf("dateTime"), AppText.Booking.ENTER_DATE_BEFORE_SLOT_QUERY))
         else graph.repositories.venues.times(selection.siteId, requestedDate)
     }
     val state by query.state.collectAsState()
@@ -109,41 +110,41 @@ private fun VenueTimes(graph: AppGraph, page: Route.Page, open: (Route) -> Unit,
     val occupied = ((state.data as? JsonObject)?.get("applyTimeList") as? JsonArray)?.map { it.bookingId() }?.toSet().orEmpty()
     val selectable = rows.filter { bookingAvailability(it) != SlotAvailability.FULL && it.bookingId() !in occupied }.map { it.bookingId() }.filter(String::isNotBlank).toSet()
     val scope = rememberCoroutineScope()
-    Screen(page.title.ifBlank { "预约时段" }, back, actions = {
-        TextButton("刷新", enabled = !state.loading, onClick = { scope.launch { query.refresh() } })
+    Screen(page.title.ifBlank { AppText.Booking.BOOKING_SLOTS_TITLE }, back, actions = {
+        TextButton(AppText.Common.REFRESH, enabled = !state.loading, onClick = { scope.launch { query.refresh() } })
     }) { padding ->
-        BookingLazyList(padding, state, { scope.launch { query.refresh() } }, rows, "暂无可用时段",
+        BookingLazyList(padding, state, { scope.launch { query.refresh() } }, rows, AppText.Booking.NO_AVAILABLE_SLOTS,
             header = {
                 item("slot-date") {
-                    TextField(dateInput, { dateInput = it }, label = "预约日期 YYYY-MM-DD", modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    TextButton("查询此日期时段", enabled = validBookingDate(dateInput) && !state.loading, onClick = {
+                    TextField(dateInput, { dateInput = it }, label = AppText.Booking.BOOKING_DATE_FIELD, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    TextButton(AppText.Booking.QUERY_DATE_SLOTS, enabled = validBookingDate(dateInput) && !state.loading, onClick = {
                         if (requestedDate == dateInput) scope.launch { query.refresh() }
                         else { requestedDate = dateInput; chosen = emptySet() }
                     })
                 }
                 item("slot-explanation") {
-                    SectionCard("选择时段", "当前查询日期：${requestedDate.ifBlank { "尚未选择" }}。已占用或已使用时段不可选；最终结果以提交时服务端确认为准。")
+                    SectionCard(AppText.Booking.SELECT_SLOT_TITLE, AppText.Booking.queryDateNotice((requestedDate.ifBlank { AppText.Common.NOT_SELECTED })))
                 }
                 val text = state.data?.bookingText("text").orEmpty()
-                if (text.isNotBlank()) item("slot-text") { SectionCard("预约说明", text) }
-                item("selection-summary") { Text("已选 ${chosen.size} 个时段") }
+                if (text.isNotBlank()) item("slot-text") { SectionCard(AppText.Booking.BOOKING_INSTRUCTIONS_TITLE, text) }
+                item("selection-summary") { Text(AppText.Booking.chosenSlots((chosen.size))) }
                 if (chosen.any { it !in selectable }) item("stale-selection") {
-                    SectionCard("所选时段已变化", "请重新核对。缺失或已满时段不会进入申请预览。")
-                    TextButton("清除失效选择", onClick = { chosen = chosen.intersect(selectable) })
+                    SectionCard(AppText.Booking.SELECTED_SLOTS_CHANGED, AppText.Booking.RECHECK_CHANGED_OR_FULL_SLOTS_HINT)
+                    TextButton(AppText.Booking.CLEAR_INVALID_SELECTION, onClick = { chosen = chosen.intersect(selectable) })
                 }
                 item("apply-entry") {
                     Button(enabled = !state.loading && state.error == null && chosen.isNotEmpty() && chosen.all { it in selectable },
-                        onClick = { open(Route.Page("venueapply", selection.copy(timeIds = chosen.toList(), dateTime = requestedDate).encode(), "预约申请")) }) {
-                        Text("填写申请资料")
+                        onClick = { open(Route.Page("venueapply", selection.copy(timeIds = chosen.toList(), dateTime = requestedDate).encode(), AppText.Booking.BOOKING_APPLICATION_TITLE)) }) {
+                        Text(AppText.Booking.FILL_APPLICATION_DETAILS)
                     }
                 }
             }) { item, index ->
             val id = item.bookingId()
             val availability = if (id in occupied) SlotAvailability.FULL else bookingAvailability(item)
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                BookingRecordCard(item, item.bookingLabel("时段 ${index + 1}"))
+                BookingRecordCard(item, item.bookingLabel(AppText.Booking.slotOrdinal((index + 1))))
                 Text(availability.label)
-                BookingCheck(id in chosen, if (id.isBlank()) "时段缺少 id，仅展示" else "选定此时段",
+                BookingCheck(id in chosen, if (id.isBlank()) AppText.Booking.SLOT_ID_MISSING_READ_ONLY else AppText.Booking.SELECT_THIS_SLOT,
                     enabled = id.isNotBlank() && availability != SlotAvailability.FULL && !state.loading) {
                     chosen = if (it) chosen + id else chosen - id
                 }
@@ -161,19 +162,19 @@ private fun MyVenues(graph: AppGraph, page: Route.Page, open: (Route) -> Unit, b
     val paged by query.state.collectAsState()
     val state = paged.query
     val scope = rememberCoroutineScope()
-    Screen(page.title.ifBlank { "我的预约申请" }, back, actions = {
-        TextButton("刷新", enabled = !state.loading, onClick = { scope.launch { query.refresh() } })
+    Screen(page.title.ifBlank { AppText.Booking.MY_BOOKING_APPLICATIONS_TITLE }, back, actions = {
+        TextButton(AppText.Common.REFRESH, enabled = !state.loading, onClick = { scope.launch { query.refresh() } })
     }) { padding ->
         BookingLazyList(padding, state, { scope.launch { query.refresh() } }, state.data?.let { bookingRows(it, "applyList") }.orEmpty(),
-            "暂无预约申请", header = {
-                item { SectionCard("申请状态", "可查看申请详情、审批记录；需要补充文件时，请打开申请上传。取消预约暂未接通。") }
+            AppText.Booking.NO_BOOKING_APPLICATIONS, header = {
+                item { SectionCard(AppText.Booking.APPLICATION_STATUS_TITLE, AppText.Booking.APPLICATION_DETAILS_AND_UPLOAD_HINT) }
             }, footer = {
-                if (paged.moreError != null) item("more-error") { SectionCard("下一页加载失败", paged.moreError.orEmpty()) }
-                if (!paged.end && state.data != null) item("server-more") { TextButton("加载下一页申请", enabled = !state.loading, onClick = { scope.launch { query.more() } }) }
+                if (paged.moreError != null) item("more-error") { SectionCard(AppText.Common.NEXT_PAGE_LOAD_FAILED, paged.moreError.orEmpty()) }
+                if (!paged.end && state.data != null) item("server-more") { TextButton(AppText.Booking.LOAD_NEXT_APPLICATIONS_PAGE, enabled = !state.loading, onClick = { scope.launch { query.more() } }) }
             }) { item, index ->
             val id = item.bookingText("applyId").ifBlank { item.bookingId() }
-            BookingRecordCard(item, item.bookingLabel("申请 ${index + 1}"), if (id.isBlank()) null else ({
-                open(Route.Page("venueapplication", id, "预约申请详情"))
+            BookingRecordCard(item, item.bookingLabel(AppText.Booking.applicationOrdinal((index + 1))), if (id.isBlank()) null else ({
+                open(Route.Page("venueapplication", id, AppText.Booking.BOOKING_APPLICATION_DETAIL_TITLE))
             }))
         }
     }
@@ -182,12 +183,12 @@ private fun MyVenues(graph: AppGraph, page: Route.Page, open: (Route) -> Unit, b
 @Composable
 private fun VenueApplication(graph: AppGraph, page: Route.Page, back: () -> Unit) {
     val query = rememberBookingQuery(graph to ("application" to page.id)) {
-        if (page.id.isBlank()) ApiResult.Failure(ApiError.Validation(listOf("applyId"), "缺少申请标识；未请求详情接口"))
+        if (page.id.isBlank()) ApiResult.Failure(ApiError.Validation(listOf("applyId"), AppText.Booking.APPLICATION_ID_MISSING_REQUEST_SKIPPED))
         else graph.repositories.venues.application(page.id)
     }
     val state by query.state.collectAsState()
     val timeline = rememberBookingQuery(graph to ("application-timeline" to page.id)) {
-        if (page.id.isBlank()) ApiResult.Failure(ApiError.Validation(listOf("applyId"), "缺少申请标识"))
+        if (page.id.isBlank()) ApiResult.Failure(ApiError.Validation(listOf("applyId"), AppText.Booking.APPLICATION_ID_MISSING))
         else graph.repositories.venues.process(page.id)
     }
     val timelineState by timeline.state.collectAsState()
@@ -195,24 +196,24 @@ private fun VenueApplication(graph: AppGraph, page: Route.Page, back: () -> Unit
     val confirmation by controller.state.collectAsState()
     var dialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    Screen(page.title.ifBlank { "预约申请详情" }, back, actions = {
-        TextButton("刷新", enabled = !state.loading, onClick = { scope.launch { query.refresh() } })
+    Screen(page.title.ifBlank { AppText.Booking.BOOKING_APPLICATION_DETAIL_TITLE }, back, actions = {
+        TextButton(AppText.Common.REFRESH, enabled = !state.loading, onClick = { scope.launch { query.refresh() } })
     }) { padding ->
         PullToRefresh(state.loading, { scope.launch { query.refresh() } }, Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 bookingQueryFeedback(state, { scope.launch { query.refresh() } })
                 if (state.data != null) item("cancel-explanation") {
-                    SectionCard("取消预约暂未接通", "当前仅查看申请与审批进度；不会调用审批查询接口来取消预约。")
-                    TextButton("预览取消状态", enabled = page.id.isNotBlank(), onClick = {
-                        controller.preview(BookingPreview("取消预约", listOf("申请标识：${page.id}", "当前无已验证的取消接口；确认不会改变申请状态。")))
+                    SectionCard(AppText.Booking.BOOKING_CANCELLATION_UNCONNECTED, AppText.Booking.CANCELLATION_DOES_NOT_USE_APPROVAL_QUERY_HINT)
+                    TextButton(AppText.Booking.PREVIEW_CANCELLATION_STATUS, enabled = page.id.isNotBlank(), onClick = {
+                        controller.preview(BookingPreview(AppText.Booking.CANCEL_BOOKING_TITLE, listOf(AppText.Booking.applicationId((page.id)), AppText.Booking.CANCELLATION_PREVIEW_PRESERVES_STATUS_HINT)))
                     })
                 }
                 bookingFieldsItems(state.data)
                 item("venue-attachment-form") { VenueAttachmentSection(graph, page.id, state) { scope.launch { query.refresh() } } }
-                item("timeline-title") { SmallTitle("审批进度") }
+                item("timeline-title") { SmallTitle(AppText.Booking.APPROVAL_PROGRESS_TITLE) }
                 bookingQueryFeedback(timelineState, { scope.launch { timeline.refresh() } }, "timeline")
                 itemsIndexed((timelineState.data as? JsonArray)?.toList().orEmpty(), key = { index, _ -> "timeline:$index" }) { index, node ->
-                    SectionCard(node.bookingText("nodeName").ifBlank { "审批节点 ${index + 1}" },
+                    SectionCard(node.bookingText("nodeName").ifBlank { AppText.Booking.approvalNodeOrdinal((index + 1)) },
                         listOf(node.bookingText("approver"), node.bookingText("opinion"), node.bookingText("reviewTime")).filter(String::isNotBlank).joinToString("\n"))
                 }
                 // Only server-relative userfiles paths are ever opened, using the repository's validator.
@@ -220,14 +221,14 @@ private fun VenueApplication(graph: AppGraph, page: Route.Page, back: () -> Unit
                 itemsIndexed(attachments?.toList().orEmpty(), key = { index, _ -> "attachment:$index" }) { index, file ->
                     val path = file.bookingText("path").ifBlank { file.bookingText("filepath") }
                     val url = graph.repositories.fileUrl(path)
-                    if (url != null) ArrowPreference(file.bookingText("filename").ifBlank { "附件 ${index + 1}" },
-                        summary = "打开服务端附件", onClick = { graph.platform.openUrl(url) })
+                    if (url != null) ArrowPreference(file.bookingText("filename").ifBlank { AppText.Booking.attachmentOrdinal((index + 1)) },
+                        summary = AppText.Booking.OPEN_SERVER_ATTACHMENT, onClick = { graph.platform.openUrl(url) })
                 }
                 bookingConfirmationItems(confirmation, controller::edit)
                 if (confirmation.phase == BookingPhase.PREVIEW) item("confirm-cancel") {
-                    TextButton("核对完毕，打开最终确认", onClick = { dialog = true })
+                    TextButton(AppText.Common.OPEN_FINAL_CONFIRMATION_AFTER_REVIEW, onClick = { dialog = true })
                 }
-                if (!state.loading && state.error == null && state.data?.let { bookingFields(it) }.isNullOrEmpty()) item { SectionCard("暂无申请详情") }
+                if (!state.loading && state.error == null && state.data?.let { bookingFields(it) }.isNullOrEmpty()) item { SectionCard(AppText.Booking.NO_APPLICATION_DETAILS) }
             }
         }
         BookingFinalDialog(controller, dialog) { dialog = false }
@@ -257,28 +258,28 @@ private fun FitnessList(graph: AppGraph, page: Route.Page, open: (Route) -> Unit
     val mine by aux.mine.state.collectAsState()
     val scope = rememberCoroutineScope()
     val refresh: () -> Unit = { scope.launch { query.refresh() }; scope.launch { aux.counts.refresh() }; scope.launch { aux.mine.refresh() } }
-    Screen(page.title.ifBlank { "体测报名" }, back, actions = { TextButton("刷新", enabled = !state.loading, onClick = refresh) }) { padding ->
-        BookingLazyList(padding, state, refresh, state.data?.let { bookingRows(it, "physicalTestList") }.orEmpty(), "暂无体测场次",
+    Screen(page.title.ifBlank { AppText.Booking.FITNESS_REGISTRATION_TITLE }, back, actions = { TextButton(AppText.Common.REFRESH, enabled = !state.loading, onClick = refresh) }) { padding ->
+        BookingLazyList(padding, state, refresh, state.data?.let { bookingRows(it, "physicalTestList") }.orEmpty(), AppText.Booking.NO_FITNESS_SESSIONS,
             header = {
-                item("all-items") { ArrowPreference("查询全部体测项目", summary = "完整惰性列表与本地筛选；未选场次时仅查询", onClick = {
-                    open(Route.Page("fitnessitems", title = "全部体测项目"))
+                item("all-items") { ArrowPreference(AppText.Booking.QUERY_ALL_FITNESS_ITEMS, summary = AppText.Booking.ALL_ITEMS_READ_ONLY_WITHOUT_SESSION_HINT, onClick = {
+                    open(Route.Page("fitnessitems", title = AppText.Booking.ALL_FITNESS_ITEMS_TITLE))
                 }) }
-                item("fitness-evidence") { SectionCard("场次查询", "如服务端场次接口异常，项目、按日期人数与当前报名信息仍可分别查询。人数原始分类含义未确认，不换算成剩余名额。") }
+                item("fitness-evidence") { SectionCard(AppText.Booking.FITNESS_SESSION_QUERY_TITLE, AppText.Booking.INDEPENDENT_FITNESS_QUERIES_AND_RAW_COUNTS_HINT) }
             }, footer = {
-                if (paged.moreError != null) item("more-error") { SectionCard("下一页加载失败", paged.moreError.orEmpty()) }
-                if (!paged.end && state.data != null) item("server-more") { TextButton("加载下一页场次", enabled = !state.loading, onClick = { scope.launch { query.more() } }) }
-                item("mine-title") { SmallTitle("当前报名信息（服务端原值）") }
+                if (paged.moreError != null) item("more-error") { SectionCard(AppText.Common.NEXT_PAGE_LOAD_FAILED, paged.moreError.orEmpty()) }
+                if (!paged.end && state.data != null) item("server-more") { TextButton(AppText.Booking.LOAD_NEXT_FITNESS_SESSIONS_PAGE, enabled = !state.loading, onClick = { scope.launch { query.more() } }) }
+                item("mine-title") { SmallTitle(AppText.Booking.CURRENT_REGISTRATION_RAW_TITLE) }
                 bookingQueryFeedback(mine, { scope.launch { aux.mine.refresh() } }, "mine")
                 bookingFieldsItems(mine.data, keyPrefix = "mine-field")
-                item("counts-title") { SmallTitle("按日期人数（服务端原值）") }
+                item("counts-title") { SmallTitle(AppText.Booking.DAILY_COUNTS_RAW_TITLE) }
                 bookingQueryFeedback(counts, { scope.launch { aux.counts.refresh() } }, "counts")
                 bookingFieldsItems(counts.data, keyPrefix = "counts-field")
             }) { item, index ->
             val id = item.bookingId()
-            BookingRecordCard(item, item.bookingLabel("体测场次 ${index + 1}"), if (id.isBlank()) null else ({
-                open(Route.Page("fitnessitems", BookingSelection(physicalId = id).encode(), item.bookingLabel("体测项目")))
+            BookingRecordCard(item, item.bookingLabel(AppText.Booking.fitnessSessionOrdinal((index + 1))), if (id.isBlank()) null else ({
+                open(Route.Page("fitnessitems", BookingSelection(physicalId = id).encode(), item.bookingLabel(AppText.Booking.FITNESS_ITEMS_TITLE)))
             }))
-            if (id.isBlank()) Text("此场次缺少 id，暂仅展示，不构造报名标识。")
+            if (id.isBlank()) Text(AppText.Booking.FITNESS_SESSION_ID_MISSING_READ_ONLY)
         }
     }
 }
@@ -294,26 +295,26 @@ private fun FitnessItems(graph: AppGraph, page: Route.Page, open: (Route) -> Uni
     var chosen by remember { mutableStateOf(selection.itemIds.toSet()) }
     val returnedIds = rows.map { it.bookingId() }.filter(String::isNotBlank).toSet()
     val scope = rememberCoroutineScope()
-    Screen(page.title.ifBlank { "体测项目" }, back, actions = { TextButton("刷新", enabled = !state.loading, onClick = { scope.launch { query.refresh() } }) }) { padding ->
-        BookingLazyList(padding, state, { scope.launch { query.refresh() } }, rows, "暂无体测项目",
+    Screen(page.title.ifBlank { AppText.Booking.FITNESS_ITEMS_TITLE }, back, actions = { TextButton(AppText.Common.REFRESH, enabled = !state.loading, onClick = { scope.launch { query.refresh() } }) }) { padding ->
+        BookingLazyList(padding, state, { scope.launch { query.refresh() } }, rows, AppText.Booking.NO_FITNESS_ITEMS,
             header = {
-                item("fitness-selection-help") { SectionCard(if (selection.physicalId.isBlank()) "全局项目查询" else "本地选择项目",
-                    if (selection.physicalId.isBlank()) "请先从体测场次进入，当前列表不生成报名。所有返回记录均可通过搜索和加载更多访问。"
-                    else "场次标识：${selection.physicalId}\n所选项目 ${chosen.size} 个；选择不会提交报名。") }
+                item("fitness-selection-help") { SectionCard(if (selection.physicalId.isBlank()) AppText.Booking.GLOBAL_FITNESS_ITEMS_QUERY_TITLE else AppText.Booking.SELECT_ITEMS_LOCALLY_TITLE,
+                    if (selection.physicalId.isBlank()) AppText.Booking.SELECT_SESSION_BEFORE_REGISTRATION_HINT
+                    else AppText.Booking.fitnessSelection((selection.physicalId), (chosen.size))) }
                 if (chosen.any { it !in returnedIds }) item("stale-items") {
-                    SectionCard("部分项目未在最新结果中返回", "请重新选择后预览。")
-                    TextButton("清除失效选择", onClick = { chosen = chosen.intersect(returnedIds) })
+                    SectionCard(AppText.Booking.SELECTED_ITEMS_MISSING_FROM_LATEST_RESULTS, AppText.Booking.RESELECT_BEFORE_PREVIEW_HINT)
+                    TextButton(AppText.Booking.CLEAR_INVALID_SELECTION, onClick = { chosen = chosen.intersect(returnedIds) })
                 }
                 if (selection.physicalId.isNotBlank()) item("fitness-preview-entry") {
                     Button(enabled = !state.loading && state.error == null && chosen.all { it in returnedIds }, onClick = {
-                        open(Route.Page("fitnessenrol", selection.copy(itemIds = chosen.toList()).encode(), "体测报名核对"))
-                    }) { Text("预览报名选择（尚未提交）") }
+                        open(Route.Page("fitnessenrol", selection.copy(itemIds = chosen.toList()).encode(), AppText.Booking.REVIEW_FITNESS_REGISTRATION_TITLE))
+                    }) { Text(AppText.Booking.PREVIEW_REGISTRATION_SELECTION) }
                 }
             }) { item, index ->
             val id = item.bookingId()
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                BookingRecordCard(item, item.bookingLabel("项目 ${index + 1}"))
-                if (selection.physicalId.isNotBlank()) BookingCheck(id in chosen, if (id.isBlank()) "项目缺少 id，仅展示" else "选择此项目",
+                BookingRecordCard(item, item.bookingLabel(AppText.Booking.itemOrdinal((index + 1))))
+                if (selection.physicalId.isNotBlank()) BookingCheck(id in chosen, if (id.isBlank()) AppText.Booking.FITNESS_ITEM_ID_MISSING_READ_ONLY else AppText.Booking.SELECT_THIS_FITNESS_ITEM,
                     enabled = id.isNotBlank() && !state.loading) { chosen = if (it) chosen + id else chosen - id }
             }
         }

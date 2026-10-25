@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Owned-Simulator unsigned/ad-hoc A/B evidence; no account or certificate access.
 
-Only the Debug-iphonesimulator product is copied and signed. Native report fields
+Only Debug-iphonesimulator products are copied; the historical method signs its copy,
+while the explicit Xcode method audits a packaged copy without re-signing. Native report fields
 are an allowlist, not a source of paths, commands, credentials, or inferred status
 codes. A successful signed seed/verify does not turn missing unsigned evidence
 into a pass. The smoke owner remains responsible for device ownership/cleanup
 and the final PID stability window/startup.png.
 """
 import argparse
+import hashlib
+import struct
 from datetime import datetime, timezone
 import json
 import os
@@ -192,16 +195,16 @@ def _bytes(value):
     return value.encode("utf-8") if isinstance(value, str) else value
 
 
-def _codesign(command, evidence, label, run):
+def _codesign(command, evidence, label, run, *, timeout=60):
     """Persist command/stdout/stderr/result without changing signing commands/profile."""
     from ios_simulator_smoke import begin_command_result, finish_command_result, is_smoke_deadline
     _save_json(evidence / (label + ".command.json"), command)
-    record = begin_command_result(label, 60)
+    record = begin_command_result(label, timeout)
     _save_json(evidence / (label + ".result.json"), record)
     stdout, stderr = b"", b""
     try:
         process = run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                      timeout=60, check=False)
+                      timeout=timeout, check=False)
         stdout, stderr = _bytes(process.stdout), _bytes(process.stderr)
         record.update(returncode=process.returncode, drain_complete=True)
         if process.returncode:
@@ -299,6 +302,371 @@ def sign_simulator_copy(artifacts, app_path, bundle=None, *, run=None):
         record["error"] = _error(error)
         _save_json(evidence / "signing.json", record)
         raise
+
+
+SIGNING_METHODS = ("manual-ad-hoc", "xcode-simulator")
+RESTRICTED_IDENTITIES = {"application-identifier", "com.apple.application-identifier",
+                         "com.apple.developer.team-identifier", "keychain-access-groups"}
+MAX_LAYOUT_BYTES = 1024 * 1024
+MAX_SIGNATURE_BYTES = 4 * 1024 * 1024
+
+
+def validate_signing_method(method, mode):
+    if method not in SIGNING_METHODS:
+        raise ValueError("Unknown Simulator signing method")
+    if method == "xcode-simulator" and mode != "signed-positive":
+        raise ValueError("xcode-simulator requires independent signed-positive; historical AB stays manual")
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def canonical_entitlements(value):
+    """Type-exact comparison: JSON true is not 1, including inside dicts/lists."""
+    nodes = [0]
+    def check(item, depth):
+        nodes[0] += 1
+        if depth > 16 or nodes[0] > 1024:
+            raise ValueError("Entitlement comparison exceeded bounded coverage")
+        if type(item) is dict:
+            if any(type(key) is not str for key in item):
+                raise ValueError("Entitlement dictionary keys must be strings")
+            for child in item.values():
+                check(child, depth + 1)
+        elif type(item) is list:
+            for child in item:
+                check(child, depth + 1)
+        elif type(item) not in (str, bool, int):
+            raise ValueError("Unsupported entitlement comparison type")
+    if type(value) is not dict:
+        raise ValueError("Entitlement comparison root must be a dictionary")
+    check(value, 0)
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
+
+
+def decode_entitlement_der(raw):
+    """Bounded Apple DER plist subset; unknown forms fail before installation."""
+    if not raw or len(raw) > MAX_REPORT_BYTES:
+        raise ValueError("Entitlement DER size is invalid")
+    nodes = [0]
+    def node(pos, limit, depth):
+        nodes[0] += 1
+        if depth > 16 or nodes[0] > 1024 or pos + 2 > limit:
+            raise ValueError("Entitlement DER depth/length is invalid")
+        tag, size = raw[pos], raw[pos + 1]
+        pos += 2
+        if size & 128:
+            width = size & 127
+            if not 0 < width <= 4 or pos + width > limit:
+                raise ValueError("Entitlement DER length is unsupported")
+            size = int.from_bytes(raw[pos:pos + width], "big")
+            pos += width
+        end = pos + size
+        if end > limit:
+            raise ValueError("Entitlement DER is truncated")
+        if tag & 32:
+            items = []
+            while pos < end:
+                value, pos = node(pos, end, depth + 1)
+                items.append(value)
+            if tag == 0x70:
+                if len(items) != 2 or type(items[0]) is not int or items[0] != 1 or type(items[1]) is not dict:
+                    raise ValueError("Unsupported entitlement DER version")
+                return items[1], end
+            if tag == 0xb0 or (tag == 0x31 and depth == 0):
+                result = {}
+                for pair in items:
+                    if type(pair) is not list or len(pair) != 2 or type(pair[0]) is not str or pair[0] in result:
+                        raise ValueError("Entitlement DER dictionary is invalid")
+                    result[pair[0]] = pair[1]
+                return result, end
+            if tag not in (0x30, 0x31):
+                raise ValueError("Unsupported entitlement DER container")
+            return items, end
+        body = raw[pos:end]
+        if tag == 0x0c:
+            return body.decode("utf-8"), end
+        if tag == 1 and body in (b"\x00", b"\xff"):
+            return body == b"\xff", end
+        if tag == 2 and 0 < len(body) <= 8:
+            return int.from_bytes(body, "big", signed=True), end
+        raise ValueError("Unsupported entitlement DER value")
+    value, end = node(0, len(raw), 0)
+    if type(value) is not dict or any(raw[end:]):
+        raise ValueError("Entitlement DER root/trailing bytes are invalid")
+    return value
+
+
+def inspect_macho(path, evidence, label):
+    """Stream headers and seek bounded sections/signature; never read an entire dylib."""
+    path = Path(path)
+    record = {"file": path.name, "bytes": path.stat().st_size, "sha256": file_sha256(path),
+              "sections": [], "simulated_xml": None, "simulated_der": None,
+              "signature_xml": {}, "signature_der": {}, "code_directory": None}
+    def xml(raw):
+        value = plistlib.loads(raw.rstrip(b"\0"))
+        if type(value) is not dict:
+            raise ValueError("Entitlement XML must be a dictionary")
+        canonical_entitlements(value)  # Reject unsupported XML types before storing JSON evidence.
+        return value
+    try:
+        with path.open("rb") as stream:
+            def read_at(offset, length, maximum):
+                if not 0 <= length <= maximum or offset < 0 or offset + length > record["bytes"]:
+                    raise ValueError("Mach-O range exceeds bounded file coverage")
+                stream.seek(offset)
+                result = stream.read(length)
+                if len(result) != length:
+                    raise ValueError("Truncated Mach-O data")
+                return result
+            header = read_at(0, 32, 32)
+            if header[:4] != b"\xcf\xfa\xed\xfe":
+                raise ValueError("Packaging audit supports thin little-endian Mach-O64 only")
+            count, size = struct.unpack_from("<II", header, 16)
+            if not 0 < count <= 1024:
+                raise ValueError("Mach-O command count is unsupported")
+            commands = read_at(32, size, MAX_LAYOUT_BYTES)
+            pos, signature = 0, None
+            for _ in range(count):
+                if pos + 8 > size:
+                    raise ValueError("Truncated Mach-O command")
+                cmd, length = struct.unpack_from("<II", commands, pos)
+                if length < 8 or pos + length > size:
+                    raise ValueError("Invalid Mach-O command size")
+                if cmd == 0x19:
+                    if length < 72:
+                        raise ValueError("Truncated Mach-O segment")
+                    nsects = struct.unpack_from("<I", commands, pos + 64)[0]
+                    if nsects > 512 or 72 + nsects * 80 > length:
+                        raise ValueError("Invalid Mach-O sections")
+                    for index in range(nsects):
+                        at = pos + 72 + index * 80
+                        name = commands[at:at + 16].split(b"\0", 1)[0].decode("ascii")
+                        segment = commands[at + 16:at + 32].split(b"\0", 1)[0].decode("ascii")
+                        extent, offset = struct.unpack_from("<QI", commands, at + 40)
+                        record["sections"].append({"segment": segment, "section": name,
+                                                   "offset": offset, "size": extent})
+                        if segment == "__TEXT" and name in ("__entitlements", "__ents_der"):
+                            key = "simulated_xml" if name == "__entitlements" else "simulated_der"
+                            if record[key] is not None:
+                                raise ValueError("Duplicate simulated entitlement section")
+                            raw = read_at(offset, extent, MAX_REPORT_BYTES)
+                            (evidence / (label + "." + name + ".bin")).write_bytes(raw)
+                            record[key] = xml(raw) if key.endswith("xml") else decode_entitlement_der(raw)
+                elif cmd == 0x1d:
+                    if signature is not None or length < 16:
+                        raise ValueError("Invalid duplicate/truncated code signature command")
+                    signature = struct.unpack_from("<II", commands, pos + 8)
+                pos += length
+            if pos != size or signature is None:
+                raise ValueError("Unknown command layout or missing code signature")
+            sig = read_at(*signature, MAX_SIGNATURE_BYTES)
+            if len(sig) < 12:
+                raise ValueError("Missing signature SuperBlob")
+            magic, total, count = struct.unpack_from(">III", sig, 0)
+            if magic != 0xfade0cc0 or total > len(sig) or count > 64 or 12 + count * 8 > total:
+                raise ValueError("Unsupported signature SuperBlob")
+            slots = set()
+            record["signature_slots"] = []
+            for index in range(count):
+                slot, offset = struct.unpack_from(">II", sig, 12 + index * 8)
+                if slot in slots or offset < 12 + count * 8 or offset + 8 > total:
+                    raise ValueError("Invalid signature slot")
+                slots.add(slot)
+                magic, length = struct.unpack_from(">II", sig, offset)
+                if length < 8 or offset + length > total:
+                    raise ValueError("Truncated signature blob")
+                blob, body = sig[offset:offset + length], sig[offset + 8:offset + length]
+                record["signature_slots"].append({"slot": slot, "magic": hex(magic), "size": length})
+                if slot == 0:
+                    if magic != 0xfade0c02 or len(blob) < 52:
+                        raise ValueError("Unsupported CodeDirectory")
+                    version, flags = struct.unpack_from(">II", blob, 8)
+                    def cstring(at):
+                        if at < 44 or at >= len(blob) or b"\0" not in blob[at:]:
+                            raise ValueError("Invalid CodeDirectory string")
+                        return blob[at:].split(b"\0", 1)[0].decode("utf-8")
+                    ident = struct.unpack_from(">I", blob, 20)[0]
+                    team = struct.unpack_from(">I", blob, 48)[0] if version >= 0x20200 else 0
+                    record["code_directory"] = {"version": hex(version), "flags": flags,
+                                                "identifier": cstring(ident),
+                                                "team": cstring(team) if team else None}
+                elif slot in (5, 7):
+                    expected = 0xfade7171 if slot == 5 else 0xfade7172
+                    if magic != expected or len(body) > MAX_REPORT_BYTES:
+                        raise ValueError("Invalid entitlement signature slot")
+                    key = "signature_xml" if slot == 5 else "signature_der"
+                    (evidence / (label + "." + key + ".bin")).write_bytes(body)
+                    record[key] = xml(body) if slot == 5 else decode_entitlement_der(body)
+            if not record["code_directory"] or not record["code_directory"]["flags"] & 2:
+                raise ValueError("Expected an actual ad-hoc CodeDirectory")
+            if canonical_entitlements(record["signature_xml"]) != canonical_entitlements(record["signature_der"]):
+                raise ValueError("Real signature XML/DER disagree")
+            if RESTRICTED_IDENTITIES.intersection(record["signature_xml"]):
+                raise ValueError("Real signature still carries restricted identity claims")
+        return record
+    except BaseException as error:
+        record["error"] = _error(error)
+        raise
+    finally:
+        _save_json(evidence / (label + ".json"), record)
+
+
+def prepare_xcode_simulator_copy(artifacts, app_path, bundle=None, *, run=None):
+    """Audit/copy only. No --sign call and no mutation of Xcode's packaged input."""
+    if sys.platform != "darwin":
+        raise RuntimeError("Xcode-packaged Simulator verification requires macOS")
+    run = run or subprocess.run
+    source, bundle, executable = _source_app(app_path, bundle)
+    evidence = Path(artifacts).resolve(strict=True) / "signed"
+    if evidence.exists() or source.is_relative_to(evidence) or evidence.is_relative_to(source):
+        raise ValueError("Xcode input/copy/evidence must be fresh and disjoint")
+    evidence.mkdir()
+    copy = evidence / source.name
+    record = {"schema": 1, "result": "running", "profile": "xcode-simulator-packaged",
+              "signing_method": "xcode-simulator", "identity": None, "source_unchanged": None,
+              "causality": "New multi-condition build method, not byte-identical or single-key attribution",
+              "images": []}
+    _save_json(evidence / "signing.json", record)
+    try:
+        entries = list(source.rglob("*"))
+        if any(p.is_symlink() for p in entries):
+            raise ValueError("Packaged source must not contain symlinks")
+        paths = sorted(p for p in entries if p.is_file() and _is_macho(p))
+        if not paths:
+            raise ValueError("Packaged source has no Mach-O images")
+        tool = shutil.which("codesign")
+        if not tool:
+            raise ValueError("codesign executable is absent from the current build/smoke PATH")
+        record["codesign_executable"] = tool
+        simulated = []
+        for index, path in enumerate(paths):
+            image = inspect_macho(path, evidence, f"source-{index:03d}")
+            relative = str(path.relative_to(source))
+            image["relative_file"] = relative
+            record["images"].append(image)
+            left, right = image["simulated_xml"], image["simulated_der"]
+            if left is not None or right is not None:
+                if left is None or right is None or canonical_entitlements(left) != canonical_entitlements(right):
+                    raise ValueError("Simulated XML/DER sections are missing or disagree")
+                identity = left.get("application-identifier", left.get("com.apple.application-identifier"))
+                if type(identity) is not str or not identity.endswith("." + bundle) or identity == "." + bundle:
+                    raise ValueError("Simulated application identity does not match the actual bundle")
+                simulated.append((relative, left))
+            _save_json(evidence / "signing.json", record)
+        if not any(name in (executable, executable + ".debug.dylib") for name, _ in simulated):
+            raise ValueError("No simulated application identity in main/debug image")
+        if any(canonical_entitlements(value) != canonical_entitlements(simulated[0][1]) for _, value in simulated):
+            raise ValueError("Simulated identity differs between app images")
+        record["simulated_entitlements"] = simulated[0][1]
+        record["identity"] = "ad-hoc"  # Observed CodeDirectory flags in every audited image.
+        shutil.copytree(source, copy, symlinks=False)
+        for index, path in enumerate(paths):
+            target = copy / path.relative_to(source)
+            copied = inspect_macho(target, evidence, f"copy-{index:03d}")
+            if copied["sha256"] != record["images"][index]["sha256"]:
+                raise ValueError("Packaged copy changed a Mach-O image")
+            _codesign([tool, "--display", "--verbose=4", "-r-", "--entitlements", ":-", str(target)],
+                      evidence, f"xcode-details-{index:03d}", run, timeout=15)
+        _codesign([tool, "--verify", "--deep", "--strict", "--verbose=4", str(copy)],
+                  evidence, "xcode-verify", run, timeout=15)
+        if any(file_sha256(path) != record["images"][i]["sha256"] for i, path in enumerate(paths)):
+            raise ValueError("Original packaged Mach-O changed during verification")
+        record.update(result="xcode-packaged-copy-verified", source_unchanged=True, app=str(copy))
+        _save_json(evidence / "signing.json", record)
+        return copy
+    except BaseException as error:
+        record.update(result="failed", error=_error(error))
+        _save_json(evidence / "signing.json", record)
+        raise
+
+
+def _build_capture(command, evidence, label, timeout, run):
+    """Stream build output to files, not an in-memory PIPE. Only called on CI macOS."""
+    from ios_simulator_smoke import begin_command_result, finish_command_result, is_smoke_deadline
+    record = begin_command_result(label, timeout)
+    _save_json(evidence / (label + ".command.json"), command)
+    _save_json(evidence / (label + ".result.json"), record)
+    out, err = evidence / (label + ".stdout.log"), evidence / (label + ".stderr.log")
+    try:
+        with out.open("wb") as stdout, err.open("wb") as stderr:
+            result = run(command, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr, timeout=timeout, check=False)
+        record.update(returncode=result.returncode, drain_complete=True)
+        if result.returncode:
+            record["outcome"] = "nonzero"
+            raise RuntimeError("Xcode packaging command failed; see " + label + " logs")
+        record.update(outcome="success", ok=True)
+    except BaseException as error:
+        record["error_type"] = type(error).__name__
+        record["timed_out"] = isinstance(error, subprocess.TimeoutExpired) or is_smoke_deadline(error)
+        if record["outcome"] == "running":
+            record["outcome"] = "timeout" if record["timed_out"] else "error"
+        raise
+    finally:
+        finish_command_result(record, b"", b"")
+        record.update(stdout_bytes=out.stat().st_size if out.exists() else 0,
+                      stderr_bytes=err.stat().st_size if err.exists() else 0)
+        _save_json(evidence / (label + ".result.json"), record)
+
+
+def build_xcode_simulator(derived_data, *, run=None):
+    if sys.platform != "darwin":
+        raise RuntimeError("Xcode packaging build requires macOS")
+    run = run or subprocess.run
+    derived = Path(derived_data).resolve()
+    evidence = derived / "Logs" / "xcode-packaging"
+    evidence.mkdir(parents=True, exist_ok=False)
+    entitlements = evidence / "CI-Simulator.entitlements"
+    with entitlements.open("wb") as stream:
+        plistlib.dump({"application-identifier": TEAM_ID + ".io.github.betterzslf",
+                      "com.apple.developer.team-identifier": TEAM_ID, "get-task-allow": True}, stream)
+    command = ["xcodebuild", "-project", "iosApp/BetterZslf.xcodeproj", "-scheme", "BetterZslf",
+               "-configuration", "Debug", "-sdk", "iphonesimulator", "-destination", "generic/platform=iOS Simulator",
+               "-derivedDataPath", str(derived), "-resultBundlePath", str(derived / "build.xcresult"),
+               "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "CODE_SIGN_ENTITLEMENTS=" + str(entitlements),
+               "OTHER_CODE_SIGN_FLAGS="]
+    _build_capture(["xcodebuild", "-version"], evidence, "xcode-version", 30, run)
+    _build_capture(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-version"], evidence, "sdk-version", 30, run)
+    _build_capture(["xcrun", "--find", "codesign"], evidence, "codesign-path", 15, run)
+    # Metadata queries must not create/consume the real build's result bundle.
+    settings_command = command.copy()
+    result_index = settings_command.index("-resultBundlePath")
+    del settings_command[result_index:result_index + 2]
+    _build_capture(settings_command + ["-showBuildSettings"], evidence, "buildsettings", 60, run)
+    primary_error = None
+    try:
+        _build_capture(command + ["build"], evidence, "build", 1200, run)
+    except BaseException as error:
+        primary_error = error
+        raise
+    finally:
+        # Retention is secondary evidence, never a replacement for a failed build/watchdog.
+        try:
+            source = derived / "Build/Intermediates.noindex/BetterZslf.build/Debug-iphonesimulator/BetterZslf.build"
+            retained = evidence / "packaging-inputs"
+            retained.mkdir()
+            index = []
+            _save_json(evidence / "packaging-inputs.json", index)
+            for path in sorted(source.glob("*")):
+                if path.is_file() and not path.is_symlink() and ("xcent" in path.name or path.suffix == ".der"):
+                    if len(index) >= 64 or path.stat().st_size > MAX_LAYOUT_BYTES:
+                        raise ValueError("Packaging input retention exceeded bounded coverage")
+                    shutil.copyfile(path, retained / path.name)
+                    index.append({"file": path.name, "sha256": file_sha256(path), "bytes": path.stat().st_size})
+                    _save_json(evidence / "packaging-inputs.json", index)
+        except BaseException as error:
+            try:
+                _save_json(evidence / "packaging-retention-error.json", _error(error))
+            except BaseException:
+                if primary_error is None:
+                    raise
+            if primary_error is None:
+                raise
 
 
 def _container(runner, udid, bundle, label):
@@ -517,7 +885,7 @@ def _terminate_and_confirm(runner, udid, bundle, pid, label, *, record=None, sav
 
 
 def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep=time.sleep,
-                    *, signer=None, clock=time.monotonic, mode="ab"):
+                    *, signer=None, clock=time.monotonic, mode="ab", signing_method="manual-ad-hoc"):
     """Default AB is preserved; signed-positive uses a fresh owned device with no A.
 
     runner.call(args, label, timeout) is the smoke schema. Its call_env takes
@@ -542,8 +910,9 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
         raise ValueError("Diagnostics require a PID ownership callback and runner.call_env")
     if mode not in ("ab", "signed-positive"):
         raise ValueError("Expected ab or signed-positive diagnostic mode")
-    signer = signer or sign_simulator_copy
-    result = {"schema": 1, "result": "running", "experiment_mode": mode,
+    validate_signing_method(signing_method, mode)
+    signer = signer or (prepare_xcode_simulator_copy if signing_method == "xcode-simulator" else sign_simulator_copy)
+    result = {"schema": 1, "result": "running", "experiment_mode": mode, "signing_method": signing_method,
               "login_ui_verified": False, "ui_review": "pending", "udid": udid, "bundle": bundle, "pid": None,
               "namespaces": {"unsigned": uuid.uuid4().hex + "_unsigned", "signed": uuid.uuid4().hex + "_signed"},
               "unsigned": {}, "signed": {"seed": {}, "verify": {}},
@@ -770,13 +1139,18 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("sign",))
+    parser.add_argument("mode", choices=("sign", "build-xcode"))
     parser.add_argument("--artifacts", type=Path, required=True)
-    parser.add_argument("--app", type=Path, required=True)
+    parser.add_argument("--app", type=Path)
     parser.add_argument("--bundle")
     args = parser.parse_args(argv)
-    copy = sign_simulator_copy(args.artifacts, args.app, args.bundle)
-    print(copy)
+    if args.mode == "build-xcode":
+        build_xcode_simulator(args.artifacts)
+    else:
+        if args.app is None:
+            parser.error("sign requires --app")
+        copy = sign_simulator_copy(args.artifacts, args.app, args.bundle)
+        print(copy)
 
 
 if __name__ == "__main__":

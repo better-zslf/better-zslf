@@ -1,17 +1,18 @@
 package io.github.betterzslf.ui.accountrecovery
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.data.PasswordResetLogout
 import io.github.betterzslf.feature.accountrecovery.*
+import io.github.betterzslf.ui.ConfirmationCheckRow
 import io.github.betterzslf.ui.Screen
 import io.github.betterzslf.ui.SectionCard
 import kotlinx.coroutines.delay
@@ -29,13 +30,13 @@ fun AccountRecoveryPage(graph: AppGraph, onBack: () -> Unit) {
     LaunchedEffect(session) { if (session != null) finalReceipt = null }
     val receipt = finalReceipt
     if (session == null && receipt != null) {
-        Screen("学校密码重置回执", onBack) { padding ->
+        Screen(AppText.Recovery.SCHOOL_PASSWORD_RESET_RECEIPT_TITLE, onBack) { padding ->
             Column(Modifier.padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SectionCard(if (receipt == PasswordResetLogout.CLEAR_FAILED) "服务已成功 · 本机清理提示" else "服务已确认重置成功",
+                SectionCard(if (receipt == PasswordResetLogout.CLEAR_FAILED) AppText.Recovery.SERVICE_SUCCEEDED_LOCAL_CLEANUP_NOTICE else AppText.Recovery.PASSWORD_RESET_CONFIRMED,
                     if (receipt == PasswordResetLogout.CLEAR_FAILED)
-                        "学校登录密码已重置，内存会话已退出；持久会话记录删除失败，请处理本机会话记录。不要再次重置。"
-                    else "当前会话已退出，请使用新学校登录密码登录；本页不会重复提交。")
-                TextButton("返回登录", onClick = onBack)
+                        AppText.Recovery.PASSWORD_RESET_SUCCEEDED_SESSION_CLEANUP_FAILED_HINT
+                    else AppText.Recovery.SESSION_EXITED_LOG_IN_WITH_NEW_PASSWORD_HINT)
+                TextButton(AppText.Auth.BACK_TO_LOGIN, onClick = onBack)
             }
         }
     } else key(session) {
@@ -92,68 +93,68 @@ private fun AccountRecoveryBody(controller: AccountRecoveryController, onBack: (
         onCommit = guardedBack,
         onCancel = {},
     )
-    Screen("找回学校登录密码", guardedBack) { padding ->
+    Screen(AppText.Recovery.RECOVER_SCHOOL_LOGIN_PASSWORD_TITLE, guardedBack) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
             contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item("scope") { SectionCard("重置学校登录密码", "不是运营商宽带密码。当前三个接口保留有效登录会话前置；匿名找回支持待核实。进入页面不会发送短信或修改密码。") }
+            item("scope") { SectionCard(AppText.Recovery.RESET_SCHOOL_LOGIN_PASSWORD_TITLE, AppText.Recovery.SCHOOL_PASSWORD_RECOVERY_SCOPE_HINT) }
             state.message?.let { item("message") { SectionCard(when (state.phase) {
-                AccountRecoveryPhase.GUEST -> "未登录 · 操作保持禁用"
-                AccountRecoveryPhase.UNCERTAIN -> "结果尚未确认 · 已停止"
-                AccountRecoveryPhase.COMPLETED -> "服务回执"
-                AccountRecoveryPhase.CLEANUP_WARNING -> "服务已成功 · 本机清理提示"
-                AccountRecoveryPhase.FAILED -> "本次已停止"
-                AccountRecoveryPhase.SESSION_CHANGED -> "会话已变化"
-                else -> "操作提示"
+                AccountRecoveryPhase.GUEST -> AppText.Recovery.GUEST_OPERATIONS_DISABLED
+                AccountRecoveryPhase.UNCERTAIN -> AppText.Common.RESULT_UNCONFIRMED_OPERATION_STOPPED
+                AccountRecoveryPhase.COMPLETED -> AppText.Common.SERVICE_RECEIPT_TITLE
+                AccountRecoveryPhase.CLEANUP_WARNING -> AppText.Recovery.SERVICE_SUCCEEDED_LOCAL_CLEANUP_NOTICE
+                AccountRecoveryPhase.FAILED -> AppText.Recovery.CURRENT_ATTEMPT_STOPPED
+                AccountRecoveryPhase.SESSION_CHANGED -> AppText.Common.SESSION_CHANGED
+                else -> AppText.Common.OPERATION_NOTICE_TITLE
             }, it) } }
             item("phone") { TextField(phone, {
                 phone = it; code = ""; password = ""; confirmation = ""; sendDialog = false; resetDialog = false
                 controller.phoneChanged()
-            }, label = "手动输入手机号", singleLine = true, enabled = editable,
+            }, label = AppText.Common.MANUAL_PHONE_NUMBER_FIELD, singleLine = true, enabled = editable,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth()) }
             item("send") { Button(enabled = sendEnabled, modifier = Modifier.fillMaxWidth(), onClick = { sendDialog = true }) {
-                Text(if (state.cooldownSeconds > 0) "本地等待 ${state.cooldownSeconds} 秒" else "请求验证码（会发送短信）")
+                Text(if (state.cooldownSeconds > 0) AppText.Recovery.cooldown((state.cooldownSeconds)) else AppText.Recovery.REQUEST_SMS_CODE)
             } }
-            if (state.cooldownSeconds > 0) item("countdown-note") { Text("倒计时仅为本地界面提示，不保证短信送达，也不是服务端验证码有效期。") }
+            if (state.cooldownSeconds > 0) item("countdown-note") { Text(AppText.Recovery.LOCAL_COUNTDOWN_NOT_DELIVERY_OR_EXPIRY_HINT) }
             item("code") { TextField(code, {
                 code = it; password = ""; confirmation = ""; resetDialog = false; controller.codeChanged()
-            }, label = "短信验证码", singleLine = true, enabled = editable && state.codeRequested,
+            }, label = AppText.Recovery.SMS_VERIFICATION_CODE_FIELD, singleLine = true, enabled = editable && state.codeRequested,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
             item("verify") { Button(enabled = editable && !state.verified && state.codeRequested && code.isNotBlank(), modifier = Modifier.fillMaxWidth(), onClick = {
                 val phoneSnapshot = phone; val codeSnapshot = code
                 scope.launch { controller.verify(phoneSnapshot, codeSnapshot) }
-            }) { Text(if (state.verified) "已完成当前核验" else "核验当前手机号与验证码") } }
+            }) { Text(if (state.verified) AppText.Recovery.CURRENT_VERIFICATION_COMPLETED else AppText.Recovery.VERIFY_CURRENT_PHONE_AND_CODE) } }
             if (state.verified) {
-                item("identity") { SectionCard("已核验手机号：${state.maskedPhone.orEmpty()}", "目标只来自本次验证码核验响应的 user.id，不使用当前登录 userId 或手填身份替代。编辑手机号或验证码即作废。") }
-                item("password") { TextField(password, { password = it }, label = "新的学校登录密码", enabled = editable,
+                item("identity") { SectionCard(AppText.Recovery.verifiedPhone((state.maskedPhone.orEmpty())), AppText.Recovery.VERIFIED_RESPONSE_IDENTITY_SCOPE_HINT) }
+                item("password") { TextField(password, { password = it }, label = AppText.Recovery.NEW_SCHOOL_LOGIN_PASSWORD_FIELD, enabled = editable,
                     singleLine = true, visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth()) }
-                item("confirmation") { TextField(confirmation, { confirmation = it }, label = "重复新的学校登录密码", enabled = editable,
+                item("confirmation") { TextField(confirmation, { confirmation = it }, label = AppText.Recovery.REPEAT_SCHOOL_LOGIN_PASSWORD_FIELD, enabled = editable,
                     singleLine = true, visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth()) }
-                item("policy") { Text("至少 8 位，包含字母、数字和符号，且不含空白。密码仅在本次页面内存使用，不预填、不保存。") }
+                item("policy") { Text(AppText.Recovery.PASSWORD_RULES_AND_MEMORY_ONLY_HINT) }
                 item("prepare") { Button(enabled = editable, modifier = Modifier.fillMaxWidth(), onClick = {
                     controller.prepare(phone, code, password, confirmation)
-                }) { Text("核对学校密码重置预览") } }
+                }) { Text(AppText.Recovery.REVIEW_SCHOOL_PASSWORD_RESET_PREVIEW) } }
             }
             state.preview?.let { preview -> item("preview") {
-                SectionCard("重置预览", "已核验手机号：${preview.maskedPhone}\n目标：该次短信核验返回的学校账号\n动作：重置学校登录密码并退出\n密码不展示；未知结果时停止，不自动重试。")
+                SectionCard(AppText.Recovery.RESET_PREVIEW_TITLE, AppText.Recovery.resetPreview((preview.maskedPhone)))
                 if (state.phase == AccountRecoveryPhase.PREVIEW) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TextButton("返回编辑", modifier = Modifier.weight(1f), onClick = { controller.editPreview() })
-                    TextButton("继续最终确认", modifier = Modifier.weight(1f), onClick = { resetDialog = true })
+                    TextButton(AppText.Common.BACK_TO_EDIT, modifier = Modifier.weight(1f), onClick = { controller.editPreview() })
+                    TextButton(AppText.Common.CONTINUE_TO_FINAL_CONFIRMATION, modifier = Modifier.weight(1f), onClick = { resetDialog = true })
                 }
             } }
             if (state.busy) item("busy") { CircularProgressIndicator() }
         }
-        OverlayDialog(show = backNotice && recoveryWriteInFlight(state), title = "正在等待服务回执",
+        OverlayDialog(show = backNotice && recoveryWriteInFlight(state), title = AppText.Recovery.AWAITING_SERVICE_RECEIPT,
             summary = RECOVERY_WRITE_BACK_NOTICE, onDismissRequest = { backNotice = false }) {
-            TextButton("继续等待", modifier = Modifier.fillMaxWidth(), onClick = { backNotice = false })
+            TextButton(AppText.Common.CONTINUE_WAITING, modifier = Modifier.fillMaxWidth(), onClick = { backNotice = false })
         }
-        OverlayDialog(show = sendDialog && sendEnabled, title = "确认发送短信？",
-            summary = "将向 ${if (phone.length == 11) phone.take(3) + "••••" + phone.takeLast(2) else "当前手机号"} 请求发送验证码。只有服务业务成功后启动本地 60 秒倒计时；这不保证送达。",
+        OverlayDialog(show = sendDialog && sendEnabled, title = AppText.Recovery.SEND_SMS_CONFIRM_TITLE,
+            summary = AppText.Recovery.sendCodeConfirmation((if (phone.length == 11) phone.take(3) + "••••" + phone.takeLast(2) else AppText.Recovery.CURRENT_PHONE_FALLBACK_LABEL)),
             onDismissRequest = { sendDialog = false }) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TextButton("取消", modifier = Modifier.weight(1f), onClick = { sendDialog = false })
-                TextButton("确认请求短信", modifier = Modifier.weight(1f), onClick = {
+                TextButton(AppText.Common.CANCEL, modifier = Modifier.weight(1f), onClick = { sendDialog = false })
+                TextButton(AppText.Recovery.CONFIRM_SMS_REQUEST, modifier = Modifier.weight(1f), onClick = {
                     val phoneSnapshot = phone; sendDialog = false
                     code = ""; password = ""; confirmation = ""
                     scope.launch { controller.sendCode(phoneSnapshot, confirmed = true) }
@@ -161,17 +162,15 @@ private fun AccountRecoveryBody(controller: AccountRecoveryController, onBack: (
             }
         }
         OverlayDialog(show = resetDialog && state.phase == AccountRecoveryPhase.PREVIEW,
-            title = "将重置学校登录密码并退出",
-            summary = "已核验手机号：${state.preview?.maskedPhone.orEmpty()}。这是学校账号登录密码，不是运营商密码。最终确认后只发送一次。",
+            title = AppText.Recovery.RESET_PASSWORD_AND_LOG_OUT_CONFIRM_TITLE,
+            summary = AppText.Recovery.resetConfirmation((state.preview?.maskedPhone.orEmpty())),
             onDismissRequest = { resetDialog = false }) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ConfirmationCheckRow(checked = acknowledged, label = AppText.Recovery.RESET_PASSWORD_AND_LOG_OUT_ACKNOWLEDGEMENT,
+                    onCheckedChange = { acknowledged = it })
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Checkbox(if (acknowledged) ToggleableState.On else ToggleableState.Off, onClick = { acknowledged = !acknowledged })
-                    Text("我已核对预览，确认重置学校登录密码并退出", Modifier.weight(1f))
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TextButton("返回预览", modifier = Modifier.weight(1f), onClick = { resetDialog = false })
-                    TextButton("最终确认重置", enabled = acknowledged, modifier = Modifier.weight(1f), onClick = {
+                    TextButton(AppText.Common.BACK_TO_PREVIEW, modifier = Modifier.weight(1f), onClick = { resetDialog = false })
+                    TextButton(AppText.Recovery.FINAL_CONFIRM_PASSWORD_RESET, enabled = acknowledged, modifier = Modifier.weight(1f), onClick = {
                         val id = state.preview?.id ?: return@TextButton
                         val agreed = acknowledged; resetDialog = false
                         scope.launch { controller.confirm(id, agreed) }

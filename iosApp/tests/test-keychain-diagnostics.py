@@ -28,6 +28,66 @@ def report(phase="seed", ok=True):
                              status=-25300 if ok else -34018)])  # Synthetic fixture, NOT an observed OSStatus.
 
 
+def fixture_der(value):
+    def tlv(tag, body):
+        size = bytes([len(body)]) if len(body) < 128 else bytes([0x82]) + len(body).to_bytes(2, "big")
+        return bytes([tag]) + size + body
+    def scalar(item):
+        if type(item) is bool:
+            return tlv(1, b"\xff" if item else b"\0")
+        if type(item) is int:
+            return tlv(2, item.to_bytes((item.bit_length() + 8) // 8, "big", signed=True))
+        if type(item) is dict:
+            return tlv(0xb0, b"".join(tlv(0x30, scalar(key) + scalar(child)) for key, child in sorted(item.items())))
+        if type(item) is list:
+            return tlv(0x30, b"".join(scalar(child) for child in item))
+        return tlv(12, item.encode("utf8"))
+    return tlv(0x70, tlv(2, b"\x01") + scalar(value))
+
+
+def packaged_fixture(*, simulated=True, real=None, mismatch=False, identity=None, omit_der=False,
+                     sim_extra=None, sim_der_extra=None, real_der=None):
+    """Non-executable minimal Mach-O64 structures, never a runnable native program."""
+    value = {"application-identifier": identity or "CIKEYCHAIN." + BUNDLE,
+             "com.apple.developer.team-identifier": "CIKEYCHAIN", "get-task-allow": True}
+    value.update(sim_extra or {})
+    der_value = {**value, **(sim_der_extra or {})}
+    sections = []
+    if simulated:
+        sections = [("__entitlements", plistlib.dumps(value)),
+                    ("__ents_der", fixture_der({**der_value, "get-task-allow": False} if mismatch else der_value))]
+        if omit_der:
+            sections = sections[:1]
+    command_size = 72 + 80 * len(sections) + 16
+    offset = 32 + command_size
+    body, records = b"", b""
+    for name, data in sections:
+        records += struct.pack("<16s16sQQIIIIIIII", name.encode(), b"__TEXT", offset, len(data), offset, 0, 0, 0, 0, 0, 0, 0)
+        body += data
+        offset += len(data)
+    directory = bytearray(52)
+    identifier = BUNDLE.encode() + b"\0"
+    struct.pack_into(">IIIIII", directory, 0, 0xfade0c02, len(directory) + len(identifier), 0x20400, 2, 0, 52)
+    directory += identifier
+    blobs = [(0, bytes(directory))]
+    if real is not None:
+        for slot, magic, data in ((5, 0xfade7171, plistlib.dumps(real)),
+                                  (7, 0xfade7172, fixture_der(real if real_der is None else real_der))):
+            blobs.append((slot, struct.pack(">II", magic, 8 + len(data)) + data))
+    head_size = 12 + len(blobs) * 8
+    indexes, payload = b"", b""
+    for slot, blob in blobs:
+        indexes += struct.pack(">II", slot, head_size + len(payload))
+        payload += blob
+    signature = struct.pack(">III", 0xfade0cc0, head_size + len(payload), len(blobs)) + indexes + payload
+    segment = bytearray(72)
+    struct.pack_into("<II16s", segment, 0, 0x19, 72 + len(records), b"__TEXT")
+    struct.pack_into("<I", segment, 64, len(sections))
+    sigcmd = struct.pack("<IIII", 0x1d, 16, offset, len(signature))
+    header = struct.pack("<IIIIIIII", 0xfeedfacf, 0x100000c, 0, 2, 2, command_size, 0, 0)
+    return header + segment + records + sigcmd + body + signature
+
+
 class FakeRunner:
     def __init__(self, container):
         self.container = container
@@ -118,6 +178,220 @@ class DiagnosticsTests(unittest.TestCase):
         return diag.run_diagnostics(self.artifacts, self.app, BUNDLE, OWN, self.runner,
                                     self.pids.append, sleep=lambda _: None, signer=self.signer,
                                     clock=lambda: 0.0, mode=mode)
+
+    def packaged_app(self, **kwargs):
+        (self.app / "BetterZslf").write_bytes(packaged_fixture(**kwargs))
+
+    def xcode_probe(self, run=None):
+        run = run or mock.Mock(return_value=mock.Mock(returncode=0, stdout=b"fixture-details", stderr=b"fixture-requirements"))
+        with mock.patch.object(diag.sys, "platform", "darwin"), mock.patch.object(diag.subprocess, "run", run), \
+                mock.patch.object(diag.shutil, "which", return_value="/fixture/codesign"):
+            return diag.run_diagnostics(self.artifacts, self.app, BUNDLE, OWN, self.runner,
+                                        self.pids.append, sleep=lambda _: None, clock=lambda: 0,
+                                        mode="signed-positive", signing_method="xcode-simulator")
+
+    def test_xcode_packaged_copy_audits_sections_and_never_resigns(self):
+        self.packaged_app(real={"get-task-allow": True})
+        (self.app / "BetterZslf.debug.dylib").write_bytes(packaged_fixture(simulated=False))
+        before = diag.file_sha256(self.app / "BetterZslf")
+        run = mock.Mock(return_value=mock.Mock(returncode=0, stdout=b"fixture", stderr=b"fixture"))
+        with mock.patch.object(diag.sys, "platform", "darwin"), \
+                mock.patch.object(diag.shutil, "which", return_value="/fixture/codesign"):
+            copy = diag.prepare_xcode_simulator_copy(self.artifacts, self.app, BUNDLE, run=run)
+        self.assertEqual(diag.file_sha256(copy / "BetterZslf"), before)
+        self.assertEqual(diag.file_sha256(self.app / "BetterZslf"), before)
+        self.assertTrue(all("--sign" not in call.args[0] for call in run.call_args_list))
+        self.assertTrue(all(call.kwargs["timeout"] == 15 for call in run.call_args_list))
+        meta = json.loads((self.artifacts / "signed/signing.json").read_text())
+        self.assertEqual(meta["profile"], "xcode-simulator-packaged")
+        self.assertTrue(meta["source_unchanged"])
+        self.assertEqual(meta["images"][0]["simulated_xml"], meta["images"][0]["simulated_der"])
+        self.assertEqual(meta["images"][0]["signature_xml"], {"get-task-allow": True})
+
+    def test_xcode_missing_unknown_mismatch_or_real_claim_stops_before_install(self):
+        cases = ({"simulated": False}, {"omit_der": True}, {"mismatch": True}, {"identity": "wrong.application"},
+                 {"real": {"application-identifier": "CIKEYCHAIN." + BUNDLE}},
+                 {"real": {"com.apple.developer.team-identifier": "CIKEYCHAIN"}},
+                 {"real": {"keychain-access-groups": "unexpected-group"}})
+        for fields in cases:
+            with self.subTest(fields=fields):
+                self.setUp()
+                self.packaged_app(**fields)
+                with self.assertRaises(ValueError):
+                    self.xcode_probe()
+                self.assertFalse(any(args[0] == "install" for args, _ in self.runner.calls))
+                meta = json.loads((self.artifacts / "signed/signing.json").read_text())
+                self.assertEqual(meta["result"], "failed")
+                self.assertEqual(self.runner.launches, [])
+
+    def test_entitlement_canonical_is_nested_type_exact_and_rejects_unknown_types(self):
+        boolean = {"nested": [{"flag": True}]}
+        integer = {"nested": [{"flag": 1}]}
+        self.assertEqual(boolean, integer)  # Reproduce Python's loose comparison, not the evidence gate.
+        self.assertNotEqual(diag.canonical_entitlements(boolean), diag.canonical_entitlements(integer))
+        self.assertEqual(diag.canonical_entitlements({"b": 1, "a": boolean}),
+                         diag.canonical_entitlements({"a": boolean, "b": 1}))
+        for value in ({"nested": [None]}, {"nested": [1.0]}, {"data": b"unsupported"}, {1: "key"}):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                diag.canonical_entitlements(value)
+        with self.assertRaises(ValueError):
+            diag.decode_entitlement_der(fixture_der({}).replace(b"\x02\x01\x01", b"\x01\x01\xff", 1))
+
+    def test_nested_bool_int_mismatch_blocks_source_copy_and_native_install(self):
+        boolean = {"nested": [{"flag": True}]}
+        integer = {"nested": [{"flag": 1}]}
+        for stage in ("signature", "simulated", "cross-image", "copy-signature", "copy-simulated"):
+            with self.subTest(stage=stage):
+                self.setUp()
+                fields = {"sim_extra": boolean}
+                if stage == "signature":
+                    fields.update(real=boolean, real_der=integer)
+                elif stage == "simulated":
+                    fields["sim_der_extra"] = integer
+                self.packaged_app(**fields)
+                if stage == "cross-image":
+                    (self.app / "BetterZslf.debug.dylib").write_bytes(packaged_fixture(sim_extra=integer))
+                original_copy = diag.shutil.copytree
+                def copied(source, target, **kwargs):
+                    result = original_copy(source, target, **kwargs)
+                    if stage == "copy-signature":
+                        (Path(target) / "BetterZslf").write_bytes(packaged_fixture(real=boolean, real_der=integer))
+                    elif stage == "copy-simulated":
+                        (Path(target) / "BetterZslf").write_bytes(packaged_fixture(sim_extra=boolean, sim_der_extra=integer))
+                    return result
+                with mock.patch.object(diag.shutil, "copytree", side_effect=copied), self.assertRaises(ValueError):
+                    self.xcode_probe()
+                self.assertFalse(any(args[0] == "install" for args, _ in self.runner.calls))
+                self.assertEqual(self.runner.launches, [])
+                meta = json.loads((self.artifacts / "signed/signing.json").read_text())
+                self.assertEqual(meta["result"], "failed")
+
+    def test_xcode_verify_nonzero_is_not_installable(self):
+        self.packaged_app()
+        def run(command, **_):
+            return mock.Mock(returncode=7 if "--verify" in command else 0, stdout=b"fixture", stderr=b"fixture")
+        with self.assertRaises(RuntimeError):
+            self.xcode_probe(run)
+        self.assertFalse(any(args[0] == "install" for args, _ in self.runner.calls))
+        result = json.loads((self.artifacts / "signed/xcode-verify.result.json").read_text())
+        self.assertEqual(result["returncode"], 7)
+
+    def test_xcode_method_keeps_one_install_two_real_report_phases_and_ui_pending(self):
+        self.packaged_app()
+        value = self.xcode_probe()
+        self.assertEqual(value["signing_method"], "xcode-simulator")
+        self.assertEqual(value["unsigned"]["result"], "not_run")
+        self.assertEqual(len(self.runner.launches), 2)
+        self.assertEqual(len(set(self.pids)), 2)
+        self.assertEqual(sum(args[0] == "install" for args, _ in self.runner.calls), 1)
+        self.assertFalse(any(args[0] == "uninstall" for args, _ in self.runner.calls))
+        self.assertTrue(value["signed"]["seed"]["termination"]["confirmed_absent"])
+        self.assertFalse(value["login_ui_verified"])
+
+    def test_xcode_method_native_failure_in_either_phase_is_still_fatal(self):
+        for phase in ("seed", "verify"):
+            with self.subTest(phase=phase):
+                self.setUp()
+                self.packaged_app()
+                self.runner.report_overrides["signed-" + phase + "-launch"] = {"graphOk": False}
+                with self.assertRaisesRegex(RuntimeError, "checks failed"):
+                    self.xcode_probe()
+                self.assertEqual(len(self.runner.launches), 1 if phase == "seed" else 2)
+                self.assertEqual(sum(args[0] == "install" for args, _ in self.runner.calls), 1)
+
+    def test_der_decoder_is_bounded_and_preserves_false(self):
+        self.assertEqual(diag.decode_entitlement_der(fixture_der({"get-task-allow": False})), {"get-task-allow": False})
+        for value in (b"", b"\x70\x80", b"\x30\x00", b"\x70\x7f", b"x" * (diag.MAX_REPORT_BYTES + 1)):
+            with self.subTest(value=value[:8]), self.assertRaises(ValueError):
+                diag.decode_entitlement_der(value)
+
+    def test_layout_parser_rejects_huge_commands_and_retains_failure_record(self):
+        path = self.app / "BetterZslf"
+        header = bytearray(packaged_fixture()[:32])
+        struct.pack_into("<I", header, 20, diag.MAX_LAYOUT_BYTES + 1)
+        path.write_bytes(header)
+        with self.assertRaises(ValueError):
+            diag.inspect_macho(path, self.artifacts, "bad-layout")
+        self.assertIn("error", json.loads((self.artifacts / "bad-layout.json").read_text()))
+
+    def test_xcode_build_records_actual_tools_settings_and_packaging_inputs(self):
+        derived = self.root / "new-build"
+        calls = []
+        def run(command, **kwargs):
+            calls.append((command, kwargs["timeout"]))
+            self.assertNotEqual(kwargs["stdout"], smoke.subprocess.PIPE)
+            kwargs["stdout"].write(b"SYNTHETIC TOOL OUTPUT, NOT AN ACTUAL SDK VERSION\n")
+            if command[-1] == "build":
+                directory = derived / "Build/Intermediates.noindex/BetterZslf.build/Debug-iphonesimulator/BetterZslf.build"
+                directory.mkdir(parents=True)
+                (directory / "BetterZslf.app-Simulated.xcent").write_bytes(b"fixture")
+            return mock.Mock(returncode=0)
+        with mock.patch.object(diag.sys, "platform", "darwin"):
+            diag.build_xcode_simulator(derived, run=run)
+        command = calls[-1][0]
+        metadata = calls[-2][0]
+        result_path = str(derived.resolve() / "build.xcresult")
+        self.assertEqual(metadata[-1], "-showBuildSettings")
+        self.assertNotIn("-resultBundlePath", metadata)
+        self.assertNotIn(result_path, metadata)
+        self.assertEqual(command[-1], "build")
+        self.assertEqual(command.count("-resultBundlePath"), 1)
+        self.assertEqual(command[command.index("-resultBundlePath") + 1], result_path)
+        self.assertEqual(sum("-resultBundlePath" in args for args, _ in calls), 1)
+        self.assertIn("CODE_SIGNING_ALLOWED=YES", command)
+        self.assertIn("CODE_SIGN_IDENTITY=-", command)
+        self.assertIn("OTHER_CODE_SIGN_FLAGS=", command)
+        self.assertFalse(any("DEVELOPMENT_TEAM" in item for item in command))
+        self.assertIn("iphonesimulator", command)
+        self.assertEqual([value for _, value in calls], [30, 30, 15, 60, 1200])
+        evidence = derived / "Logs/xcode-packaging"
+        self.assertEqual(len(json.loads((evidence / "packaging-inputs.json").read_text())), 1)
+        self.assertEqual(json.loads((evidence / "build.result.json").read_text())["outcome"], "success")
+
+    def test_xcode_build_timeout_remains_timeout_with_streamed_partial_output(self):
+        derived = self.root / "failed-build"
+        def run(command, **kwargs):
+            kwargs["stdout"].write(b"partial fixture")
+            if command[-1] == "build":
+                raise smoke.subprocess.TimeoutExpired(command, 1200)
+            return mock.Mock(returncode=0)
+        with mock.patch.object(diag.sys, "platform", "darwin"), self.assertRaises(smoke.subprocess.TimeoutExpired):
+            diag.build_xcode_simulator(derived, run=run)
+        evidence = derived / "Logs/xcode-packaging"
+        result = json.loads((evidence / "build.result.json").read_text())
+        self.assertTrue(result["timed_out"])
+        self.assertTrue(result["partial"])
+        self.assertEqual(result["stdout_bytes"], len(b"partial fixture"))
+
+    def test_build_timeout_primary_survives_retention_size_failure(self):
+        derived = self.root / "failed-retention"
+        primary = smoke.subprocess.TimeoutExpired("synthetic-build", 1200)
+        def run(command, **kwargs):
+            if command[-1] == "build":
+                directory = derived / "Build/Intermediates.noindex/BetterZslf.build/Debug-iphonesimulator/BetterZslf.build"
+                directory.mkdir(parents=True)
+                with (directory / "oversized.xcent").open("wb") as stream:
+                    stream.truncate(diag.MAX_LAYOUT_BYTES + 1)
+                raise primary
+            return mock.Mock(returncode=0)
+        with mock.patch.object(diag.sys, "platform", "darwin"), self.assertRaises(smoke.subprocess.TimeoutExpired) as raised:
+            diag.build_xcode_simulator(derived, run=run)
+        self.assertIs(raised.exception, primary)
+        evidence = derived / "Logs/xcode-packaging"
+        self.assertEqual(json.loads((evidence / "build.result.json").read_text())["error_type"], "TimeoutExpired")
+        self.assertEqual(json.loads((evidence / "packaging-retention-error.json").read_text())["type"], "ValueError")
+
+    def test_parent_xcode_method_propagates_and_keeps_manual_ui_review(self):
+        sys.path.insert(0, str(ROOT / "scripts/tests"))
+        from test_ios_simulator_smoke import FakeSimctl
+        runner = FakeSimctl()
+        with mock.patch.object(diag, "run_diagnostics", return_value={"pid": 4321}) as probe:
+            value = smoke.smoke(self.artifacts, self.app, runner, sleep=lambda _: None,
+                                keychain_diagnostics=True, diagnostic_mode="signed-positive", signing_method="xcode-simulator")
+        self.assertEqual(probe.call_args.kwargs["signing_method"], "xcode-simulator")
+        self.assertEqual(value["signing_method"], "xcode-simulator")
+        self.assertFalse(value["login_ui_verified"])
+        self.assertIn("multi-condition", (self.artifacts / "README.md").read_text())
 
     def test_signed_positive_uses_one_install_no_a_and_keeps_ui_pending(self):
         # Exercise a noncanonical alias on every OS without symlink privileges.

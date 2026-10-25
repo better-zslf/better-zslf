@@ -1,5 +1,6 @@
 package io.github.betterzslf.ui.campusnet
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -56,91 +57,91 @@ private fun CampusNetworkPage(controller: CampusNetworkController, onBack: () ->
         }
     }
 
-    Screen("校园网", onBack, actions = {
-        TextButton("刷新", enabled = !state.busy && state.phase != CampusPasswordPhase.SESSION_CHANGED,
+    Screen(AppText.CampusNetwork.CAMPUS_NETWORK_TITLE, onBack, actions = {
+        TextButton(AppText.Common.REFRESH, enabled = !state.busy && state.phase != CampusPasswordPhase.SESSION_CHANGED,
             onClick = { scope.launch { controller.refresh() } })
     }) { padding ->
         PullToRefresh(state.loading, { scope.launch { controller.refresh() } },
             modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item("intro") { SectionCard("已办理的运营商宽带账号", "只查询当前登录会话的账号。账号已遮盖；不会预填手机号或密码。") }
+                item("intro") { SectionCard(AppText.CampusNetwork.PROVISIONED_BROADBAND_ACCOUNTS_TITLE, AppText.CampusNetwork.MASKED_SESSION_ACCOUNT_QUERY_HINT) }
                 if (state.loading) item("loading") { CircularProgressIndicator() }
                 state.queryMessage?.let { message -> item("query-error") {
-                    SectionCard("账号查询提示", message + "；原有列表保留，需成功刷新后再选操作账号。")
+                    SectionCard(AppText.CampusNetwork.ACCOUNT_QUERY_NOTICE, message + AppText.CampusNetwork.PREVIOUS_ACCOUNTS_RETAINED_REFRESH_SUFFIX)
                 } }
                 if (!state.loading && state.queryMessage == null && state.accounts.isEmpty() && state.phase != CampusPasswordPhase.SESSION_CHANGED)
-                    item("empty") { EmptyCard("暂无已办理的宽带账号") }
+                    item("empty") { EmptyCard(AppText.CampusNetwork.NO_PROVISIONED_BROADBAND_ACCOUNTS) }
                 items(state.accounts, key = { it.key }) { account ->
                     Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues(16.dp)) {
-                        Text("宽带账号：${account.maskedAccount}")
-                        if (account.typeStatus.isNotBlank()) Text("类型状态：${account.typeStatus}")
-                        if (!account.canChangePassword) Text("缺少或存在重复的账号标识，当前只读，不生成修改目标。")
+                        Text(AppText.CampusNetwork.accountLine((account.maskedAccount)))
+                        if (account.typeStatus.isNotBlank()) Text(AppText.CampusNetwork.typeStatus((account.typeStatus)))
+                        if (!account.canChangePassword) Text(AppText.CampusNetwork.INVALID_ACCOUNT_IDS_READ_ONLY_HINT)
                         if (state.expanded) TextButton(
-                            if (state.selectedAccountKey == account.key) "已选择此账号" else "选择此账号",
+                            if (state.selectedAccountKey == account.key) AppText.CampusNetwork.ACCOUNT_SELECTED else AppText.CampusNetwork.SELECT_THIS_ACCOUNT,
                             enabled = selectable && account.canChangePassword,
                             onClick = { controller.selectAccount(account.key) })
                     }
                 }
                 item("operation-toggle") {
-                    SectionCard("运营商密码操作", if (state.expanded) "点按收起并清除输入" else "默认隐藏；手动展开后才进入操作流程",
+                    SectionCard(AppText.CampusNetwork.CARRIER_PASSWORD_ACTIONS_TITLE, if (state.expanded) AppText.CampusNetwork.COLLAPSE_AND_CLEAR_PASSWORD_INPUT else AppText.CampusNetwork.MANUAL_EXPANSION_REQUIRED_HINT,
                         onClick = { controller.setExpanded(!state.expanded) })
                 }
                 if (state.expanded && !state.terminal) {
-                    item("warning") { SectionCard("这里不是学校登录密码", "仅针对上方主动选中的运营商宽带账号。手机号检查可能发送短信，不等于短信验证码核验；本页不会自动检查手机号或修改密码，也不执行一键联网。") }
-                    if (selected == null) item("choose") { SectionCard("先选择账号", "只接受本次成功查询返回的有效账号标识；资料不足时保持只读。") }
+                    item("warning") { SectionCard(AppText.CampusNetwork.NOT_SCHOOL_LOGIN_PASSWORD_TITLE, AppText.CampusNetwork.CARRIER_ACCOUNT_PASSWORD_SCOPE_HINT) }
+                    if (selected == null) item("choose") { SectionCard(AppText.CampusNetwork.SELECT_ACCOUNT_FIRST_TITLE, AppText.CampusNetwork.QUERIED_VALID_ACCOUNT_REQUIRED_HINT) }
                     item("phone") { TextField(phone, { phone = it; password = ""; confirmation = ""; controller.forgetPhoneCheck() },
-                        label = "手动输入手机号", singleLine = true, enabled = editable && selected?.canChangePassword == true,
+                        label = AppText.Common.MANUAL_PHONE_NUMBER_FIELD, singleLine = true, enabled = editable && selected?.canChangePassword == true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth()) }
                     item("check-phone") { Button(enabled = editable && !state.phoneChecked && selected?.canChangePassword == true && campusPhoneValidation(phone) == null,
                         modifier = Modifier.fillMaxWidth(), onClick = { scope.launch { controller.checkPhone(phone) } }) {
-                        Text(if (state.checkingPhone) "正在检查…" else if (state.phoneChecked) "手机号检查已通过" else "检查手机号（可能发送短信）")
+                        Text(if (state.checkingPhone) AppText.Common.CHECKING else if (state.phoneChecked) AppText.CampusNetwork.PHONE_CHECK_PASSED else AppText.CampusNetwork.CHECK_PHONE_MAY_SEND_SMS)
                     } }
                     if (state.phoneChecked) {
-                        item("new-password") { TextField(password, { password = it }, label = "新的运营商宽带密码", singleLine = true,
+                        item("new-password") { TextField(password, { password = it }, label = AppText.CampusNetwork.NEW_BROADBAND_PASSWORD_FIELD, singleLine = true,
                             enabled = editable, visualTransformation = PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth()) }
-                        item("repeat-password") { TextField(confirmation, { confirmation = it }, label = "确认运营商宽带密码", singleLine = true,
+                        item("repeat-password") { TextField(confirmation, { confirmation = it }, label = AppText.CampusNetwork.CONFIRM_BROADBAND_PASSWORD_FIELD, singleLine = true,
                             enabled = editable, visualTransformation = PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth()) }
                         item("prepare") { Button(enabled = editable, modifier = Modifier.fillMaxWidth(),
-                            onClick = { controller.prepare(phone, password, confirmation) }) { Text("核对并准备预览") } }
+                            onClick = { controller.prepare(phone, password, confirmation) }) { Text(AppText.CampusNetwork.REVIEW_AND_PREPARE_PREVIEW) } }
                     }
                 }
                 state.preview?.let { preview ->
-                    item("preview") { SectionCard("本次操作预览", "运营商账号：${preview.maskedAccount}\n手机号：${preview.maskedPhone}\n动作：修改运营商宽带密码\n新密码不展示、不保存；提交后本页不重复发送。") }
+                    item("preview") { SectionCard(AppText.CampusNetwork.CURRENT_OPERATION_PREVIEW_TITLE, AppText.CampusNetwork.passwordPreview((preview.maskedAccount), (preview.maskedPhone))) }
                     if (state.phase == CampusPasswordPhase.PREVIEW) item("final-actions") {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            TextButton("返回编辑", modifier = Modifier.weight(1f), onClick = { controller.editPreview() })
-                            TextButton("继续最终确认", modifier = Modifier.weight(1f), onClick = { finalDialog = true })
+                            TextButton(AppText.Common.BACK_TO_EDIT, modifier = Modifier.weight(1f), onClick = { controller.editPreview() })
+                            TextButton(AppText.Common.CONTINUE_TO_FINAL_CONFIRMATION, modifier = Modifier.weight(1f), onClick = { finalDialog = true })
                         }
                     }
                 }
                 if (state.checkingPhone || state.phase == CampusPasswordPhase.SUBMITTING) item("operation-progress") { CircularProgressIndicator() }
                 state.formMessage?.let { message -> item("form-message") {
                     SectionCard(when (state.phase) {
-                        CampusPasswordPhase.COMPLETED -> "服务回执"
-                        CampusPasswordPhase.UNCERTAIN -> "结果尚未确认 · 已停止"
-                        CampusPasswordPhase.FAILED -> "本次操作已停止"
-                        CampusPasswordPhase.SESSION_CHANGED -> "登录会话已变化"
-                        else -> "操作提示"
+                        CampusPasswordPhase.COMPLETED -> AppText.Common.SERVICE_RECEIPT_TITLE
+                        CampusPasswordPhase.UNCERTAIN -> AppText.Common.RESULT_UNCONFIRMED_OPERATION_STOPPED
+                        CampusPasswordPhase.FAILED -> AppText.CampusNetwork.CURRENT_OPERATION_STOPPED
+                        CampusPasswordPhase.SESSION_CHANGED -> AppText.CampusNetwork.LOGIN_SESSION_CHANGED
+                        else -> AppText.Common.OPERATION_NOTICE_TITLE
                     }, message)
                 } }
-                if (state.terminal) item("terminal") { Text("仅可刷新账号查询；本页不会重试密码修改。需要进一步操作时，请先核对实际结果。") }
+                if (state.terminal) item("terminal") { Text(AppText.CampusNetwork.REFRESH_ONLY_NO_PASSWORD_RETRY_HINT) }
             }
         }
         OverlayDialog(show = finalDialog && state.phase == CampusPasswordPhase.PREVIEW,
-            title = "最终确认修改运营商密码？",
-            summary = "目标账号：${state.preview?.maskedAccount.orEmpty()}。这会真实修改运营商宽带密码，不是学校账号登录密码。请先核对上方完整预览。",
+            title = AppText.CampusNetwork.CARRIER_PASSWORD_FINAL_CONFIRM_TITLE,
+            summary = AppText.CampusNetwork.passwordTarget((state.preview?.maskedAccount.orEmpty())),
             onDismissRequest = { finalDialog = false }) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Checkbox(if (acknowledged) ToggleableState.On else ToggleableState.Off, onClick = { acknowledged = !acknowledged })
-                    Text("我已核对目标与操作，确认只提交这一次", Modifier.weight(1f))
+                    Text(AppText.CampusNetwork.SINGLE_SUBMISSION_ACKNOWLEDGEMENT, Modifier.weight(1f))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TextButton("返回预览", modifier = Modifier.weight(1f), onClick = { finalDialog = false })
-                    TextButton("确认修改", enabled = acknowledged, modifier = Modifier.weight(1f), onClick = {
+                    TextButton(AppText.Common.BACK_TO_PREVIEW, modifier = Modifier.weight(1f), onClick = { finalDialog = false })
+                    TextButton(AppText.CampusNetwork.CONFIRM_PASSWORD_CHANGE, enabled = acknowledged, modifier = Modifier.weight(1f), onClick = {
                         val id = state.preview?.id ?: return@TextButton
                         finalDialog = false
                         scope.launch { controller.confirm(id, acknowledged) }

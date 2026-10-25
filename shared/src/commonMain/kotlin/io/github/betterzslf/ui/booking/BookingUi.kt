@@ -1,17 +1,17 @@
 package io.github.betterzslf.ui.booking
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.feature.booking.*
+import io.github.betterzslf.ui.ConfirmationCheckRow
 import io.github.betterzslf.ui.SectionCard
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -40,10 +40,10 @@ internal fun LazyListScope.bookingQueryFeedback(state: BookingQueryState, refres
         Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() }
     }
     if (state.error != null) item("$prefix:error") {
-        SectionCard(if (state.data == null) "加载失败" else "刷新失败，保留上次结果",
-            state.error.message + "\n点按重新查询，不会重试任何写操作。", refresh)
+        SectionCard(if (state.data == null) AppText.Common.LOAD_FAILED else AppText.Common.REFRESH_FAILED_PREVIOUS_RESULTS_RETAINED,
+            state.error.message + AppText.Booking.REQUERY_WITHOUT_WRITE_RETRY_NEWLINE_SUFFIX, refresh)
     }
-    if (state.message.isNotBlank()) item("$prefix:message") { SectionCard("服务端提示", state.message) }
+    if (state.message.isNotBlank()) item("$prefix:message") { SectionCard(AppText.Common.SERVER_NOTICE_TITLE, state.message) }
 }
 
 /** Every returned record is its own lazy item. Full-result APIs are paged locally, never with guessed query parameters. */
@@ -80,33 +80,33 @@ internal fun BookingLazyList(
             if (rows.isNotEmpty()) {
                 item("search") {
                     TextField(window.query, { window = window.search(it) }, modifier = Modifier.fillMaxWidth(),
-                        label = "搜索已返回的内容", singleLine = true)
+                        label = AppText.Booking.SEARCH_RETURNED_CONTENT_FIELD, singleLine = true)
                 }
                 if (statuses.isNotEmpty()) item("status-filter") {
                     // Raw codes are kept verbatim: no undocumented numeric-to-business-state mapping.
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("状态筛选：${window.status.ifBlank { "全部" }}（服务端原值）")
+                        Text(AppText.Booking.statusFilter((window.status.ifBlank { AppText.Common.ALL })))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            TextButton("全部", onClick = { window = window.filter("") })
-                            TextButton("下一状态", onClick = {
+                            TextButton(AppText.Common.ALL, onClick = { window = window.filter("") })
+                            TextButton(AppText.Booking.NEXT_STATUS_FILTER, onClick = {
                                 val next = (statuses.indexOf(window.status) + 1) % statuses.size
                                 window = window.filter(statuses[next])
                             })
                         }
                     }
                 }
-                item("result-count") { Text("本地筛选 ${filtered.size} / ${rows.size} 条 · 已展开 ${shown.size} 条") }
+                item("result-count") { Text(AppText.Booking.localFilterCounts((filtered.size), (rows.size), (shown.size))) }
             }
             if (!state.loading && state.error == null && rows.isEmpty()) item("empty") {
-                SectionCard(empty, "服务端尚未返回可展示的记录，可稍后刷新。")
+                SectionCard(empty, AppText.Booking.NO_SERVER_RECORDS_REFRESH_LATER_HINT)
             }
             if (rows.isNotEmpty() && filtered.isEmpty()) item("no-match") {
-                SectionCard("没有匹配结果", "清除搜索或切回全部状态后重试。")
+                SectionCard(AppText.Common.NO_MATCHING_RESULTS, AppText.Booking.CLEAR_SEARCH_OR_RESET_STATUS_HINT)
             }
             itemsIndexed(shown, key = { index, item -> "record:$index:${item.bookingId()}" },
                 contentType = { _, _ -> "booking-record" }) { index, item -> row(item, index) }
-            if (hasMore) item("load-more") { TextButton("加载更多（${shown.size}/${filtered.size}）", onClick = loadMore) }
-            if (rows.isNotEmpty() && !hasMore && filtered.isNotEmpty()) item("end") { Text("已展示全部匹配记录") }
+            if (hasMore) item("load-more") { TextButton(AppText.Booking.loadMoreCounts((shown.size), (filtered.size)), onClick = loadMore) }
+            if (rows.isNotEmpty() && !hasMore && filtered.isNotEmpty()) item("end") { Text(AppText.Booking.ALL_MATCHING_RECORDS_SHOWN) }
             footer()
         }
     }
@@ -118,8 +118,8 @@ internal fun BookingRecordCard(item: JsonElement, title: String, onClick: (() ->
     var expanded by remember(item) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         SectionCard(title, fields.take(if (expanded) 24 else 5).joinToString("\n") { "${it.path}：${it.value.take(500)}" }, onClick)
-        if (fields.size > 5) TextButton(if (expanded) "收起字段" else "展开返回字段", onClick = { expanded = !expanded })
-        if (expanded && fields.size > 24) Text("更多字段请打开详情查看。")
+        if (fields.size > 5) TextButton(if (expanded) AppText.Booking.COLLAPSE_FIELDS else AppText.Booking.EXPAND_RETURNED_FIELDS, onClick = { expanded = !expanded })
+        if (expanded && fields.size > 24) Text(AppText.Booking.OPEN_DETAILS_FOR_MORE_FIELDS_HINT)
     }
 }
 
@@ -133,10 +133,7 @@ internal fun LazyListScope.bookingFieldsItems(data: JsonElement?, prefix: String
 
 @Composable
 internal fun BookingCheck(checked: Boolean, label: String, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Checkbox(if (checked) ToggleableState.On else ToggleableState.Off, onClick = { onChange(!checked) }, enabled = enabled)
-        Text(label, Modifier.weight(1f))
-    }
+    ConfirmationCheckRow(checked = checked, label = label, enabled = enabled, onCheckedChange = onChange)
 }
 
 /** Kept inside the Screen/Scaffold content, never made a navigation destination. */
@@ -146,16 +143,16 @@ internal fun BookingFinalDialog(controller: BookingConfirmation, requested: Bool
     val scope = rememberCoroutineScope()
     var finalAcknowledged by remember(state.previewId) { mutableStateOf(false) }
     val show = requested && state.phase == BookingPhase.PREVIEW
-    OverlayDialog(show = show, title = "最终核对：${state.preview?.title.orEmpty()}",
-        summary = if (controller.permitsSubmission) "确认后将向学校服务提交当前预览中的信息。请核对场地、日期、身份资料与附件；失败后保留步骤，不会自动重提。"
-            else "此操作暂未接通。确认后只展示当前状态，不会改变预约或报名。",
+    OverlayDialog(show = show, title = AppText.Booking.finalCheckTitle((state.preview?.title.orEmpty())),
+        summary = if (controller.permitsSubmission) AppText.Booking.FINAL_SUBMISSION_REVIEW_HINT
+            else AppText.Booking.UNCONNECTED_OPERATION_PREVIEW_ONLY_HINT,
         onDismissRequest = close) {
         // The full preview is a lazy list below; this bounded dialog is only the final explicit acknowledgement.
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            BookingCheck(finalAcknowledged, if (controller.permitsSubmission) "我已核对完整预览，确认提交以上信息" else "我已核对预览，了解此操作暂不提交") { finalAcknowledged = it }
+            BookingCheck(finalAcknowledged, if (controller.permitsSubmission) AppText.Booking.FINAL_SUBMISSION_ACKNOWLEDGEMENT else AppText.Booking.PREVIEW_ONLY_ACKNOWLEDGEMENT) { finalAcknowledged = it }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TextButton("返回编辑", onClick = { controller.edit(); close() }, modifier = Modifier.weight(1f))
-                TextButton(if (controller.permitsSubmission) "确认提交" else "确认查看状态", enabled = finalAcknowledged,
+                TextButton(AppText.Common.BACK_TO_EDIT, onClick = { controller.edit(); close() }, modifier = Modifier.weight(1f))
+                TextButton(if (controller.permitsSubmission) AppText.Common.CONFIRM_SUBMISSION else AppText.Booking.CONFIRM_VIEW_STATUS, enabled = finalAcknowledged,
                     onClick = { close(); scope.launch { controller.confirm(state.previewId, finalAcknowledged) } }, modifier = Modifier.weight(1f))
             }
         }
@@ -164,13 +161,13 @@ internal fun BookingFinalDialog(controller: BookingConfirmation, requested: Bool
 
 internal fun LazyListScope.bookingConfirmationItems(state: BookingConfirmationState, edit: () -> Unit) {
     if (state.message.isNotBlank()) item("confirmation-message") {
-        SectionCard(if (state.phase == BookingPhase.BLOCKED) "提交已暂停 · 未发送" else "操作状态", state.message)
+        SectionCard(if (state.phase == BookingPhase.BLOCKED) AppText.Booking.SUBMISSION_PAUSED_NOT_SENT else AppText.Common.OPERATION_STATUS_TITLE, state.message)
     }
     val preview = state.preview
     if (preview != null) {
-        item("preview-title") { SmallTitle("最终预览 · ${preview.title}") }
-        itemsIndexed(preview.lines, key = { index, _ -> "preview:$index" }) { _, line -> SectionCard("核对项", line) }
+        item("preview-title") { SmallTitle(AppText.Booking.finalPreviewTitle((preview.title))) }
+        itemsIndexed(preview.lines, key = { index, _ -> "preview:$index" }) { _, line -> SectionCard(AppText.Common.REVIEW_CHECKLIST_TITLE, line) }
     }
     itemsIndexed(state.steps, key = { index, _ -> "step:$index" }) { _, step -> SectionCard(step.label, bookingStepLabel(step.phase)) }
-    if (state.phase == BookingPhase.BLOCKED) item("return-edit") { TextButton("返回本地编辑", onClick = edit) }
+    if (state.phase == BookingPhase.BLOCKED) item("return-edit") { TextButton(AppText.Booking.BACK_TO_LOCAL_EDIT, onClick = edit) }
 }

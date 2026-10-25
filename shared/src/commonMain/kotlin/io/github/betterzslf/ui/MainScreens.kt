@@ -1,5 +1,6 @@
 package io.github.betterzslf.ui
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -18,41 +19,41 @@ fun HomeScreen(graph: AppGraph, open: (Route) -> Unit) {
     var refresh by remember { mutableIntStateOf(0) }
     val water by graph.water.state.collectAsState()
     val waterSummary = when (water.phase) {
-        WaterBlePhase.Disconnected -> "未连接"
-        WaterBlePhase.Connecting -> "连接中"
-        WaterBlePhase.Ready -> "已连接 · 尚未开启"
-        WaterBlePhase.Authenticating -> "认证中"
-        WaterBlePhase.Active -> "使用中 · 用毕请主动结束"
-        WaterBlePhase.Stopping -> "正在结束"
-        WaterBlePhase.ManualConfirmationRequired -> "重试前需要手动确认"
-        WaterBlePhase.Failed -> "连接已关闭 · 请查看提示"
-        WaterBlePhase.Closed -> "已关闭"
+        WaterBlePhase.Disconnected -> AppText.Water.DISCONNECTED
+        WaterBlePhase.Connecting -> AppText.Water.CONNECTING
+        WaterBlePhase.Ready -> AppText.Water.CONNECTED_NOT_STARTED
+        WaterBlePhase.Authenticating -> AppText.Water.AUTHENTICATING
+        WaterBlePhase.Active -> AppText.Water.ACTIVE_MANUAL_STOP_REMINDER
+        WaterBlePhase.Stopping -> AppText.Water.STOPPING
+        WaterBlePhase.ManualConfirmationRequired -> AppText.Water.MANUAL_CONFIRMATION_BEFORE_RETRY
+        WaterBlePhase.Failed -> AppText.Water.CONNECTION_CLOSED_SEE_NOTICE
+        WaterBlePhase.Closed -> AppText.Common.CLOSED
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { refresh++ }
-    Screen("首页", actions = { TextButton("消息", onClick = { open(Route.Page("notices", title = "消息")) }) }) { padding ->
+    Screen(AppText.Navigation.HOME, actions = { TextButton(AppText.Content.MESSAGES_TITLE, onClick = { open(Route.Page("notices", title = AppText.Content.MESSAGES_TITLE)) }) }) { padding ->
         PageList(padding) {
-            item { SectionCard("校园生活，从这里开始", "少一点等待，多一点自在。") }
+            item { SectionCard(AppText.App.CAMPUS_LIFE_WELCOME_TITLE, AppText.App.LESS_WAITING_MORE_FREEDOM_TAGLINE) }
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SectionCard("校园跑", "任务与运动记录", { open(Route.Page("runs", title = "校园跑")) })
-                        SectionCard("场馆预约", "查看开放场地", { open(Route.Page("venues", title = "场馆预约")) })
-                        SectionCard("校园网", "宽带账号查询", { open(Route.Page("campusnet", title = "校园网")) })
+                        SectionCard(AppText.Navigation.CAMPUS_RUN, AppText.Run.TASKS_AND_ACTIVITY_RECORDS, { open(Route.Page("runs", title = AppText.Navigation.CAMPUS_RUN)) })
+                        SectionCard(AppText.Booking.VENUE_BOOKING_TITLE, AppText.Booking.VIEW_OPEN_VENUES, { open(Route.Page("venues", title = AppText.Booking.VENUE_BOOKING_TITLE)) })
+                        SectionCard(AppText.CampusNetwork.CAMPUS_NETWORK_TITLE, AppText.CampusNetwork.BROADBAND_ACCOUNT_QUERY_LABEL, { open(Route.Page("campusnet", title = AppText.CampusNetwork.CAMPUS_NETWORK_TITLE)) })
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SectionCard("社区", "资讯与校园发现", { open(Route.Page("community", title = "社区")) })
-                        SectionCard("体测报名", "场次与项目", { open(Route.Page("fitness", title = "体测报名")) })
+                        SectionCard(AppText.Navigation.COMMUNITY, AppText.Content.NEWS_AND_CAMPUS_DISCOVERY_SUMMARY, { open(Route.Page("community", title = AppText.Navigation.COMMUNITY)) })
+                        SectionCard(AppText.Booking.FITNESS_REGISTRATION_TITLE, AppText.Booking.FITNESS_SESSIONS_AND_ITEMS_SUMMARY, { open(Route.Page("fitness", title = AppText.Booking.FITNESS_REGISTRATION_TITLE)) })
                     }
                 }
             }
-            item { SectionCard("宿舍热水器", "蓝牙离线连接 · $waterSummary", { open(Route.Page("water", title = "宿舍热水器")) }) }
+            item { SectionCard(AppText.Water.DORMITORY_HEATER_TITLE, AppText.Navigation.offlineWaterSummary((waterSummary)), { open(Route.Page("water", title = AppText.Water.DORMITORY_HEATER_TITLE)) }) }
             item {
                 AsyncContent(refresh, { graph.repositories.notices.unread() }) { data ->
                     val count = (data.text("unreadNumber").toIntOrNull() ?: 0) + (data.text("noticeMutualCount").toIntOrNull() ?: 0)
-                    ArrowPreference("消息与通知", summary = if (count == 0) "暂时没有未读消息" else "$count 条未读消息", onClick = { open(Route.Page("notices", title = "消息")) })
+                    ArrowPreference(AppText.Content.MESSAGES_AND_NOTIFICATIONS_TITLE, summary = if (count == 0) AppText.Content.NO_UNREAD_MESSAGES else AppText.Navigation.unreadCount((count)), onClick = { open(Route.Page("notices", title = AppText.Content.MESSAGES_TITLE)) })
                 }
             }
-            item { Text("校园动态") }
+            item { Text(AppText.Content.CAMPUS_ACTIVITY_TITLE) }
             item {
                 AsyncContent(refresh, { graph.repositories.content.columns("学校动态") }) { columns ->
                     val columnId = columns.field("cmsColumn").text("id")
@@ -63,30 +64,30 @@ fun HomeScreen(graph: AppGraph, open: (Route) -> Unit) {
                     }
                 }
             }
-            item { TextButton("刷新", onClick = { refresh++ }) }
+            item { TextButton(AppText.Common.REFRESH, onClick = { refresh++ }) }
         }
     }
 }
 
 @Composable
 fun CommunityScreen(graph: AppGraph, open: (Route) -> Unit) {
-    Screen("社区") { padding ->
+    Screen(AppText.Navigation.COMMUNITY) { padding ->
         PageList(padding) {
-            item { Text("发现") }
-            item { SectionCard("校园发现", "服务、学习与校园生活", { open(Route.Page("discover", title = "校园发现")) }) }
-            item { Text("资讯") }
-            item { SectionCard("学校动态", "新闻与校园资讯", { open(Route.Page("columns", "学校动态", "学校动态")) }) }
-            item { SectionCard("新生攻略", "从这里认识校园", { open(Route.Page("columns", "新生攻略", "新生攻略")) }) }
-            item { SectionCard("浏览历史", onClick = { open(Route.Page("history", title = "浏览历史")) }) }
-            item { Text("消息") }
-            item { SectionCard("公告与通知", onClick = { open(Route.Page("notices", title = "公告与通知")) }) }
-            item { Text("场地与体测") }
-            item { SectionCard("场馆预约", onClick = { open(Route.Page("venues", title = "场馆预约")) }) }
-            item { SectionCard("我的预约", onClick = { open(Route.Page("myvenues", title = "我的预约")) }) }
-            item { SectionCard("体测报名", onClick = { open(Route.Page("fitness", title = "体测报名")) }) }
-            item { Text("帮助与反馈") }
-            item { SectionCard("意见反馈", "在 GitHub 上反馈问题或建议", { open(Route.Page("feedback", title = "意见反馈")) }) }
-            item { SectionCard("使用帮助", onClick = { open(Route.Page("document", "使用帮助", "使用帮助")) }) }
+            item { Text(AppText.Content.DISCOVER_TITLE) }
+            item { SectionCard(AppText.Content.CAMPUS_DISCOVERY_TITLE, AppText.Content.SERVICES_STUDY_AND_CAMPUS_LIFE_SUMMARY, { open(Route.Page("discover", title = AppText.Content.CAMPUS_DISCOVERY_TITLE)) }) }
+            item { Text(AppText.Content.NEWS_SECTION_TITLE) }
+            item { SectionCard(AppText.Content.SCHOOL_NEWS_DISPLAY_LABEL, AppText.Content.NEWS_AND_CAMPUS_INFORMATION_SUMMARY, { open(Route.Page("columns", "学校动态", AppText.Content.SCHOOL_NEWS_DISPLAY_LABEL)) }) }
+            item { SectionCard(AppText.Content.FRESHMAN_GUIDE_DISPLAY_LABEL, AppText.Content.INTRODUCE_CAMPUS_SUMMARY, { open(Route.Page("columns", "新生攻略", AppText.Content.FRESHMAN_GUIDE_DISPLAY_LABEL)) }) }
+            item { SectionCard(AppText.Content.BROWSING_HISTORY_TITLE, onClick = { open(Route.Page("history", title = AppText.Content.BROWSING_HISTORY_TITLE)) }) }
+            item { Text(AppText.Content.MESSAGES_TITLE) }
+            item { SectionCard(AppText.Content.ANNOUNCEMENTS_AND_NOTIFICATIONS_TITLE, onClick = { open(Route.Page("notices", title = AppText.Content.ANNOUNCEMENTS_AND_NOTIFICATIONS_TITLE)) }) }
+            item { Text(AppText.Booking.VENUES_AND_FITNESS_SECTION_TITLE) }
+            item { SectionCard(AppText.Booking.VENUE_BOOKING_TITLE, onClick = { open(Route.Page("venues", title = AppText.Booking.VENUE_BOOKING_TITLE)) }) }
+            item { SectionCard(AppText.Booking.MY_BOOKINGS_TITLE, onClick = { open(Route.Page("myvenues", title = AppText.Booking.MY_BOOKINGS_TITLE)) }) }
+            item { SectionCard(AppText.Booking.FITNESS_REGISTRATION_TITLE, onClick = { open(Route.Page("fitness", title = AppText.Booking.FITNESS_REGISTRATION_TITLE)) }) }
+            item { Text(AppText.App.HELP_AND_FEEDBACK_SECTION_TITLE) }
+            item { SectionCard(AppText.App.FEEDBACK_TITLE, AppText.App.GITHUB_FEEDBACK_SUMMARY, { open(Route.Page("feedback", title = AppText.App.FEEDBACK_TITLE)) }) }
+            item { SectionCard(AppText.App.USER_GUIDE_DISPLAY_LABEL, onClick = { open(Route.Page("document", "使用帮助", AppText.App.USER_GUIDE_DISPLAY_LABEL)) }) }
         }
     }
 }
@@ -101,7 +102,7 @@ fun ArticleCards(rows: List<JsonElement>, open: (Route) -> Unit) {
     if (rows.isEmpty()) EmptyCard()
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         rows.forEach { article ->
-            SectionCard(article.text("title").ifBlank { "无标题" }, article.text("description").take(120), onClick = {
+            SectionCard(article.text("title").ifBlank { AppText.Common.UNTITLED }, article.text("description").take(120), onClick = {
                 val id = article.text("id")
                 if (id.isNotBlank()) open(Route.Page("article", id, article.text("title")))
             })

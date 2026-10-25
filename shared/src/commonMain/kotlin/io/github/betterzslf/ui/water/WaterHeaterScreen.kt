@@ -1,5 +1,6 @@
 package io.github.betterzslf.ui.water
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -69,8 +70,8 @@ fun WaterHeaterScreen(controller: WaterBleController, onBack: () -> Unit) {
     )
     Scaffold(
         topBar = {
-            SmallTopAppBar(title = "热水器", navigationIcon = {
-                TextButton(text = "返回", onClick = presenter::requestBack)
+            SmallTopAppBar(title = AppText.Water.HEATER_TITLE, navigationIcon = {
+                TextButton(text = AppText.Common.BACK, onClick = presenter::requestBack)
             })
         },
     ) { padding ->
@@ -84,35 +85,35 @@ fun WaterHeaterScreen(controller: WaterBleController, onBack: () -> Unit) {
             item(key = "controls") {
                 Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues(16.dp)) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TextButton("确认开启…", onClick = presenter::requestBegin,
+                        TextButton(AppText.Water.CONFIRM_START_ACTION, onClick = presenter::requestBegin,
                             enabled = model.canBegin, modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.textButtonColorsPrimary())
-                        TextButton("正常结束…", onClick = presenter::requestEnd,
+                        TextButton(AppText.Water.NORMAL_STOP_ACTION, onClick = presenter::requestEnd,
                             enabled = model.canEnd, modifier = Modifier.fillMaxWidth())
-                        TextButton("仅断开蓝牙…", onClick = presenter::requestDisconnect,
+                        TextButton(AppText.Water.DISCONNECT_BLUETOOTH_ACTION, onClick = presenter::requestDisconnect,
                             enabled = model.canDisconnect, modifier = Modifier.fillMaxWidth())
-                        Text("正常结束会等待设备 B3 确认及 B4 收尾。仅断开蓝牙不代表结束用水。",
+                        Text(AppText.Water.NORMAL_STOP_HANDSHAKE_HINT,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
                 }
             }
             item(key = "scan-controls") {
                 Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues(16.dp)) {
-                    Text("选择水控器", style = MiuixTheme.textStyles.title4)
+                    Text(AppText.Water.SELECT_CONTROLLER_TITLE, style = MiuixTheme.textStyles.title4)
                     Spacer(Modifier.height(8.dp))
-                    Text("仅按下扫描按钮后才搜索，约 15 秒自动停止；不会自动连接或重新扫描。")
+                    Text(AppText.Water.MANUAL_SCAN_BEHAVIOR_HINT)
                     Spacer(Modifier.height(12.dp))
                     if (model.ble.scanning) {
-                        TextButton("停止扫描", onClick = presenter::stopScan,
+                        TextButton(AppText.Water.STOP_SCANNING, onClick = presenter::stopScan,
                             modifier = Modifier.fillMaxWidth())
                     } else {
-                        TextButton("扫描附近设备", onClick = presenter::startScan,
+                        TextButton(AppText.Water.SCAN_NEARBY_DEVICES, onClick = presenter::startScan,
                             enabled = model.canScan, modifier = Modifier.fillMaxWidth())
                     }
                 }
             }
             if (model.ble.devices.isEmpty()) item(key = "empty-scan") {
-                Text(if (model.ble.scanning) "正在等待设备广播…" else "尚无扫描结果。请先确认权限和蓝牙已开启。",
+                Text(if (model.ble.scanning) AppText.Water.WAITING_FOR_DEVICE_BROADCAST else AppText.Water.NO_SCAN_RESULTS_HINT,
                     modifier = Modifier.padding(8.dp), color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             }
             // Each result is a real LazyColumn item, not a nested eagerly composed list.
@@ -121,10 +122,10 @@ fun WaterHeaterScreen(controller: WaterBleController, onBack: () -> Unit) {
             }
             item(key = "debug") {
                 Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues(16.dp)) {
-                    Text("只读连接状态", style = MiuixTheme.textStyles.title4)
+                    Text(AppText.Water.READ_ONLY_CONNECTION_STATUS_TITLE, style = MiuixTheme.textStyles.title4)
                     Spacer(Modifier.height(8.dp))
-                    Text("连接：${model.ble.phase}\n协议：${model.ble.protocolState}\n近期失败：${model.ble.retryStatus.recentFailures} 次")
-                    Text("无自定义指令或任意 HEX 发包入口。",
+                    Text(AppText.Water.connectionDiagnostics((model.ble.phase).toString(), (model.ble.protocolState).toString(), (model.ble.retryStatus.recentFailures)))
+                    Text(AppText.Water.NO_CUSTOM_COMMANDS_HINT,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 }
             }
@@ -138,23 +139,23 @@ fun WaterHeaterScreen(controller: WaterBleController, onBack: () -> Unit) {
 private fun BluetoothAccessCard(model: WaterHeaterModel, access: BluetoothAccess) {
     val state = model.access
     Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues(16.dp)) {
-        Text("蓝牙访问", style = MiuixTheme.textStyles.title4)
+        Text(AppText.Water.BLUETOOTH_ACCESS_TITLE, style = MiuixTheme.textStyles.title4)
         Spacer(Modifier.height(8.dp))
         Text(when {
-            !state.available -> "此平台当前未提供可用的蓝牙访问。"
-            !state.granted -> "请先授予蓝牙权限；授予后仍需手动扫描。"
-            !state.enabled -> "蓝牙尚未开启。开启后仍需手动扫描。"
-            else -> "权限已就绪，蓝牙已开启。"
+            !state.available -> AppText.Water.BLUETOOTH_UNAVAILABLE_ON_PLATFORM
+            !state.granted -> AppText.Water.GRANT_PERMISSION_THEN_MANUAL_SCAN_HINT
+            !state.enabled -> AppText.Water.ENABLE_BLUETOOTH_THEN_MANUAL_SCAN_HINT
+            else -> AppText.Water.BLUETOOTH_READY
         })
         state.message?.takeIf { it.isNotBlank() }?.let {
             Spacer(Modifier.height(8.dp)); Text(it, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         }
         if (state.available && !state.granted) {
             Spacer(Modifier.height(12.dp))
-            TextButton("授予蓝牙权限", onClick = access::requestPermissions, modifier = Modifier.fillMaxWidth())
+            TextButton(AppText.Water.GRANT_BLUETOOTH_PERMISSION, onClick = access::requestPermissions, modifier = Modifier.fillMaxWidth())
         } else if (state.available && !state.enabled) {
             Spacer(Modifier.height(12.dp))
-            TextButton("打开蓝牙", onClick = access::requestEnable, modifier = Modifier.fillMaxWidth())
+            TextButton(AppText.Water.ENABLE_BLUETOOTH, onClick = access::requestEnable, modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -170,8 +171,8 @@ private fun WaterSessionCard(model: WaterHeaterModel) {
             Text(it.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.height(12.dp))
-        Text("本页观察用时  ${formatWaterObservation(model.observedMillis)}")
-        Text("仅记录本页观察到的开启/结束等待时间，不含离页期间；不是硬件计时，也不会定时断水。",
+        Text(AppText.Water.observedDuration((formatWaterObservation(model.observedMillis))))
+        Text(AppText.Water.OBSERVED_SESSION_DURATION_LIMITS_HINT,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         if (model.busy) {
             Spacer(Modifier.height(8.dp)); CircularProgressIndicator()
@@ -191,11 +192,11 @@ private fun WaterDeviceCard(device: WaterBleDevice, enabled: Boolean, onConnect:
     Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues(16.dp)) {
         Text(device.name, style = MiuixTheme.textStyles.title4, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(4.dp))
-        Text("${device.id} · 信号 ${device.rssi?.let { "$it dBm" } ?: "未知"}",
+        Text(AppText.Water.deviceSignal((device.id), (device.rssi?.let { AppText.Water.signalDbm((it)) } ?: AppText.Common.UNKNOWN)),
             maxLines = 2, overflow = TextOverflow.Ellipsis,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         Spacer(Modifier.height(12.dp))
-        TextButton("连接（不开启）", onClick = onConnect, enabled = enabled, modifier = Modifier.fillMaxWidth())
+        TextButton(AppText.Water.CONNECT_WITHOUT_START, onClick = onConnect, enabled = enabled, modifier = Modifier.fillMaxWidth())
     }
 }
 
@@ -203,29 +204,29 @@ private fun WaterDeviceCard(device: WaterBleDevice, enabled: Boolean, onConnect:
 private fun WaterConfirmationDialog(model: WaterHeaterModel, presenter: WaterHeaterPresenter) {
     val confirmation = model.confirmation
     val title = when (confirmation) {
-        is WaterConfirmation.RetryConnect -> "多次失败：仍要手动重试？"
-        is WaterConfirmation.Begin -> if (confirmation.requiresAcknowledgement) "再次开启前请强确认" else "确认开启所选设备？"
-        WaterConfirmation.End -> "正常结束本次用水？"
-        WaterConfirmation.Disconnect -> "仅断开蓝牙连接？"
-        WaterConfirmation.Leave -> "保留当前会话并返回？"
+        is WaterConfirmation.RetryConnect -> AppText.Water.REPEATED_FAILURE_RETRY_CONFIRM_TITLE
+        is WaterConfirmation.Begin -> if (confirmation.requiresAcknowledgement) AppText.Water.RESTART_REQUIRES_STRONG_CONFIRMATION_TITLE else AppText.Water.START_SELECTED_DEVICE_CONFIRM_TITLE
+        WaterConfirmation.End -> AppText.Water.NORMAL_STOP_CONFIRM_TITLE
+        WaterConfirmation.Disconnect -> AppText.Water.DISCONNECT_CONFIRM_TITLE
+        WaterConfirmation.Leave -> AppText.Water.KEEP_SESSION_AND_RETURN_CONFIRM_TITLE
         null -> ""
     }
     val summary = when (confirmation) {
-        is WaterConfirmation.RetryConnect -> "${confirmation.device.name}\n${WaterFailureGuard.LOCKOUT_NOTICE}\n继续只连接一次，之后仍需单独确认开启。"
-        is WaterConfirmation.Begin -> "将发送一次开启请求。等待设备确认前不代表开启成功；不会自动重试。" +
+        is WaterConfirmation.RetryConnect -> AppText.Water.retryConnectionNotice((confirmation.device.name), (WaterFailureGuard.LOCKOUT_NOTICE))
+        is WaterConfirmation.Begin -> AppText.Water.SINGLE_START_REQUEST_HINT +
             if (confirmation.requiresAcknowledgement) "\n${WaterFailureGuard.LOCKOUT_NOTICE}" else ""
-        WaterConfirmation.End -> "将请求正常结束，等待设备 B3 确认并完成 B4 收尾。等待期间不会把断开当作成功。"
-        WaterConfirmation.Disconnect -> "这只释放蓝牙连接，不代表设备停止出水。优先选择正常结束；断开后请确认现场水流。"
-        WaterConfirmation.Leave -> "返回不会结束或断开共享会话。设备可能继续工作，可再次进入此页操作；要停止请留在此页正常结束。"
+        WaterConfirmation.End -> AppText.Water.NORMAL_STOP_CONFIRM_DESCRIPTION
+        WaterConfirmation.Disconnect -> AppText.Water.DISCONNECT_DOES_NOT_STOP_WATER_HINT
+        WaterConfirmation.Leave -> AppText.Water.BACK_KEEPS_SHARED_SESSION_HINT
         null -> ""
     }
     val confirmLabel = when (confirmation) {
-        is WaterConfirmation.RetryConnect -> "仍然手动重试连接"
-        is WaterConfirmation.Begin -> "确认发送开启请求"
-        WaterConfirmation.End -> "请求正常结束"
-        WaterConfirmation.Disconnect -> "仅断开，不代表断水"
-        WaterConfirmation.Leave -> "保持会话并返回"
-        null -> "确认"
+        is WaterConfirmation.RetryConnect -> AppText.Water.RETRY_CONNECTION_MANUALLY
+        is WaterConfirmation.Begin -> AppText.Water.SEND_START_REQUEST
+        WaterConfirmation.End -> AppText.Water.REQUEST_NORMAL_STOP
+        WaterConfirmation.Disconnect -> AppText.Water.DISCONNECT_WITHOUT_WATER_STOP
+        WaterConfirmation.Leave -> AppText.Water.KEEP_SESSION_AND_RETURN
+        null -> AppText.Common.CONFIRM
     }
     OverlayDialog(show = confirmation != null, title = title, summary = summary,
         onDismissRequest = presenter::dismissConfirmation) {
@@ -240,13 +241,13 @@ private fun WaterConfirmationDialog(model: WaterHeaterModel, presenter: WaterHea
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Checkbox(state = if (model.acknowledged) ToggleableState.On else ToggleableState.Off, onClick = null)
-                    Text("我已理解再次失败可能锁机约一小时，仍选择本次手动重试。", modifier = Modifier.weight(1f))
+                    Text(AppText.Water.LOCKOUT_RISK_ACKNOWLEDGEMENT, modifier = Modifier.weight(1f))
                 }
             }
             TextButton(confirmLabel, onClick = presenter::confirm, modifier = Modifier.fillMaxWidth(),
                 enabled = confirmation != null && (!confirmation.requiresAcknowledgement || model.acknowledged),
                 colors = ButtonDefaults.textButtonColorsPrimary())
-            TextButton("取消 / 留在此页", onClick = presenter::dismissConfirmation, modifier = Modifier.fillMaxWidth())
+            TextButton(AppText.Water.CANCEL_AND_STAY, onClick = presenter::dismissConfirmation, modifier = Modifier.fillMaxWidth())
         }
     }
 }

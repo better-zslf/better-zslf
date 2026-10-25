@@ -1,5 +1,6 @@
 package io.github.betterzslf.ui.profile
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -29,7 +30,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun ProfileFeatureScreen(graph: AppGraph, open: (Route) -> Unit) {
     val session by graph.sessions.session.collectAsState()
     if (session == null) {
-        Screen("我的") { padding -> PageList(padding) { item { SectionCard("尚未登录", "登录后读取个人资料。") } } }
+        Screen(AppText.Navigation.PROFILE) { padding -> PageList(padding) { item { SectionCard(AppText.Auth.NOT_LOGGED_IN, AppText.Profile.LOG_IN_TO_LOAD_PROFILE_HINT) } } }
     } else key(session) {
         ProfileOwnerScreen(graph, open)
     }
@@ -57,49 +58,49 @@ private fun ProfileOwnerScreen(graph: AppGraph, open: (Route) -> Unit) {
     }
     // Explicit page read, once on entry; no per-resume reload and no automatic image retry.
     LaunchedEffect(controller) { controller.refresh() }
-    Screen("我的", actions = {
-        TextButton("刷新", enabled = !state.loading, onClick = controller::refresh)
+    Screen(AppText.Navigation.PROFILE, actions = {
+        TextButton(AppText.Common.REFRESH, enabled = !state.loading, onClick = controller::refresh)
     }) { padding ->
         PageList(padding) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     ProfileAvatar(state.avatar, imageLoader, controller)
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(state.fields?.name ?: "姓名未提供", style = MiuixTheme.textStyles.title4)
+                        Text(state.fields?.name ?: AppText.Profile.NAME_NOT_PROVIDED, style = MiuixTheme.textStyles.title4)
                         Text(avatarSummary(state.avatar))
-                        state.photoIssue?.let { Text("头像资料：${profileReadMessage(it)}") }
+                        state.photoIssue?.let { Text(AppText.Profile.avatarReadIssue((profileReadMessage(it)))) }
                     }
                 }
             }
             if (state.loading) item {
                 CircularProgressIndicator()
-                TextButton("取消读取", onClick = controller::cancel)
+                TextButton(AppText.Profile.CANCEL_PROFILE_READ, onClick = controller::cancel)
             }
-            if (state.cancelled) item { SectionCard("读取已取消", "点按刷新可重新读取，不会自动重试。") }
-            state.fieldsIssue?.let { issue -> item { SectionCard("个人资料", profileReadMessage(issue)) } }
+            if (state.cancelled) item { SectionCard(AppText.Profile.PROFILE_READ_CANCELLED, AppText.Profile.REFRESH_TO_READ_AGAIN_NO_AUTO_RETRY_HINT) }
+            state.fieldsIssue?.let { issue -> item { SectionCard(AppText.Profile.PERSONAL_PROFILE_TITLE, profileReadMessage(issue)) } }
             item {
                 val fields = state.fields
-                SectionCard("个人资料", "姓名：${fields?.name ?: "未提供"}\n学校：${fields?.schoolName ?: "未提供"}\n学号：${fields?.studentNumber ?: "未提供"}\n账号：${fields?.account ?: "未提供"}\n身份：${fields?.identity ?: "未提供"}\n性别：${fields?.gender ?: "未提供"}\n院系：暂无信息")
+                SectionCard(AppText.Profile.PERSONAL_PROFILE_TITLE, AppText.Profile.personalFields((fields?.name ?: AppText.Common.NOT_PROVIDED), (fields?.schoolName ?: AppText.Common.NOT_PROVIDED), (fields?.studentNumber ?: AppText.Common.NOT_PROVIDED), (fields?.account ?: AppText.Common.NOT_PROVIDED), (fields?.identity ?: AppText.Common.NOT_PROVIDED), (fields?.gender ?: AppText.Common.NOT_PROVIDED)))
             }
             item {
                 val stats = state.statistics
-                SectionCard("我的足迹", state.statisticsIssue?.let(::profileReadMessage)
-                    ?: "收藏 ${stats?.collected?.toString() ?: "未提供"} · 评论 ${stats?.comments?.toString() ?: "未提供"} · 浏览 ${stats?.history?.toString() ?: "未提供"}")
+                SectionCard(AppText.Profile.MY_FOOTPRINTS_TITLE, state.statisticsIssue?.let(::profileReadMessage)
+                    ?: AppText.Profile.personalStatistics((stats?.collected?.toString() ?: AppText.Common.NOT_PROVIDED), (stats?.comments?.toString() ?: AppText.Common.NOT_PROVIDED), (stats?.history?.toString() ?: AppText.Common.NOT_PROVIDED)))
             }
-            item { Text("账号") }
-            item { SectionCard("修改密码", onClick = { open(Route.Page("password", title = "修改密码")) }) }
-            item { SectionCard("短信找回密码", "通过短信核验后重置学校登录密码", { open(Route.Page("resetpassword", title = "找回密码")) }) }
-            item { SectionCard("设置", "主题、跑步偏好与本地数据", { open(Route.Page("settings", title = "设置")) }) }
-            item { Text("关于") }
-            item { SectionCard("版本更新", "better-zslf ${graph.platform.versionName}", { open(Route.Page("updates", title = "版本更新")) }) }
-            item { SectionCard("关于应用", onClick = { open(Route.Page("about", title = "关于应用")) }) }
-            item { Text("协议与帮助") }
-            listOf("用户协议", "隐私政策", "使用帮助").forEach { title ->
-                item { SectionCard(title, onClick = { open(Route.Page("document", title, title)) }) }
+            item { Text(AppText.Profile.ACCOUNT_SECTION_TITLE) }
+            item { SectionCard(AppText.Auth.CHANGE_PASSWORD_TITLE, onClick = { open(Route.Page("password", title = AppText.Auth.CHANGE_PASSWORD_TITLE)) }) }
+            item { SectionCard(AppText.Recovery.SMS_PASSWORD_RECOVERY_TITLE, AppText.Recovery.VERIFY_SMS_THEN_RESET_SCHOOL_PASSWORD_SUMMARY, { open(Route.Page("resetpassword", title = AppText.Recovery.RECOVER_PASSWORD_TITLE)) }) }
+            item { SectionCard(AppText.Settings.SETTINGS_TITLE, AppText.Settings.THEME_RUN_PREFERENCES_AND_LOCAL_DATA_SUMMARY, { open(Route.Page("settings", title = AppText.Settings.SETTINGS_TITLE)) }) }
+            item { Text(AppText.App.ABOUT_TITLE) }
+            item { SectionCard(AppText.Updates.VERSION_UPDATE_TITLE, "better-zslf ${graph.platform.versionName}", { open(Route.Page("updates", title = AppText.Updates.VERSION_UPDATE_TITLE)) }) }
+            item { SectionCard(AppText.App.ABOUT_APP_TITLE, onClick = { open(Route.Page("about", title = AppText.App.ABOUT_APP_TITLE)) }) }
+            item { Text(AppText.App.AGREEMENTS_AND_HELP_SECTION_TITLE) }
+            listOf("用户协议" to AppText.App.USER_AGREEMENT_DISPLAY_LABEL, "隐私政策" to AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, "使用帮助" to AppText.App.USER_GUIDE_DISPLAY_LABEL).forEach { (documentId, title) ->
+                item { SectionCard(title, onClick = { open(Route.Page("document", documentId, title)) }) }
             }
-            item { TextButton("退出登录", onClick = { logout = true }, modifier = Modifier.fillMaxWidth()) }
+            item { TextButton(AppText.Auth.LOG_OUT, onClick = { logout = true }, modifier = Modifier.fillMaxWidth()) }
         }
-        ConfirmDialog(logout, "退出登录？", "会清除本机保存的会话，账号和学校数据保持原样。", { logout = false }) {
+        ConfirmDialog(logout, AppText.Auth.LOG_OUT_CONFIRM_TITLE, AppText.Auth.LOG_OUT_LOCAL_SESSION_ONLY_HINT, { logout = false }) {
             controller.close(); resources.close()
             logout = false; graph.logout()
         }
@@ -124,12 +125,12 @@ private fun ProfileAvatar(state: ProfileAvatarState, loader: ImageLoader, contro
     val image = (state as? ProfileAvatarState.BytesReady)?.image
     var decoded by remember(image) { mutableStateOf(false) }
     Box(Modifier.size(96.dp).clip(CircleShape).background(MiuixTheme.colorScheme.primary.copy(alpha = 0.10f)), contentAlignment = Alignment.Center) {
-        if (image == null) Text("头像") else {
+        if (image == null) Text(AppText.Profile.AVATAR_PLACEHOLDER_LABEL) else {
             val request = remember(image, context) {
                 ImageRequest.Builder(context).data(image.encoded).size(256, 256)
                     .diskCachePolicy(CachePolicy.DISABLED).memoryCachePolicy(CachePolicy.ENABLED).build()
             }
-            AsyncImage(model = request, imageLoader = loader, contentDescription = "个人头像", contentScale = ContentScale.Crop,
+            AsyncImage(model = request, imageLoader = loader, contentDescription = AppText.Profile.AVATAR_CONTENT_DESCRIPTION, contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(), onSuccess = { decoded = true },
                 onError = { loader.memoryCache?.clear(); controller.avatarDecodeFailed(image) })
         }
@@ -138,10 +139,10 @@ private fun ProfileAvatar(state: ProfileAvatarState, loader: ImageLoader, contro
 }
 
 private fun avatarSummary(state: ProfileAvatarState): String = when (state) {
-    ProfileAvatarState.Unrequested -> "尚未取得头像资料"
-    ProfileAvatarState.Loading -> "正在读取头像资料"
-    ProfileAvatarState.Empty -> "暂无头像"
-    ProfileAvatarState.Missing -> "服务端未提供头像资料"
+    ProfileAvatarState.Unrequested -> AppText.Profile.AVATAR_NOT_REQUESTED
+    ProfileAvatarState.Loading -> AppText.Profile.AVATAR_LOADING
+    ProfileAvatarState.Empty -> AppText.Profile.NO_AVATAR
+    ProfileAvatarState.Missing -> AppText.Profile.SERVER_AVATAR_DATA_MISSING
     is ProfileAvatarState.Failed -> avatarIssueMessage(state.issue)
-    is ProfileAvatarState.BytesReady -> "个人头像 · 仅在本页内存中处理"
+    is ProfileAvatarState.BytesReady -> AppText.Profile.AVATAR_PAGE_MEMORY_ONLY_SUMMARY
 }

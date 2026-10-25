@@ -12,7 +12,6 @@ import io.ktor.http.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.*
 
@@ -104,11 +103,20 @@ class AvatarByteRepositoryTest {
     fun callerCancellationStopsThePendingReadWithoutAnAutomaticRetry() = runTest {
         var requests = 0
         val gate = CompletableDeferred<Unit>()
-        val repository = AvatarByteRepository(HttpClient(MockEngine { requests++; gate.await(); respond(profilePngHeader()) }))
+        val entered = CompletableDeferred<Unit>()
+        val stopped = CompletableDeferred<Unit>()
+        val repository = AvatarByteRepository(HttpClient(MockEngine {
+            requests++
+            entered.complete(Unit)
+            try { gate.await(); respond(profilePngHeader()) }
+            finally { stopped.complete(Unit) }
+        }))
         try {
             val pending = async { repository.load(resource) }
-            runCurrent(); assertEquals(1, requests)
-            pending.cancel(); runCurrent(); assertTrue(pending.isCancelled)
+            // MockEngine may use another dispatcher: runCurrent() alone does not start its handler.
+            entered.await(); assertEquals(1, requests)
+            pending.cancel(); pending.join(); stopped.await()
+            assertTrue(pending.isCancelled)
             assertEquals(1, requests)
         } finally { gate.complete(Unit); repository.close() }
     }

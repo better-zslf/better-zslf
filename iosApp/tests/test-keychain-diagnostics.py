@@ -43,6 +43,8 @@ class FakeRunner:
         self.fail_labels = set()
         self.process_outputs = {}
         self.screenshot_payloads = {}
+        self.report_overrides = {}
+        self.launch_pids = {}
 
     def call(self, args, label, timeout=60):
         self.calls.append((list(args), label))
@@ -76,10 +78,11 @@ class FakeRunner:
         if label in self.launch_failure_labels:
             raise RuntimeError("Synthetic launch denied before PID")
         self.next_pid += 1
-        self.pid = self.next_pid
+        self.pid = self.launch_pids.get(label, self.next_pid)
         signed = env["SIMCTL_CHILD_BETTER_ZSLF_PROBE_NAMESPACE"].endswith("_signed")
         if signed or not self.omit_unsigned:
             value = report(env["SIMCTL_CHILD_BETTER_ZSLF_STARTUP_PROBE"], signed and not self.fail_signed)
+            value.update(self.report_overrides.get(label, {}))
             path = self.container / diag.REPORT_RELATIVE
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(value), encoding="utf-8")
@@ -111,10 +114,264 @@ class DiagnosticsTests(unittest.TestCase):
         shutil.copytree(source, target)
         return target
 
-    def run_probe(self):
+    def run_probe(self, mode="ab"):
         return diag.run_diagnostics(self.artifacts, self.app, BUNDLE, OWN, self.runner,
                                     self.pids.append, sleep=lambda _: None, signer=self.signer,
-                                    clock=lambda: 0.0)
+                                    clock=lambda: 0.0, mode=mode)
+
+    def test_signed_positive_uses_one_install_no_a_and_keeps_ui_pending(self):
+        before = (self.app / "BetterZslf").read_bytes()
+        value = self.run_probe("signed-positive")
+        self.assertEqual(value["experiment_mode"], "signed-positive")
+        self.assertEqual(value["unsigned"]["result"], "not_run")
+        self.assertIn("historical-negative-only", value["unsigned"]["coverage"])
+        self.assertEqual(value["between_phases"]["result"], "not_applicable")
+        self.assertFalse(value["login_ui_verified"])
+        self.assertEqual(value["ui_review"], "pending")
+        self.assertEqual([env["SIMCTL_CHILD_BETTER_ZSLF_STARTUP_PROBE"] for env in self.runner.launches], ["seed", "verify"])
+        self.assertEqual(len(set(self.pids)), 2)
+        self.assertEqual(self.runner.launches[0]["SIMCTL_CHILD_BETTER_ZSLF_PROBE_NAMESPACE"],
+                         self.runner.launches[1]["SIMCTL_CHILD_BETTER_ZSLF_PROBE_NAMESPACE"])
+        installs = [args for args, _ in self.runner.calls if args[0] == "install"]
+        self.assertEqual(installs, [["install", OWN, str(self.artifacts / "signed" / self.app.name)]])
+        self.assertFalse(any(args[0] == "uninstall" or label.startswith("unsigned") for args, label in self.runner.calls))
+        self.assertEqual((self.app / "BetterZslf").read_bytes(), before)
+        self.assertTrue(value["signed"]["seed"]["termination"]["confirmed_absent"])
+
+    def test_signed_positive_native_failures_in_either_phase_never_pass(self):
+        for phase in ("seed", "verify"):
+            for field in ("probeOk", "graphOk", "sessionAbsent"):
+                with self.subTest(phase=phase, field=field):
+                    self.setUp()
+                    self.runner.report_overrides["signed-" + phase + "-launch"] = {field: False}
+                    with self.assertRaisesRegex(RuntimeError, "checks failed"):
+                        self.run_probe("signed-positive")
+                    value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+                    self.assertEqual(value["result"], "keychain-diagnostics-failed")
+                    self.assertEqual(value["unsigned"]["result"], "not_run")
+                    self.assertEqual(len(self.runner.launches), 1 if phase == "seed" else 2)
+                    self.assertEqual(sum(args[0] == "install" for args, _ in self.runner.calls), 1)
+
+    def test_signed_positive_unknown_absence_stops_verify(self):
+        for failure in ("timeout", "invalid"):
+            with self.subTest(failure=failure):
+                self.setUp()
+                if failure == "timeout":
+                    self.runner.timeout_labels.update(("signed-seed-after-terminate", "signed-seed-after-terminate-retry"))
+                else:
+                    self.runner.process_outputs["signed-seed-after-terminate"] = "PID Status Label\n"
+                with self.assertRaises((smoke.subprocess.TimeoutExpired, ValueError)):
+                    self.run_probe("signed-positive")
+                self.assertNotIn("signed-verify-launch", self.runner.timeouts)
+                value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+                self.assertFalse(value["signed"]["seed"]["termination"]["confirmed_absent"])
+                self.assertFalse(value["signed"]["seed"]["termination"]["process_queries"][-1]["valid_full"])
+
+    def test_signed_positive_known_live_bundle_is_not_launched(self):
+        self.runner.process_outputs["signed-seed-before-launch"] = f"PID Status Label\n999 0 UIKitApplication:{BUNDLE}[fixture]\n"
+        with self.assertRaisesRegex(RuntimeError, "already alive"):
+            self.run_probe("signed-positive")
+        self.assertEqual(self.runner.launches, [])
+
+    def test_signed_positive_reused_seed_pid_is_not_cross_process_success(self):
+        self.runner.launch_pids["signed-verify-launch"] = 1001
+        with self.assertRaisesRegex(RuntimeError, "reused the seed PID"):
+            self.run_probe("signed-positive")
+        value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+        self.assertEqual(value["signed"]["result"], "failed")
+        self.assertEqual(len(self.runner.launches), 2)
+
+    def test_terminate_error_is_saved_even_when_valid_table_stays_live(self):
+        self.runner.fail_labels.add("check-terminate")
+        live = f"PID Status Label\n1001 0 UIKitApplication:{BUNDLE}[fixture]\n"
+        for label in ("check-after-terminate", "check-after-terminate-observe-2", "check-after-terminate-observe-3"):
+            self.runner.process_outputs[label] = live
+        record, snapshots = {}, []
+        with self.assertRaisesRegex(RuntimeError, "still alive"):
+            diag._terminate_and_confirm(self.runner, OWN, BUNDLE, 1001, "check", record=record,
+                                       save=lambda: snapshots.append(copy.deepcopy(record)), sleep=lambda _: None, clock=lambda: 0)
+        self.assertFalse(record["confirmed_absent"])
+        self.assertEqual(record["terminate_error"]["type"], "RuntimeError")
+        self.assertEqual(record["process_query_attempts"], 3)
+        self.assertTrue(all(query["valid_full"] and not query["absent"] for query in record["process_queries"]))
+        self.assertTrue(any(item.get("terminate_error") and not item["process_queries"] for item in snapshots))
+
+    def test_valid_live_then_valid_absent_needs_no_second_terminate(self):
+        self.runner.process_outputs["check-after-terminate"] = f"PID Status Label\n1001 0 UIKitApplication:{BUNDLE}[fixture]\n"
+        value = diag._terminate_and_confirm(self.runner, OWN, BUNDLE, 1001, "check", sleep=lambda _: None, clock=lambda: 0)
+        self.assertTrue(value["confirmed_absent"])
+        self.assertEqual([query["outcome"] for query in value["process_queries"]], ["valid_live", "valid_absent"])
+        self.assertEqual(sum(label == "check-terminate" for _, label in self.runner.calls), 1)
+        self.assertTrue(all("finished_at_utc" in query for query in value["process_queries"]))
+
+    def test_absence_arriving_after_observation_deadline_does_not_pass(self):
+        now, record = [0.0], {}
+        original = self.runner.call
+        def late(args, label, timeout):
+            value = original(args, label, timeout)
+            if label == "check-after-terminate":
+                now[0] = 15.01
+            return value
+        with mock.patch.object(self.runner, "call", side_effect=late), self.assertRaises(TimeoutError):
+            diag._terminate_and_confirm(self.runner, OWN, BUNDLE, 1001, "check", record=record,
+                                       sleep=lambda _: None, clock=lambda: now[0])
+        self.assertFalse(record["confirmed_absent"])
+        self.assertEqual(record["process_query_attempts"], 1)
+        self.assertTrue(record["process_queries"][0]["valid_full"])
+        self.assertTrue(record["process_queries"][0]["deadline_exceeded"])
+
+    def test_terminate_error_does_not_erase_independent_valid_absence(self):
+        self.runner.fail_labels.add("check-terminate")
+        value = diag._terminate_and_confirm(self.runner, OWN, BUNDLE, 1001, "check", sleep=lambda _: None, clock=lambda: 0)
+        self.assertTrue(value["confirmed_absent"])
+        self.assertEqual(value["terminate_error"]["type"], "RuntimeError")
+
+    def test_watchdog_terminate_is_persisted_and_never_tolerated(self):
+        record = {}
+        with mock.patch.object(self.runner, "call", side_effect=smoke.SmokeDeadlineExceeded("body expired")) as call:
+            with self.assertRaises(smoke.SmokeDeadlineExceeded):
+                diag._terminate_and_confirm(self.runner, OWN, BUNDLE, 1001, "check", record=record)
+        self.assertEqual(call.call_count, 1)
+        self.assertFalse(record["confirmed_absent"])
+        self.assertEqual(record["terminate_error"]["type"], "SmokeDeadlineExceeded")
+        self.assertEqual(record["process_queries"], [])
+
+    def test_signed_positive_watchdog_never_continues_to_verify_or_extra_capture(self):
+        original = self.runner.call
+        def expired(args, label, timeout):
+            if label == "signed-seed-terminate":
+                raise smoke.SmokeDeadlineExceeded("body expired")
+            return original(args, label, timeout)
+        with mock.patch.object(self.runner, "call", side_effect=expired) as call:
+            with self.assertRaises(smoke.SmokeDeadlineExceeded):
+                self.run_probe("signed-positive")
+        self.assertEqual(call.call_args.args[1], "signed-seed-terminate")
+        self.assertEqual(len(self.runner.launches), 1)
+        value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+        self.assertEqual(value["result"], "keychain-diagnostics-failed")
+        self.assertEqual(value["signed"]["seed"]["termination"]["terminate_error"]["type"], "SmokeDeadlineExceeded")
+
+    def test_launch_failure_capture_drain_watchdog_stops_without_later_native_commands(self):
+        primary = smoke.subprocess.TimeoutExpired("scoped log", 15, output=b"partial-log")
+        process = mock.Mock(pid=12345, returncode=0)
+        process.communicate.side_effect = [primary, smoke.SmokeDeadlineExceeded("body expired during drain")]
+        self.runner.launch_failure_labels.add("signed-seed-launch")
+        original = self.runner.call
+        def call(args, label, timeout):
+            if label == "signed-seed-launch-system-log":
+                self.runner.calls.append((list(args), label))
+                return smoke.Simctl(self.artifacts).call(args, label, timeout)
+            return original(args, label, timeout)
+        with mock.patch.object(self.runner, "call", side_effect=call), \
+                mock.patch.object(smoke.subprocess, "Popen", return_value=process), \
+                mock.patch.object(smoke.os, "killpg", create=True), \
+                mock.patch.object(smoke.signal, "SIGKILL", 9, create=True):
+            with self.assertRaises(smoke.subprocess.TimeoutExpired) as raised:
+                self.run_probe("signed-positive")
+        self.assertIs(raised.exception, primary)
+        self.assertTrue(smoke.is_smoke_deadline(primary))
+        self.assertEqual(self.runner.calls[-1][1], "signed-seed-launch-system-log")
+        self.assertEqual(len(self.runner.launches), 1)
+        value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+        seed = value["signed"]["seed"]
+        self.assertEqual(seed["error"]["message"], "Synthetic launch denied before PID")
+        self.assertEqual(seed["failure_launch_log_error"]["type"], "TimeoutExpired")
+        self.assertTrue(seed["failure_launch_log_error"]["smoke_deadline_expired"])
+        self.assertTrue(seed["failure_launch_log_partial"])
+        self.assertNotIn("failure_screenshot_attempts", seed)
+        self.assertFalse(any(args[0] == "terminate" for args, _ in self.runner.calls))
+
+    def test_ab_tolerances_do_not_continue_after_drain_watchdog(self):
+        for target in ("unsigned-install", "unsigned-launch-system-log", "unsigned-screenshot", "unsigned-terminate"):
+            with self.subTest(target=target):
+                self.setUp()
+                primary = smoke.subprocess.TimeoutExpired(target, 15, output=b"partial")
+                process = mock.Mock(pid=12345, returncode=0)
+                process.communicate.side_effect = [primary, smoke.SmokeDeadlineExceeded("body expired during drain")]
+                if target == "unsigned-launch-system-log":
+                    self.runner.launch_failure_labels.add("unsigned-launch")
+                original = self.runner.call
+                def call(args, label, timeout):
+                    if label == target:
+                        self.runner.calls.append((list(args), label))
+                        return smoke.Simctl(self.artifacts).call(args, label, timeout)
+                    return original(args, label, timeout)
+                with mock.patch.object(self.runner, "call", side_effect=call), \
+                        mock.patch.object(smoke.subprocess, "Popen", return_value=process), \
+                        mock.patch.object(smoke.os, "killpg", create=True), \
+                        mock.patch.object(smoke.signal, "SIGKILL", 9, create=True):
+                    with self.assertRaises(smoke.subprocess.TimeoutExpired) as raised:
+                        self.run_probe()
+                self.assertIs(raised.exception, primary)
+                self.assertEqual(self.runner.calls[-1][1], target)
+                value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+                self.assertEqual(value["result"], "keychain-diagnostics-failed")
+                self.assertEqual(value["signed"]["result"], "blocked")
+                self.assertTrue(value["error"]["smoke_deadline_expired"])
+                self.assertFalse(any(label == "signed-install" for _, label in self.runner.calls))
+
+    def test_failure_report_and_screenshot_tolerances_preserve_marked_deadline(self):
+        for stage in ("report", "screenshot"):
+            with self.subTest(stage=stage):
+                self.setUp()
+                primary = smoke.subprocess.TimeoutExpired(stage, 15)
+                primary.smoke_deadline_expired = True
+                record = {"error": {"type": "RuntimeError", "message": "original operation"}}
+                snapshots = []
+                original = self.runner.call
+                def call(args, label, timeout):
+                    if label == "check-failure-screenshot":
+                        self.runner.calls.append((list(args), label))
+                        raise primary
+                    return original(args, label, timeout)
+                with mock.patch.object(self.runner, "call", side_effect=call), \
+                        mock.patch.object(diag, "read_native_report", side_effect=primary) as reader:
+                    with self.assertRaises(smoke.subprocess.TimeoutExpired) as raised:
+                        diag._capture_failure(self.artifacts, self.runner, OWN, "check", record,
+                                              self.container if stage == "report" else None, "seed",
+                                              lambda: snapshots.append(copy.deepcopy(record)), BUNDLE)
+                self.assertIs(raised.exception, primary)
+                self.assertEqual(record["error"]["message"], "original operation")
+                self.assertTrue(snapshots[-1]["failure_" + stage + "_error"]["smoke_deadline_expired"])
+                if stage == "report":
+                    self.assertFalse(any(args[0] == "io" for args, _ in self.runner.calls))
+                else:
+                    self.assertEqual(len(record["failure_screenshot_attempts"]), 1)
+
+    def test_codesign_result_keeps_nonzero_and_partial_timeout(self):
+        command = ["codesign", "--verify", "synthetic-copy"]
+        failing = mock.Mock(return_value=mock.Mock(returncode=9, stdout=b"out", stderr=b"err"))
+        with self.assertRaises(RuntimeError):
+            diag._codesign(command, self.artifacts, "nonzero-sign", failing)
+        value = json.loads((self.artifacts / "nonzero-sign.result.json").read_text())
+        self.assertEqual(value["outcome"], "nonzero")
+        self.assertEqual(value["returncode"], 9)
+        self.assertTrue(value["drain_complete"])
+        timeout = mock.Mock(side_effect=smoke.subprocess.TimeoutExpired(command, 60, output=b"partial"))
+        with self.assertRaises(smoke.subprocess.TimeoutExpired):
+            diag._codesign(command, self.artifacts, "timeout-sign", timeout)
+        value = json.loads((self.artifacts / "timeout-sign.result.json").read_text())
+        self.assertEqual(value["outcome"], "timeout")
+        self.assertTrue(value["partial"])
+        self.assertTrue(value["timed_out"])
+        self.assertEqual(value["stdout_bytes"], 7)
+
+    def test_parent_explicit_positive_mode_is_owned_and_ui_review_stays_pending(self):
+        sys.path.insert(0, str(ROOT / "scripts/tests"))
+        from test_ios_simulator_smoke import FakeSimctl
+        runner = FakeSimctl()
+        with mock.patch.object(diag, "run_diagnostics", return_value={"pid": 4321}) as probe:
+            value = smoke.smoke(self.artifacts, self.app, runner, sleep=lambda _: None,
+                                keychain_diagnostics=True, diagnostic_mode="signed-positive")
+        self.assertEqual(probe.call_args.kwargs["mode"], "signed-positive")
+        self.assertEqual(value["experiment_mode"], "signed-positive")
+        self.assertFalse(value["login_ui_verified"])
+        self.assertEqual(value["ui_review"], "pending")
+        self.assertIn("A: not_run", (self.artifacts / "README.md").read_text())
+        owner = json.loads((self.artifacts / "owner.json").read_text())
+        self.assertTrue(owner["creation_confirmed"])
+        self.assertEqual(owner["diagnostic_mode"], "signed-positive")
+        self.assertEqual(sum(args[0] == "create" for args, _, _ in runner.calls), 1)
 
     def test_unsigned_failure_is_preserved_and_signed_seed_verify_pass(self):
         result = self.run_probe()
@@ -234,7 +491,8 @@ class DiagnosticsTests(unittest.TestCase):
                        "PID\tStatus\tLabel\n- 0 com.apple.fixture\n1234 0\n",
                        f"PID\tStatus\tLabel\n2222 0 UIKitApplication:{BUNDLE}[fixture]\n"):
             with self.subTest(output=output):
-                self.runner.process_outputs["check-after-terminate"] = output
+                for label in ("check-after-terminate", "check-after-terminate-observe-2", "check-after-terminate-observe-3"):
+                    self.runner.process_outputs[label] = output
                 with self.assertRaises((ValueError, RuntimeError)):
                     diag._terminate_and_confirm(self.runner, OWN, BUNDLE, 1001, "check")
                 self.assertNotIn("check-after-terminate-retry", self.runner.timeouts)

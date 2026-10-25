@@ -16,7 +16,7 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
-fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit, onWater: (() -> Unit)? = null) {
+fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit, onWater: (() -> Unit)? = null, onResetPassword: (() -> Unit)? = null) {
     var username by rememberSaveable { mutableStateOf("") }
     // Password intentionally never participates in saved instance state or storage.
     var password by remember { mutableStateOf("") }
@@ -57,6 +57,7 @@ fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit, onWater: (() -> U
                 }) { if (loading) CircularProgressIndicator(Modifier.size(20.dp)) else Text("登录") }
             }
             item { Text("账号仅用于直连学校服务；本机保存登录会话，不保存密码。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
+            onResetPassword?.let { openReset -> item { TextButton("找回密码", onClick = openReset, modifier = Modifier.fillMaxWidth()) } }
             onWater?.let { openWater -> item { TextButton("离线热水器", onClick = openWater, modifier = Modifier.fillMaxWidth()) } }
             item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton("用户协议", onClick = { onDocument("用户协议") })

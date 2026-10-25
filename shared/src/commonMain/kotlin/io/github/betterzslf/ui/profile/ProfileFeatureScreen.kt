@@ -88,6 +88,7 @@ private fun ProfileOwnerScreen(graph: AppGraph, open: (Route) -> Unit) {
             }
             item { Text("账号") }
             item { SectionCard("修改密码", onClick = { open(Route.Page("password", title = "修改密码")) }) }
+            item { SectionCard("短信找回密码", "通过短信核验后重置学校登录密码", { open(Route.Page("resetpassword", title = "找回密码")) }) }
             item { SectionCard("设置", "主题、跑步偏好与本地数据", { open(Route.Page("settings", title = "设置")) }) }
             item { Text("关于") }
             item { SectionCard("版本更新", "better-zslf ${graph.platform.versionName}", { open(Route.Page("updates", title = "版本更新")) }) }

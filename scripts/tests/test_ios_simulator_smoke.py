@@ -373,6 +373,104 @@ class SimulatorCommandFlowTests(unittest.TestCase):
         self.assertFalse(report["deleted"])
         self.assertTrue(all(args[0] == "list" for args, _, _ in self.runner.calls))
 
+    def test_command_result_success_and_nonzero_are_structured_without_environment(self):
+        for label, code in (("normal", 0), ("nonzero", 7)):
+            with self.subTest(code=code):
+                process = mock.Mock(returncode=code)
+                process.communicate.return_value = (b"table", b"notice")
+                with mock.patch.object(smoke.subprocess, "Popen", return_value=process):
+                    if code:
+                        with self.assertRaisesRegex(RuntimeError, "failed"):
+                            smoke.Simctl(self.artifacts).call(["list", "--json"], label, 3)
+                    else:
+                        self.assertEqual(smoke.Simctl(self.artifacts).call(["list", "--json"], label, 3), "table")
+                value = json.loads((self.artifacts / (label + ".result.json")).read_text())
+                self.assertEqual(value["outcome"], "success" if not code else "nonzero")
+                self.assertEqual(value["returncode"], code)
+                self.assertEqual(value["ok"], not bool(code))
+                self.assertFalse(value["timed_out"])
+                self.assertTrue(value["drain_complete"])
+                self.assertEqual(value["stdout_bytes"], 5)
+                for field in ("started_at_utc", "finished_at_utc", "started_monotonic", "finished_monotonic", "elapsed_seconds"):
+                    self.assertIn(field, value)
+                self.assertNotIn("env", value)
+
+    def test_timeout_stays_timeout_when_cleanup_returns_zero(self):
+        process = mock.Mock(pid=12345, returncode=0)
+        process.communicate.side_effect = [smoke.subprocess.TimeoutExpired("xcrun", 1, output=b"partial"),
+                                           (b"partial-late", b"late-error")]
+        with mock.patch.object(smoke.subprocess, "Popen", return_value=process), \
+                mock.patch.object(smoke.os, "killpg", create=True), \
+                mock.patch.object(smoke.signal, "SIGKILL", 9, create=True):
+            with self.assertRaises(smoke.subprocess.TimeoutExpired):
+                smoke.Simctl(self.artifacts).call(["list", "--json"], "late-zero", 1)
+        value = json.loads((self.artifacts / "late-zero.result.json").read_text())
+        self.assertEqual(value["outcome"], "timeout")
+        self.assertTrue(value["timed_out"])
+        self.assertFalse(value["ok"])
+        self.assertIsNone(value["returncode"])
+        self.assertEqual(value["post_cleanup_returncode"], 0)
+        self.assertTrue(value["drain_complete"])
+        self.assertTrue(value["partial"])  # Complete drain does not complete the timed-out operation.
+
+    def test_primary_timeout_survives_close_wait_and_poll_errors(self):
+        process = mock.Mock(pid=12345, returncode=None)
+        process.communicate.side_effect = [smoke.subprocess.TimeoutExpired("xcrun", 1, output=b"partial"),
+                                           smoke.subprocess.TimeoutExpired("xcrun", 0.25, output=b"partial")]
+        process.stdout.close.side_effect = OSError("synthetic close")
+        process.wait.side_effect = OSError("synthetic wait")
+        process.poll.side_effect = OSError("synthetic poll")
+        with mock.patch.object(smoke.subprocess, "Popen", return_value=process), \
+                mock.patch.object(smoke.os, "killpg", create=True), \
+                mock.patch.object(smoke.signal, "SIGKILL", 9, create=True):
+            with self.assertRaises(smoke.subprocess.TimeoutExpired):
+                smoke.Simctl(self.artifacts).call(["list", "--json"], "cleanup-errors", 1)
+        value = json.loads((self.artifacts / "cleanup-errors.result.json").read_text())
+        self.assertEqual(value["error_type"], "TimeoutExpired")
+        self.assertEqual(value["outcome"], "timeout")
+        self.assertTrue(value["partial"])
+        self.assertTrue(any(item["operation"] == "close-stdout" for item in value["cleanup_errors"]))
+        self.assertEqual((self.artifacts / "cleanup-errors.stdout.log").read_bytes(), b"partial")
+
+    def test_watchdog_during_timeout_drain_marks_same_primary_exception(self):
+        primary = smoke.subprocess.TimeoutExpired("xcrun", 1, output=b"partial")
+        process = mock.Mock(pid=12345, returncode=0)
+        process.communicate.side_effect = [primary, smoke.SmokeDeadlineExceeded("body expired during drain")]
+        with mock.patch.object(smoke.subprocess, "Popen", return_value=process), \
+                mock.patch.object(smoke.os, "killpg", create=True), \
+                mock.patch.object(smoke.signal, "SIGKILL", 9, create=True):
+            with self.assertRaises(smoke.subprocess.TimeoutExpired) as raised:
+                smoke.Simctl(self.artifacts).call(["list", "--json"], "drain-watchdog", 1)
+        self.assertIs(raised.exception, primary)
+        self.assertTrue(smoke.is_smoke_deadline(primary))
+        value = json.loads((self.artifacts / "drain-watchdog.result.json").read_text())
+        self.assertEqual(value["error_type"], "TimeoutExpired")
+        self.assertEqual(value["outcome"], "timeout")
+        self.assertTrue(value["body_deadline_expired"])
+        self.assertTrue(value["partial"])
+        self.assertFalse(value["ok"])
+        self.assertEqual(value["post_cleanup_returncode"], 0)
+
+    def test_watchdog_is_timeout_and_is_not_operational_exception(self):
+        self.assertFalse(issubclass(smoke.SmokeDeadlineExceeded, Exception))
+        process = mock.Mock(pid=12345, returncode=0)
+        process.communicate.side_effect = [smoke.SmokeDeadlineExceeded("body expired"), (b"", b"")]
+        with mock.patch.object(smoke.subprocess, "Popen", return_value=process), \
+                mock.patch.object(smoke.os, "killpg", create=True), \
+                mock.patch.object(smoke.signal, "SIGKILL", 9, create=True):
+            with self.assertRaises(smoke.SmokeDeadlineExceeded):
+                smoke.Simctl(self.artifacts).call(["list", "--json"], "watchdog", 1)
+        value = json.loads((self.artifacts / "watchdog.result.json").read_text())
+        self.assertTrue(value["timed_out"])
+        self.assertEqual(value["outcome"], "timeout")
+        self.assertFalse(value["ok"])
+
+    def test_invalid_diagnostic_selection_fails_before_creating_device(self):
+        for kwargs in ({"diagnostic_mode": "unknown"}, {"diagnostic_mode": "signed-positive"}):
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                smoke.smoke(self.artifacts, self.app, self.runner, **kwargs)
+            self.assertEqual(self.runner.calls, [])
+
     def test_command_timeout_does_not_wait_forever_for_inherited_pipes(self):
         process = mock.Mock()
         process.pid = 12345
@@ -404,6 +502,7 @@ class SmokeWiringTests(unittest.TestCase):
         self.assertLess(workflow.index("run: bash scripts/ci-ios.sh"), workflow.index("run: bash scripts/ci-ios-smoke.sh"))
         self.assertIn("timeout-minutes: 12\n        run: bash scripts/ci-ios-smoke.sh", workflow)
         self.assertIn(".local/ios-ci/Logs/", workflow)
+        self.assertIn("BETTER_ZSLF_CI_DIAGNOSTIC_MODE: signed-positive", workflow)
         helper = (smoke.ROOT / "scripts/ios_simulator_smoke.py").read_text()
         self.assertIn("signal.alarm(600)", helper)  # Reserve 2 minutes for cleanup inside the step.
 

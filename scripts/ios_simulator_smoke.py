@@ -6,6 +6,7 @@ create so cleanup can recover a create whose stdout was lost. All mutation and
 spawn commands require the exact newly created UUID; never 'booted' or 'all'.
 """
 import argparse
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -175,6 +176,34 @@ def owned_udid(state, inventory):
     return matches[0] if matches else None
 
 
+class SmokeDeadlineExceeded(BaseException):
+    """One-shot body watchdog: never tolerate it as an operational app error."""
+    smoke_deadline_expired = True
+
+
+def is_smoke_deadline(error):
+    # The CLI may be __main__ while diagnostics imports this helper by module name.
+    return getattr(error, "smoke_deadline_expired", False) is True
+
+
+def begin_command_result(label, timeout):
+    return {"schema": 1, "label": label, "budget_seconds": timeout,
+            "started_at_utc": datetime.now(timezone.utc).isoformat(), "started_monotonic": time.monotonic(),
+            "outcome": "running", "ok": False, "returncode": None, "timed_out": False,
+            "partial": True, "drain_complete": False,
+            "stdout_file": label + ".stdout.log", "stderr_file": label + ".stderr.log"}
+
+
+def finish_command_result(record, stdout, stderr):
+    record["finished_at_utc"] = datetime.now(timezone.utc).isoformat()
+    record["finished_monotonic"] = time.monotonic()
+    record["elapsed_seconds"] = record["finished_monotonic"] - record["started_monotonic"]
+    record["stdout_bytes"] = len(stdout or b"")
+    record["stderr_bytes"] = len(stderr or b"")
+    # EOF after killing a timed-out task is not a complete successful response.
+    record["partial"] = record["timed_out"] or not record["drain_complete"]
+
+
 class Simctl:
     def __init__(self, artifacts):
         self.artifacts = artifacts
@@ -201,39 +230,103 @@ class Simctl:
     def _call(self, args, label, timeout, environment=None):
         command = ["xcrun", "simctl", *map(str, args)]
         save_json(self.artifacts / (label + ".command.json"), command)
-        # Do not use Popen's context manager: its implicit wait has no timeout.
-        process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, start_new_session=True, env=environment)
+        record = begin_command_result(label, timeout)
+        save_json(self.artifacts / (label + ".result.json"), record)
+        process = None
+        stdout, stderr = b"", b""
         grace = 0.25 if timeout <= 5 else 1.0
+        primary_error = None
+        cleanup_interrupt = None
+
+        def latch(error):
+            record["error_type"] = type(error).__name__
+            record["timed_out"] = isinstance(error, subprocess.TimeoutExpired) or is_smoke_deadline(error)
+            record["ok"] = False
+            if record["outcome"] in ("running", "success"):
+                record["outcome"] = "timeout" if record["timed_out"] else "error"
+
+        def cleanup_error(operation, error):
+            nonlocal cleanup_interrupt
+            record.setdefault("cleanup_errors", []).append({"operation": operation, "error_type": type(error).__name__})
+            if is_smoke_deadline(error):
+                record["body_deadline_expired"] = True
+                if primary_error is not None:
+                    primary_error.smoke_deadline_expired = True
+                else:
+                    cleanup_interrupt = error
+                    latch(error)
+
+        def close_pipes():
+            if process is not None:
+                for name in ("stdout", "stderr"):
+                    try:
+                        getattr(process, name).close()
+                    except BaseException as error:
+                        cleanup_error("close-" + name, error)
+
         try:
-            stdout, stderr = process.communicate(timeout=timeout)
-        except BaseException as error:
-            stdout, stderr = getattr(error, "output", None), getattr(error, "stderr", None)
+            # No Popen context manager: its implicit wait is unbounded.
+            process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, start_new_session=True, env=environment)
             try:
-                os.killpg(process.pid, signal.SIGKILL)  # Only this newly owned command process group.
-            except ProcessLookupError:
-                pass
-            try:
-                stdout, stderr = process.communicate(timeout=grace)
-            except subprocess.TimeoutExpired as drain:
-                stdout, stderr = drain.output or stdout, drain.stderr or stderr
-            finally:
-                process.stdout.close()
-                process.stderr.close()
+                stdout, stderr = process.communicate(timeout=timeout)
+                record["drain_complete"] = True
+            except BaseException as error:
+                primary_error = error
+                latch(error)  # Latch before any cleanup can itself fail.
+                stdout, stderr = getattr(error, "output", None), getattr(error, "stderr", None)
                 try:
-                    process.wait(timeout=grace)
-                except subprocess.TimeoutExpired:
-                    # An uninterruptible child/escaped pipe holder must not block cleanup.
-                    process.poll()
-            self.output(label, stdout, stderr)
+                    os.killpg(process.pid, signal.SIGKILL)  # Only this command's owned process group.
+                except BaseException as error:
+                    cleanup_error("kill-owned-command", error)
+                try:
+                    stdout, stderr = process.communicate(timeout=grace)
+                    record["drain_complete"] = True
+                except BaseException as drain:
+                    stdout = getattr(drain, "output", None) or stdout
+                    stderr = getattr(drain, "stderr", None) or stderr
+                    record["drain_error_type"] = type(drain).__name__
+                    cleanup_error("drain", drain)
+                finally:
+                    close_pipes()
+                    try:
+                        process.wait(timeout=grace)
+                    except BaseException as wait_error:
+                        record["wait_error_type"] = type(wait_error).__name__
+                        cleanup_error("wait", wait_error)
+                        try:
+                            process.poll()
+                        except BaseException as poll_error:
+                            cleanup_error("poll", poll_error)
+                    code = process.returncode
+                    record["post_cleanup_returncode"] = code if type(code) is int else None
+                raise  # Preserve the original timeout/interrupt even if drain returned zero.
+            record["returncode"] = process.returncode
+            if process.returncode:
+                record["outcome"] = "nonzero"
+                raise RuntimeError(f"simctl {args[0]} failed ({process.returncode}); see {label} logs")
+            record.update(outcome="success", ok=True)
+            return stdout.decode("utf-8", errors="replace")
+        except BaseException as error:
+            if primary_error is None:
+                primary_error = error
+                latch(error)
             raise
-        else:
-            process.stdout.close()
-            process.stderr.close()
-            self.output(label, stdout, stderr)
-        if process.returncode:
-            raise RuntimeError(f"simctl {args[0]} failed ({process.returncode}); see {label} logs")
-        return stdout.decode("utf-8", errors="replace")
+        finally:
+            close_pipes()
+            try:
+                self.output(label, stdout, stderr)
+            except BaseException as error:
+                record["evidence_error_type"] = type(error).__name__
+                cleanup_error("write-output", error)
+                if primary_error is None:
+                    cleanup_interrupt = error
+                    latch(error)
+            finally:
+                finish_command_result(record, stdout, stderr)
+                save_json(self.artifacts / (label + ".result.json"), record)
+            if cleanup_interrupt is not None:
+                raise cleanup_interrupt
 
 
 def png_dimensions(path):
@@ -261,7 +354,11 @@ def exported_png_is_valid(artifacts, filename):
     return True
 
 
-def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=False):
+def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=False, diagnostic_mode="ab"):
+    if diagnostic_mode not in ("ab", "signed-positive"):
+        raise ValueError("Expected ab or signed-positive diagnostic mode")
+    if diagnostic_mode != "ab" and not keychain_diagnostics:
+        raise ValueError("signed-positive requires the explicit Keychain diagnostic gate")
     runner = runner or Simctl(artifacts)
     if (artifacts / "owner.json").exists():
         raise ValueError("Ownership directory must be fresh for this invocation")
@@ -283,8 +380,20 @@ def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=Fa
     state = dict(schema=1, token=token, name=NAME_PREFIX + token, runtime=runtime,
                  device_type=device_type, prior_udids=sorted(all_udids(inventory)),
                  app=app_path, bundle=bundle, executable=executable, udid=None, pid=None,
-                 booted=False, success=False, create_attempted=True, creation_confirmed=False)
+                 booted=False, success=False, create_attempted=True, creation_confirmed=False,
+                 diagnostic_mode=diagnostic_mode if keychain_diagnostics else None)
     save_json(artifacts / "owner.json", state)  # Persist BEFORE invoking create.
+    if keychain_diagnostics:
+        (artifacts / "README.md").write_text(
+            "# Owned Simulator startup diagnostics\n\nExperiment: " + diagnostic_mode + "\n\n" +
+            ("A: not_run / historical-negative-only (CI7/CI9/CI10), not an A pass. "
+             "Independent fresh-device signed positive; not single-factor signature/LS/resource attribution.\n\n"
+             if diagnostic_mode == "signed-positive" else
+             "Original AB: A evidence/absence gate remains mandatory before one owned-app clean reinstall.\n\n") +
+            "B seed/verify uses one signed installation and namespace, real PID restart and Native Keychain/Graph checks. "
+            "No credentials or HTTP input; native offline gate remains enabled. "
+            "Native checks/PID/screenshot are not verified Login: inspect startup.png manually. "
+            "The original unsigned app product is unchanged.\n", encoding="utf-8")
     created = canonical_udid(runner.call(["create", state["name"], device_type, runtime], "create", 60).strip())
     after = json.loads(runner.call(["list", "devices", "--json"], "inventory-created", 30))
     claimed = owned_udid({**state, "udid": created}, after)
@@ -305,7 +414,8 @@ def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=Fa
             state["pid"] = pid
             save_json(artifacts / "owner.json", state)
 
-        keychain_evidence = run_diagnostics(artifacts, app_path, bundle, created, runner, update_pid, sleep=sleep)
+        keychain_evidence = run_diagnostics(artifacts, app_path, bundle, created, runner, update_pid,
+                                            sleep=sleep, mode=diagnostic_mode)
         state["pid"] = keychain_evidence["pid"]
     else:
         runner.call(["install", created, app_path], "install", 90)
@@ -331,7 +441,7 @@ def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=Fa
                   coverage="Install/launch/PID liveness/screenshot only; image needs manual review, not full functionality")
     if keychain_evidence is not None:
         result.update(result="startup-keychain-smoke-passed", keychain_diagnostics=keychain_evidence,
-                      login_ui_verified=False,
+                      experiment_mode=diagnostic_mode, login_ui_verified=False, ui_review="pending",
                       coverage="Synthetic Keychain CRUD/empty/namespace/restart/delete and real Graph initialization; screenshot still needs manual Login review; no credentials, HTTP or permission input")
     save_json(artifacts / "result.json", result)
     return result
@@ -434,7 +544,10 @@ def main():
     parser.add_argument("--artifacts", type=Path, required=True)
     parser.add_argument("--app", type=Path)
     parser.add_argument("--fast", action="store_true", help="Skip diagnostics during signal cleanup")
-    parser.add_argument("--keychain-diagnostics", action="store_true", help="Explicit debug-Simulator-only synthetic Keychain/signing A-B path")
+    parser.add_argument("--keychain-diagnostics", action="store_true", help="Explicit debug-Simulator-only Keychain diagnostics")
+    parser.add_argument("--diagnostic-mode", choices=("ab", "signed-positive"),
+                        default=os.environ.get("BETTER_ZSLF_CI_DIAGNOSTIC_MODE", "ab"),
+                        help="Default AB is unchanged; CI may explicitly select independent signed-positive")
     args = parser.parse_args()
     if sys.platform != "darwin":
         raise SystemExit("Native simulator smoke requires macOS; use offline fixture unit tests elsewhere")
@@ -447,13 +560,14 @@ def main():
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     if args.mode == "smoke":
         def deadline_expired(*_):
-            raise TimeoutError("Startup exceeded 600 seconds; reserve the remaining CI time for owned cleanup")
+            raise SmokeDeadlineExceeded("Startup exceeded 600 seconds; reserve the remaining CI time for owned cleanup")
         signal.signal(signal.SIGALRM, deadline_expired)
         signal.alarm(600)  # 10-minute body inside the 12-minute step; cleanup has 2 minutes.
         try:
             app, _, _ = select_app(args.app)
-            print(json.dumps(smoke(args.artifacts.resolve(), app, keychain_diagnostics=args.keychain_diagnostics), indent=2))
-        except Exception as error:
+            print(json.dumps(smoke(args.artifacts.resolve(), app, keychain_diagnostics=args.keychain_diagnostics,
+                                   diagnostic_mode=args.diagnostic_mode), indent=2))
+        except (Exception, SmokeDeadlineExceeded) as error:
             save_json(args.artifacts / "error.json", {"result": "startup-smoke-failed", "error": str(error)})
             raise
         finally:

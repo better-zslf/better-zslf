@@ -50,7 +50,10 @@ def _save_json(path, value):
 
 def _error(error):
     # Never include native report contents or command output in public errors.
-    return {"type": type(error).__name__, "message": str(error)}
+    record = {"type": type(error).__name__, "message": str(error)}
+    if getattr(error, "smoke_deadline_expired", False) is True:
+        record["smoke_deadline_expired"] = True
+    return record
 
 
 def _unique_object(pairs):
@@ -190,21 +193,34 @@ def _bytes(value):
 
 
 def _codesign(command, evidence, label, run):
-    """Persist command/stdout/stderr even on a nonzero exit, timeout or interrupt."""
+    """Persist command/stdout/stderr/result without changing signing commands/profile."""
+    from ios_simulator_smoke import begin_command_result, finish_command_result, is_smoke_deadline
     _save_json(evidence / (label + ".command.json"), command)
+    record = begin_command_result(label, 60)
+    _save_json(evidence / (label + ".result.json"), record)
+    stdout, stderr = b"", b""
     try:
         process = run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                       timeout=60, check=False)
+        stdout, stderr = _bytes(process.stdout), _bytes(process.stderr)
+        record.update(returncode=process.returncode, drain_complete=True)
+        if process.returncode:
+            record["outcome"] = "nonzero"
+            raise RuntimeError(f"CI simulator codesign failed ({process.returncode}); see {label} logs")
+        record.update(outcome="success", ok=True)
     except BaseException as error:
-        (evidence / (label + ".stdout.log")).write_bytes(_bytes(getattr(error, "stdout", getattr(error, "output", None))))
-        (evidence / (label + ".stderr.log")).write_bytes(_bytes(getattr(error, "stderr", None)))
-        _save_json(evidence / (label + ".result.json"), {"ok": False, "error_type": type(error).__name__})
+        if record["outcome"] == "running":
+            stdout = _bytes(getattr(error, "stdout", getattr(error, "output", None)))
+            stderr = _bytes(getattr(error, "stderr", None))
+            record["timed_out"] = isinstance(error, subprocess.TimeoutExpired) or is_smoke_deadline(error)
+            record["outcome"] = "timeout" if record["timed_out"] else "error"
+        record["error_type"] = type(error).__name__
         raise
-    (evidence / (label + ".stdout.log")).write_bytes(_bytes(process.stdout))
-    (evidence / (label + ".stderr.log")).write_bytes(_bytes(process.stderr))
-    _save_json(evidence / (label + ".result.json"), {"ok": process.returncode == 0, "returncode": process.returncode})
-    if process.returncode:
-        raise RuntimeError(f"CI simulator codesign failed ({process.returncode}); see {label} logs")
+    finally:
+        (evidence / (label + ".stdout.log")).write_bytes(stdout)
+        (evidence / (label + ".stderr.log")).write_bytes(stderr)
+        finish_command_result(record, stdout, stderr)
+        _save_json(evidence / (label + ".result.json"), record)
 
 
 def sign_simulator_copy(artifacts, app_path, bundle=None, *, run=None):
@@ -293,8 +309,9 @@ def _container(runner, udid, bundle, label):
         try:
             output = runner.call(["get_app_container", udid, bundle, "data"], command_label, 15)
             break
-        except subprocess.TimeoutExpired:
-            if attempt:
+        except subprocess.TimeoutExpired as error:
+            from ios_simulator_smoke import is_smoke_deadline
+            if attempt or is_smoke_deadline(error):
                 raise
     if not isinstance(output, str) or len(output.splitlines()) != 1 or any(ord(character) < 32 for character in output.strip()):
         raise ReportError("simctl did not return one absolute app-data container")
@@ -346,7 +363,8 @@ def _screenshot(artifacts, runner, udid, filename, label, *, attempts=None, save
             return final_name
         except subprocess.TimeoutExpired as error:
             entry.update(result="timeout", error=_error(error))
-            if attempt:
+            from ios_simulator_smoke import is_smoke_deadline
+            if attempt or is_smoke_deadline(error):
                 raise
         except Exception as error:
             entry.update(result="failed", error=_error(error))
@@ -362,6 +380,7 @@ def _utc_now():
 
 
 def _capture_failure(artifacts, runner, udid, label, record, container, phase, save, bundle):
+    from ios_simulator_smoke import is_smoke_deadline
     # Collect the failing operation first: CI7's ascending 3m output timed out in old A logs.
     record["failure_observed_at_utc"] = _utc_now()
     record["failure_launch_log"] = label + "-launch-system-log.stdout.log"
@@ -380,6 +399,8 @@ def _capture_failure(artifacts, runner, udid, label, record, container, phase, s
         record["failure_launch_log_complete"] = True
     except Exception as error:
         record["failure_launch_log_error"] = _error(error)
+        if is_smoke_deadline(error):
+            raise  # Finally persists the original timeout/partial capture before exiting.
     finally:
         record["failure_launch_log_finished_at_utc"] = _utc_now()
         record["failure_launch_log_partial"] = not record["failure_launch_log_complete"]
@@ -392,45 +413,112 @@ def _capture_failure(artifacts, runner, udid, label, record, container, phase, s
                 _save_json(artifacts / (label + "-startup-report.json"), report)
         except Exception as error:
             record["failure_report_error"] = _error(error)
+            if is_smoke_deadline(error):
+                save()
+                raise
     try:
         record["failure_screenshot"] = _screenshot(artifacts, runner, udid, label + "-failure.png",
                                                   label + "-failure-screenshot",
                                                   attempts=record.setdefault("failure_screenshot_attempts", []), save=save)
     except Exception as error:
         record["failure_screenshot_error"] = _error(error)
+        if is_smoke_deadline(error):
+            save()
+            raise
     save()
 
 
-def _terminate_and_confirm(runner, udid, bundle, pid, label):
-    terminate_error = None
+def _terminate_and_confirm(runner, udid, bundle, pid, label, *, record=None, save=None,
+                           sleep=time.sleep, clock=time.monotonic):
+    """One terminate; all readonly observations share a 15s deadline and 3-call cap."""
+    from ios_simulator_smoke import parse_launchctl_table, is_smoke_deadline
+    record = record if record is not None else {}
+    record.update(pid=pid, confirmed_absent=False, terminate_error=None,
+                  terminate_started_at_utc=_utc_now(), process_queries=[], process_query_attempts=0,
+                  observation_budget_seconds=15, observation_max_queries=3)
+
+    def persist():
+        if save:
+            save()
+
+    persist()
     try:
         runner.call(["terminate", udid, bundle], label + "-terminate", COMMAND_TIMEOUT)
-    except Exception as error:
-        terminate_error = _error(error)
-    for attempt in range(2):
-        query_label = label + "-after-terminate" + ("-retry" if attempt else "")
-        try:
-            output = runner.call(["spawn", udid, "launchctl", "list"], query_label, 15)
-            break
-        except subprocess.TimeoutExpired:
-            if attempt:
-                raise
-    from ios_simulator_smoke import parse_launchctl_table
-    rows = parse_launchctl_table(output)
-    if pid is not None and any(columns[0] == str(pid) for columns in rows):
-        raise RuntimeError("Previous probe PID is still alive after terminate")
+        record["terminate_outcome"] = "success"
+    except BaseException as error:
+        record.update(terminate_outcome="error", terminate_error=_error(error))
+        if is_smoke_deadline(error) or not isinstance(error, Exception):
+            raise  # The one-shot body watchdog/interrupt is never an operational tolerance.
+    finally:
+        record["terminate_finished_at_utc"] = _utc_now()
+        persist()  # Retain this outcome even when a later valid table still has the PID.
+    started = clock()
+    deadline = started + 15
+    record["observation_started_at_utc"] = _utc_now()
+    record["observation_started_monotonic"] = started
     label_pattern = re.compile(r"(?:UIKitApplication:|application\.)" + re.escape(bundle) + r"(?:\[|\.|$)")
-    if any(columns[0] != "-" and label_pattern.match(columns[2]) for columns in rows):
+    retry_timeout = False
+    original_present = False
+    try:
+        for attempt in range(3):
+            remaining = deadline - clock()
+            if remaining <= 0:
+                raise TimeoutError("Process absence observation exceeded its 15-second deadline")
+            suffix = "" if not attempt else ("-retry" if retry_timeout else f"-observe-{attempt + 1}")
+            query_label = label + "-after-terminate" + suffix
+            query = {"label": query_label, "stdout_file": query_label + ".stdout.log",
+                     "stderr_file": query_label + ".stderr.log", "started_at_utc": _utc_now(),
+                     "started_monotonic": clock(), "budget_seconds": min(15, remaining),
+                     "outcome": "running", "valid_full": False, "absent": None}
+            record["process_queries"].append(query)
+            record["process_query_attempts"] = attempt + 1
+            persist()
+            try:
+                output = runner.call(["spawn", udid, "launchctl", "list"], query_label, query["budget_seconds"])
+                rows = parse_launchctl_table(output)
+                original_present = pid is not None and any(columns[0] == str(pid) for columns in rows)
+                bundle_pids = [int(columns[0]) for columns in rows
+                               if columns[0] != "-" and label_pattern.match(columns[2])]
+                absent = not original_present and not bundle_pids
+                query.update(valid_full=True, original_pid_present=original_present,
+                             bundle_live_pids=bundle_pids, absent=absent,
+                             outcome="valid_absent" if absent else "valid_live")
+                if clock() > deadline:
+                    query["deadline_exceeded"] = True
+                    raise TimeoutError("Process table arrived after the absence observation deadline")
+                if absent:
+                    record["confirmed_absent"] = True
+                    return record
+                retry_timeout = False
+            except subprocess.TimeoutExpired as error:
+                query.update(outcome="timeout", error=_error(error))
+                # Keep the legacy single timeout retry only inside this SAME deadline.
+                # A timeout while observing an already-live app stays unknown and blocks.
+                if attempt or clock() >= deadline or is_smoke_deadline(error):
+                    raise
+                retry_timeout = True
+            except Exception as error:
+                query.update(outcome="deadline_exceeded" if query.get("deadline_exceeded") else "invalid_or_error",
+                             error=_error(error))
+                raise
+            finally:
+                query["finished_at_utc"] = _utc_now()
+                query["finished_monotonic"] = clock()
+                persist()
+            if attempt < 2 and not retry_timeout:
+                sleep(min(1.0, max(0, deadline - clock())))
+        if original_present:
+            raise RuntimeError("Previous probe PID is still alive after terminate")
         raise RuntimeError("Bundle process is still alive after terminate")
-    # A crashed app can make terminate return nonzero. Only a complete, successful
-    # table proving both original-PID and bundle-process absence permits B/verify.
-    return {"pid": pid, "confirmed_absent": True, "terminate_error": terminate_error,
-            "process_query_attempts": attempt + 1}
+    finally:
+        record["observation_finished_at_utc"] = _utc_now()
+        record["observation_finished_monotonic"] = clock()
+        persist()
 
 
 def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep=time.sleep,
-                    *, signer=None, clock=time.monotonic):
-    """Run A unsigned(seed), export/confirm/uninstall A, then B signed(seed -> restart -> verify).
+                    *, signer=None, clock=time.monotonic, mode="ab"):
+    """Default AB is preserved; signed-positive uses a fresh owned device with no A.
 
     runner.call(args, label, timeout) is the smoke schema. Its call_env takes
     (args, label, env: dict[str, str], timeout=60) and applies only those supplied
@@ -452,28 +540,51 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
     source, _, _ = _source_app(app_path, bundle)
     if not callable(update_pid) or not callable(getattr(runner, "call_env", None)):
         raise ValueError("Diagnostics require a PID ownership callback and runner.call_env")
+    if mode not in ("ab", "signed-positive"):
+        raise ValueError("Expected ab or signed-positive diagnostic mode")
     signer = signer or sign_simulator_copy
-    result = {"schema": 1, "result": "running", "udid": udid, "bundle": bundle, "pid": None,
+    result = {"schema": 1, "result": "running", "experiment_mode": mode,
+              "login_ui_verified": False, "ui_review": "pending", "udid": udid, "bundle": bundle, "pid": None,
               "namespaces": {"unsigned": uuid.uuid4().hex + "_unsigned", "signed": uuid.uuid4().hex + "_signed"},
               "unsigned": {}, "signed": {"seed": {}, "verify": {}},
               "between_phases": {"experiment": "owned-app-clean-reinstall", "result": "pending", "actions": [],
                                  "interpretation": "Clean reinstall plus simulator-single-app profile; not an established LS/sharing/signature root cause"},
               "coverage": "Synthetic keychain probe plus actual AppGraphGuard; no account login or credentials"}
+    if mode == "signed-positive":
+        result["unsigned"] = {"result": "not_run", "coverage": "historical-negative-only: CI7/CI9/CI10; not a current A pass"}
+        result["namespaces"].pop("unsigned")
+        result["between_phases"] = {"result": "not_applicable", "actions": [],
+                                    "interpretation": "No A predecessor on this fresh owned device; original AB gates unchanged"}
+        result["preparation"] = {"experiment": "fresh-owned-signed-positive", "result": "pending", "actions": [],
+                                 "interpretation": "Independent positive test; not single-factor sharing/LS/resource root-cause attribution"}
+        result["coverage"] += "; independent single-app signed seed/restart/verify; A not run; UI review pending"
+    transition = result["between_phases"] if mode == "ab" else result["preparation"]
     summary = artifacts / "keychain-diagnostics.json"
 
     def save():
         _save_json(summary, result)
 
+    def abort_ab_deadline(error):
+        from ios_simulator_smoke import is_smoke_deadline
+        if not is_smoke_deadline(error):
+            return False
+        result.update(result="keychain-diagnostics-failed", error=_error(error))
+        result["unsigned"]["evidence_errors"] = unsigned_errors
+        result["signed"]["result"] = "blocked"
+        result["between_phases"]["result"] = "blocked"
+        save()
+        return True
+
     def transition_call(action, args, label, timeout):
         entry = {"action": action, "result": "running", "started_at_utc": _utc_now()}
-        result["between_phases"]["actions"].append(entry)
+        transition["actions"].append(entry)
         save()
         try:
             runner.call(args, label, timeout)
             entry["result"] = "passed"
         except BaseException as error:
             entry.update(result="failed", error=_error(error))
-            result["between_phases"]["result"] = "failed"
+            transition["result"] = "failed"
             raise
         finally:
             entry["finished_at_utc"] = _utc_now()
@@ -488,6 +599,25 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
         save()
         try:
             container = _container(runner, udid, bundle, label)
+            if kind == "signed" and phase == "seed":
+                from ios_simulator_smoke import parse_launchctl_table
+                query_label = label + "-before-launch"
+                prelaunch = {"label": query_label, "started_at_utc": _utc_now(), "valid_full": False,
+                             "stdout_file": query_label + ".stdout.log"}
+                record["prelaunch_process_check"] = prelaunch
+                save()
+                try:
+                    rows = parse_launchctl_table(runner.call(["spawn", udid, "launchctl", "list"], query_label, 15))
+                    pattern = re.compile(r"(?:UIKitApplication:|application\.)" + re.escape(bundle) + r"(?:\[|\.|$)")
+                    live = [int(row[0]) for row in rows if row[0] != "-" and pattern.match(row[2])]
+                    previous = result["signed"]["seed"].get("pid") if phase == "verify" else None
+                    previous_present = previous is not None and any(row[0] == str(previous) for row in rows)
+                    prelaunch.update(valid_full=True, bundle_live_pids=live, previous_pid_present=previous_present)
+                    if live or previous_present:
+                        raise RuntimeError("Signed app or previous seed PID is already alive before launch")
+                finally:
+                    prelaunch["finished_at_utc"] = _utc_now()
+                    save()
             record["stale_report_removed"] = _clear_report(container)
             env = {"SIMCTL_CHILD_BETTER_ZSLF_STARTUP_PROBE": phase,
                    "SIMCTL_CHILD_BETTER_ZSLF_PROBE_NAMESPACE": result["namespaces"][kind]}
@@ -513,57 +643,72 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
         except BaseException as error:
             record["result"] = "failed"
             record["error"] = _error(error)
+            from ios_simulator_smoke import is_smoke_deadline
+            if is_smoke_deadline(error) or not isinstance(error, Exception):
+                result.update(result="keychain-diagnostics-failed", error=_error(error))
+                save()
+                raise
             _capture_failure(artifacts, runner, udid, label, record, container, phase, save, bundle)
             raise
 
     save()
     unsigned_pid = None
     unsigned_errors = []
-    try:
-        runner.call(["install", udid, str(source)], "unsigned-install", 90)
-        unsigned_pid = launch_phase("unsigned", "seed", False)
-    except Exception as error:
-        unsigned_errors.append(_error(error))
-        if not result["unsigned"]:
-            result["unsigned"].update({"phase": "seed", "result": "failed", "report": None, "error": _error(error)})
-            _capture_failure(artifacts, runner, udid, "unsigned", result["unsigned"], None, "seed", save, bundle)
-    try:
-        result["unsigned"]["screenshot"] = _screenshot(artifacts, runner, udid, "unsigned-startup.png", "unsigned-screenshot",
-                                                    attempts=result["unsigned"].setdefault("screenshot_attempts", []), save=save)
-    except Exception as error:
-        unsigned_errors.append(_error(error))
-        result["unsigned"]["screenshot_error"] = _error(error)
-    try:
-        result["unsigned"]["termination"] = _terminate_and_confirm(
-            runner, udid, bundle, result["unsigned"].get("pid", unsigned_pid), "unsigned")
-    except Exception as error:
-        unsigned_errors.append(_error(error))
-        result["unsigned"]["termination_error"] = _error(error)
-    result["unsigned"]["evidence_errors"] = unsigned_errors
-    baseline = result["unsigned"]
-    from ios_simulator_smoke import exported_png_is_valid
-    exported = (baseline.get("report") is not None and
-                (artifacts / "unsigned-startup-report.json").is_file() and
-                exported_png_is_valid(artifacts, baseline.get("screenshot")))
-    absent = baseline.get("termination", {}).get("confirmed_absent") is True
-    result["between_phases"]["actions"].extend([
-        {"action": "export-unsigned-evidence", "result": "passed" if exported else "failed",
-         "screenshot": baseline.get("screenshot") if exported else None},
-        {"action": "confirm-unsigned-absence", "result": "passed" if absent else "failed"},
-    ])
-    if absent:
-        result["pid"] = None  # Keep A's historical PID in its record, not as a live B PID.
-    save()
+    exported = absent = False
+    if mode == "ab":
+        try:
+            runner.call(["install", udid, str(source)], "unsigned-install", 90)
+            unsigned_pid = launch_phase("unsigned", "seed", False)
+        except Exception as error:
+            unsigned_errors.append(_error(error))
+            if abort_ab_deadline(error):
+                raise
+            if not result["unsigned"]:
+                result["unsigned"].update({"phase": "seed", "result": "failed", "report": None, "error": _error(error)})
+                _capture_failure(artifacts, runner, udid, "unsigned", result["unsigned"], None, "seed", save, bundle)
+        try:
+            result["unsigned"]["screenshot"] = _screenshot(artifacts, runner, udid, "unsigned-startup.png", "unsigned-screenshot",
+                                                        attempts=result["unsigned"].setdefault("screenshot_attempts", []), save=save)
+        except Exception as error:
+            unsigned_errors.append(_error(error))
+            result["unsigned"]["screenshot_error"] = _error(error)
+            if abort_ab_deadline(error):
+                raise
+        try:
+            termination = result["unsigned"].setdefault("termination", {})
+            _terminate_and_confirm(runner, udid, bundle, result["unsigned"].get("pid", unsigned_pid), "unsigned",
+                                   record=termination, save=save, sleep=sleep, clock=clock)
+        except Exception as error:
+            unsigned_errors.append(_error(error))
+            result["unsigned"]["termination_error"] = _error(error)
+            if abort_ab_deadline(error):
+                raise
+        result["unsigned"]["evidence_errors"] = unsigned_errors
+        baseline = result["unsigned"]
+        from ios_simulator_smoke import exported_png_is_valid
+        exported = (baseline.get("report") is not None and
+                    (artifacts / "unsigned-startup-report.json").is_file() and
+                    exported_png_is_valid(artifacts, baseline.get("screenshot")))
+        absent = baseline.get("termination", {}).get("confirmed_absent") is True
+        result["between_phases"]["actions"].extend([
+            {"action": "export-unsigned-evidence", "result": "passed" if exported else "failed",
+             "screenshot": baseline.get("screenshot") if exported else None},
+            {"action": "confirm-unsigned-absence", "result": "passed" if absent else "failed"},
+        ])
+        if absent:
+            result["pid"] = None
+        save()
 
     active_phase = "transition"
     try:
-        if not exported or not absent or unsigned_errors:
-            result["signed"]["result"] = "blocked"
-            result["between_phases"]["result"] = "blocked"
-            raise RuntimeError("Unsigned baseline evidence/termination absence is unconfirmed; signed experiment blocked")
-        active_phase = "uninstall"
-        transition_call("uninstall-unsigned-owned-app", ["uninstall", udid, bundle],
-                        "between-uninstall-unsigned", 30)
+        if mode == "ab":
+            if not exported or not absent or unsigned_errors:
+                result["signed"]["result"] = "blocked"
+                result["between_phases"]["result"] = "blocked"
+                raise RuntimeError("Unsigned baseline evidence/termination absence is unconfirmed; signed experiment blocked")
+            active_phase = "uninstall"
+            transition_call("uninstall-unsigned-owned-app", ["uninstall", udid, bundle],
+                            "between-uninstall-unsigned", 30)
         active_phase = "sign"
         signed_app = Path(signer(artifacts, source, bundle)).resolve(strict=True)
         signed_root = (artifacts / "signed").resolve(strict=True)
@@ -578,13 +723,15 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
         save()
         active_phase = "seed"
         transition_call("install-signed-copy", ["install", udid, str(signed_app)], "signed-install", 90)
-        result["between_phases"]["result"] = "completed"
+        transition["result"] = "completed"
         save()
         seed_pid = launch_phase("signed", "seed", True)
         result["signed"]["seed"]["screenshot"] = _screenshot(
             artifacts, runner, udid, "signed-seed.png", "signed-seed-screenshot",
             attempts=result["signed"]["seed"].setdefault("screenshot_attempts", []), save=save)
-        result["signed"]["seed"]["termination"] = _terminate_and_confirm(runner, udid, bundle, seed_pid, "signed-seed")
+        termination = result["signed"]["seed"].setdefault("termination", {})
+        _terminate_and_confirm(runner, udid, bundle, seed_pid, "signed-seed",
+                               record=termination, save=save, sleep=sleep, clock=clock)
         save()
         active_phase = "verify"
         verify_pid = launch_phase("signed", "verify", True)
@@ -600,6 +747,11 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
     except BaseException as error:
         result["result"] = "keychain-diagnostics-failed"
         result["error"] = _error(error)
+        from ios_simulator_smoke import is_smoke_deadline
+        if is_smoke_deadline(error) or not isinstance(error, Exception):
+            result["signed"]["result"] = "failed"
+            save()
+            raise
         if result["signed"].get("result") not in ("passed", "blocked"):
             result["signed"]["result"] = "failed"
             record = result["signed"].setdefault(active_phase, {})

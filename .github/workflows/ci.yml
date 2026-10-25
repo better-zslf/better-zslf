@@ -93,6 +93,9 @@ jobs:
       - name: Build iOS on macOS
         run: bash scripts/ci-ios.sh
       - name: Smoke launch on an owned iOS Simulator
+        env:
+          # Independent B positive; original AB remains the helper's default mode.
+          BETTER_ZSLF_CI_DIAGNOSTIC_MODE: signed-positive
         timeout-minutes: 12
         run: bash scripts/ci-ios-smoke.sh
       - name: Upload simulator app and build diagnostics

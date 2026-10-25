@@ -37,6 +37,7 @@ fun FeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBa
     when (page.kind) {
         "settings" -> SettingsScreen(graph, onOpen, onBack)
         "password" -> PasswordScreen(graph, onBack)
+        "resetpassword" -> io.github.betterzslf.ui.accountrecovery.AccountRecoveryPage(graph, onBack)
         "columns", "articles", "article", "document", "history", "notices", "messages", "discover" -> ContentPage(graph, page, onOpen, onBack)
         "venues", "venue", "venuetimes", "venueapply", "myvenues", "venueapplication", "fitness", "fitnessitems", "fitnessenrol" -> BookingPage(graph, page, onOpen, onBack)
         "runs", "rundetail", "runrecords", "runrecord", "runtracker", "runimport" -> RunFeaturePage(graph, page, onOpen, onBack, graph.runRuntime)

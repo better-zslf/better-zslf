@@ -3,6 +3,7 @@ package io.github.betterzslf.data
 import io.github.betterzslf.core.model.Session
 import io.github.betterzslf.core.net.ApiClient
 import io.github.betterzslf.core.net.ApiEndpoint
+import io.github.betterzslf.core.net.ApiSessionBinding
 import io.github.betterzslf.core.net.queryParameters
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
@@ -13,7 +14,29 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
-class AuthRepository(private val api: ApiClient, private val sessions: SessionStore) {
+enum class PasswordResetLogout { CLEARED, CLEAR_FAILED, NEW_SESSION_PRESERVED }
+
+/** Acknowledgement is retained even when local session cleanup fails; never repeat the reset. */
+sealed interface PasswordResetReceipt {
+    data class Accepted(val logout: PasswordResetLogout) : PasswordResetReceipt
+    data class Failed(val error: ApiError) : PasswordResetReceipt
+}
+
+class AuthRepository private constructor(
+    private val api: ApiClient,
+    private val sessions: SessionStore,
+    private val binding: ApiSessionBinding?,
+) {
+    constructor(api: ApiClient, sessions: SessionStore) : this(api, sessions, null)
+
+    val isBoundToCurrentSession: Boolean get() = binding != null && api.isBindingCurrent(binding)
+    val isLoggedOut: Boolean get() = sessions.session.value == null
+
+    fun boundToCurrentSession(): AuthRepository? {
+        if (binding != null) return if (api.isBindingCurrent(binding)) this else null
+        return api.captureSessionBinding()?.let { AuthRepository(api, sessions, it) }
+    }
+
     /** Credentials are used only in this request; no password is retained or logged. */
     suspend fun login(username: String, password: String): ApiResult<Session> {
         return when (val result = api.execute(ApiEndpoint.LOGIN, queryParameters("username" to username, "password" to password))) {
@@ -46,11 +69,15 @@ class AuthRepository(private val api: ApiClient, private val sessions: SessionSt
         }
     }
 
-    fun logout() { sessions.clear() }
+    fun logout() { if (binding == null || api.isBindingCurrent(binding)) sessions.clear() }
 
-    /** Despite the login-screen placement, docs/13 confirms this endpoint requires a token. */
+    /** Observed reset-page upstream: phone-only SMS request, not verification or proof of delivery. */
+    suspend fun sendResetCode(phone: String): ApiResult<JsonElement> = api.execute(ApiEndpoint.CAMPUS_CHECK_PHONE,
+        queryParameters("phone" to phone), expectedSession = binding)
+
+    /** Keep current REQUIRED authentication; anonymous behavior is not proven endpoint-by-endpoint. */
     suspend fun checkPhone(phone: String, smsCode: String): ApiResult<JsonElement> =
-        api.execute(ApiEndpoint.CHECK_PHONE, queryParameters("phone" to phone, "smsCode" to smsCode))
+        api.execute(ApiEndpoint.CHECK_PHONE, queryParameters("phone" to phone, "smsCode" to smsCode), expectedSession = binding)
 
     /** An explicit password-changing action; caller handles its confirmation UI. POST+query only. */
     suspend fun resetPassword(userId: String, newPassword: String): ApiResult<JsonElement> {
@@ -63,20 +90,46 @@ class AuthRepository(private val api: ApiClient, private val sessions: SessionSt
         return changePassword(ApiEndpoint.MODIFY_PASSWORD, queryParameters("oldPassword" to oldPassword, "newPassWord" to newPassword))
     }
 
-    private suspend fun changePassword(endpoint: ApiEndpoint, parameters: JsonObject): ApiResult<JsonElement> {
-        val requestToken = sessions.session.value?.token
-        val result = api.execute(endpoint, parameters)
-        if (result is ApiResult.Success) {
-            try {
-                sessions.clearIfTokenMatches(requestToken)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                return ApiResult.Failure(ApiError.Storage())
-            }
+    /** Same public parameter order as resetPassword(userId, newPassword), with explicit acknowledgement. */
+    suspend fun resetPasswordWithReceipt(userId: String, newPassword: String): PasswordResetReceipt {
+        passwordError(newPassword)?.let { return PasswordResetReceipt.Failed(it.error) }
+        val changed = requestPasswordChange(ApiEndpoint.RESET_PASSWORD,
+            queryParameters("userId" to userId, "newPassWord" to newPassword))
+        return when (val response = changed.response) {
+            is ApiResult.Failure -> PasswordResetReceipt.Failed(response.error)
+            is ApiResult.Success -> PasswordResetReceipt.Accepted(changed.logout ?: PasswordResetLogout.NEW_SESSION_PRESERVED)
         }
-        return result
     }
+
+    private class ChangeResult(val response: ApiResult<JsonElement>, val logout: PasswordResetLogout? = null)
+
+    private suspend fun changePassword(endpoint: ApiEndpoint, parameters: JsonObject): ApiResult<JsonElement> {
+        val result = requestPasswordChange(endpoint, parameters)
+        // Preserve the legacy ApiResult contract; interactive recovery consumes the typed receipt instead.
+        return if (result.logout == PasswordResetLogout.CLEAR_FAILED) ApiResult.Failure(ApiError.Storage()) else result.response
+    }
+
+    private suspend fun requestPasswordChange(endpoint: ApiEndpoint, parameters: JsonObject): ChangeResult {
+        val expected = binding ?: api.captureSessionBinding()
+        val snapshot = sessions.session.value
+        val response = api.execute(endpoint, parameters, expectedSession = expected)
+        if (response is ApiResult.Failure) return ChangeResult(response)
+        if (snapshot == null || (expected != null && !api.isBindingCurrent(expected)) ||
+            sessions.session.value?.userId != snapshot.userId || sessions.session.value?.token != snapshot.token) {
+            return ChangeResult(response, PasswordResetLogout.NEW_SESSION_PRESERVED)
+        }
+        return try {
+            sessions.clearIfTokenMatches(snapshot.token)
+            ChangeResult(response, PasswordResetLogout.CLEARED)
+        } catch (cancelled: CancellationException) {
+            // SessionStore clears its in-memory value in finally, even if backing storage fails.
+            ChangeResult(response, PasswordResetLogout.CLEAR_FAILED)
+        } catch (_: Exception) {
+            ChangeResult(response, PasswordResetLogout.CLEAR_FAILED)
+        }
+    }
+
+    override fun toString(): String = "AuthRepository(bound=${binding != null})"
 
     private fun passwordError(password: String): ApiResult.Failure? =
         if (isValidNewPassword(password)) null else ApiResult.Failure(ApiError.Validation(

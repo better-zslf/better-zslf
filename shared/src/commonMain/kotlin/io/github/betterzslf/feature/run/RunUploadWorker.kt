@@ -19,15 +19,24 @@ fun interface RunUploadTransport {
     suspend fun send(endpoint: RunUploadEndpoint, batch: RunUploadBatch): RunSendResult
 }
 
-/** The repository itself does not retry; uncertain outcomes never fan out to another write endpoint. */
+/**
+ * Keeps the supplied repository (including its captured owner/token binding); never rebinds globally.
+ * The repository itself does not retry; uncertain outcomes never fan out to another write endpoint.
+ */
 class RunRepositoryTransport(private val repository: RunRepository) : RunUploadTransport {
     override suspend fun send(endpoint: RunUploadEndpoint, batch: RunUploadBatch): RunSendResult {
+        val body = try {
+            batch.toGcj02WireBody()
+        } catch (_: IllegalArgumentException) {
+            return RunSendResult.NotAccepted("本地轨迹载荷预检未通过")
+        }
         val result = when (endpoint) {
-            RunUploadEndpoint.PRIMARY -> repository.addTrack(batch.payload.toJsonObject())
-            RunUploadEndpoint.SYNC_SPORT_DATA -> repository.syncSportData(batch.payload.toJsonObject())
-            RunUploadEndpoint.REPORT_LOCATION -> repository.reportLocation(batch.payload.toJsonObject())
+            RunUploadEndpoint.PRIMARY -> repository.addTrack(body)
+            RunUploadEndpoint.SYNC_SPORT_DATA -> repository.syncSportData(body)
+            RunUploadEndpoint.REPORT_LOCATION -> repository.reportLocation(body)
         }
         return when (result) {
+            // code=200 maps to this local batch marker, not a remote batch receipt or run score.
             is ApiResult.Success -> RunSendResult.Accepted(batch.batchId)
             is ApiResult.Failure -> when (val error = result.error) {
                 is ApiError.Authentication, is ApiError.Validation, is ApiError.Business -> RunSendResult.NotAccepted(error.message)

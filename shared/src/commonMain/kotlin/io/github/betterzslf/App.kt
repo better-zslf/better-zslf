@@ -5,6 +5,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.unit.dp
 import io.github.betterzslf.core.net.ApiClient
 import io.github.betterzslf.core.storage.SessionStore
 import io.github.betterzslf.data.AppRepositories
@@ -181,16 +182,19 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
     }
     MiuixTheme(controller = theme) {
         PlatformAppearance(when (settings.theme) { "Dark" -> true; "Light" -> false; else -> null })
-        NavDisplay(backStack = root, onBack = { if (root.size > 1 && root.last() != Route.Login) root.removeLastOrNull() },
-            transition = NavTransitions.MiuixDefault) {
+        NavDisplay(backStack = root, modifier = Modifier.fillMaxSize().clipToBounds(),
+            onBack = { if (root.size > 1 && root.last() != Route.Login) root.removeLastOrNull() },
+            transition = NavTransitions.MiuixDefault, effects = NavDisplayEffects(cornerClipRadius = 0.dp)) {
             entry<Route.Main> {
-                if (session != null) MainShell(graph, selected, { selected = it }, tabStacks)
+                if (session != null) MainShell(graph, selected, { selected = it }, tabStacks,
+                    onAccountRecovery = { root.pushUnique(Route.Page("resetpassword", title = "找回密码")) })
             }
             entry<Route.Login> {
                 LoginScreen(graph, onDocument = { root.pushUnique(Route.Page("document", it, it)) },
-                    onWater = { root.pushUnique(Route.Page("water", title = "宿舍热水器")) })
+                    onWater = { root.pushUnique(Route.Page("water", title = "宿舍热水器")) },
+                    onResetPassword = { root.pushUnique(Route.Page("resetpassword", title = "找回密码")) })
             }
-            entry<Route.Page>(swipeDismiss = if ((root.lastOrNull() as? Route.Page)?.kind in setOf("water", "runtracker")) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) {
+            entry<Route.Page>(swipeDismiss = if ((root.lastOrNull() as? Route.Page)?.kind in setOf("water", "runtracker", "resetpassword")) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) {
                 FeaturePage(graph, it, onOpen = root::pushUnique, onBack = { root.removeLastOrNull() })
             }
         }
@@ -198,29 +202,52 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
 }
 
 @Composable
-private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, stacks: List<NavBackStack>) {
-    val stack = stacks[selected]
+private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, stacks: List<NavBackStack>, onAccountRecovery: () -> Unit) {
+    val stack = NavigationLayoutPolicy.stackFor(stacks, selected)
+    val activeTab = NavigationLayoutPolicy.tabIndex(selected)
+    val open: (Route) -> Unit = { route ->
+        if (route is Route.Page && route.kind == "resetpassword") onAccountRecovery() else stack.pushUnique(route)
+    }
     val titles = listOf("首页", "校园跑", "社区", "我的")
     val icons = listOf(MiuixIcons.Home, MiuixIcons.Location, MiuixIcons.Community, MiuixIcons.Contacts)
-    Scaffold(contentWindowInsets = WindowInsets(0, 0, 0, 0), bottomBar = {
-        NavigationBar {
-            titles.forEachIndexed { index, title ->
-                NavigationBarItem(selected = selected == index, onClick = { onSelect(index) }, icon = icons[index], label = title)
+    BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
+        val useRail = NavigationLayoutPolicy.useRail(maxWidth.value)
+        Scaffold(contentWindowInsets = WindowInsets(0, 0, 0, 0), bottomBar = {
+            if (!useRail) NavigationBar {
+                titles.forEachIndexed { index, title ->
+                    NavigationBarItem(selected = activeTab == index,
+                        onClick = { onSelect(NavigationLayoutPolicy.selectTab(selected, index)) }, icon = icons[index], label = title)
+                }
             }
-        }
-    }) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).clipToBounds()) {
-            NavDisplay(backStack = stack, onBack = { if (stack.size > 1) stack.removeLastOrNull() }, transition = NavTransitions.MiuixDefault) {
-                entry<Route.TabRoot> { route ->
-                    when (route.index) {
-                        0 -> HomeScreen(graph, stack::pushUnique)
-                        1 -> RunTaskList(graph, stack::pushUnique)
-                        2 -> CommunityScreen(graph, stack::pushUnique)
-                        3 -> ProfileScreen(graph, stack::pushUnique)
+        }) { padding ->
+            Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).clipToBounds()) {
+                if (useRail) NavigationRail(modifier = Modifier.fillMaxHeight(), defaultWindowInsetsPadding = true) {
+                    titles.forEachIndexed { index, title ->
+                        NavigationRailItem(selected = activeTab == index,
+                            onClick = { onSelect(NavigationLayoutPolicy.selectTab(selected, index)) }, icon = icons[index], label = title)
                     }
                 }
-                entry<Route.Page>(swipeDismiss = if ((stack.lastOrNull() as? Route.Page)?.kind in setOf("water", "runtracker")) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) { route ->
-                    FeaturePage(graph, route, stack::pushUnique) { stack.removeLastOrNull() }
+                // The rail already moves this pane past logical Start cutout/side-navigation insets.
+                // Top/End/Bottom remain unconsumed for each page's own Scaffold; no double safe area.
+                val railConsumedInsets = if (useRail) WindowInsets.displayCutout.union(WindowInsets.navigationBars).only(WindowInsetsSides.Start)
+                    else WindowInsets(0, 0, 0, 0)
+                Box(Modifier.weight(1f).fillMaxHeight().consumeWindowInsets(railConsumedInsets).clipToBounds()) {
+                    // One stable host for both layouts: resizing changes chrome, never the tab's owner.
+                    NavDisplay(backStack = stack, modifier = Modifier.fillMaxSize().clipToBounds(),
+                        onBack = { if (stack.size > 1) stack.removeLastOrNull() }, transition = NavTransitions.MiuixDefault,
+                        effects = NavDisplayEffects(cornerClipRadius = 0.dp)) {
+                        entry<Route.TabRoot> { route ->
+                            when (route.index) {
+                                0 -> HomeScreen(graph, open)
+                                1 -> RunTaskList(graph, open)
+                                2 -> CommunityScreen(graph, open)
+                                3 -> ProfileScreen(graph, open)
+                            }
+                        }
+                        entry<Route.Page>(swipeDismiss = if ((stack.lastOrNull() as? Route.Page)?.kind in setOf("water", "runtracker", "resetpassword")) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) { route ->
+                            FeaturePage(graph, route, open) { stack.removeLastOrNull() }
+                        }
+                    }
                 }
             }
         }

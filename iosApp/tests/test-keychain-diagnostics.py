@@ -42,10 +42,15 @@ class FakeRunner:
         self.launch_failure_labels = set()
         self.fail_labels = set()
         self.process_outputs = {}
+        self.screenshot_payloads = {}
 
     def call(self, args, label, timeout=60):
         self.calls.append((list(args), label))
         self.timeouts[label] = timeout
+        if args[0] == "io":
+            # Like CI9, an image may exist even when the command later times out/nonzero.
+            payload = self.screenshot_payloads.get(label, b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 390, 844))
+            Path(args[3]).write_bytes(payload)
         if label in self.timeout_labels:
             raise smoke.subprocess.TimeoutExpired("synthetic read-only command", timeout)
         if label in self.fail_labels:
@@ -62,8 +67,6 @@ class FakeRunner:
             self.pid = None
         if args[:3] == ["spawn", OWN, "launchctl"]:
             return "PID\tStatus\tLabel\n-\t0\tcom.apple.fixture.daemon\n" + (f"{self.pid}\t0\tUIKitApplication:{BUNDLE}[fixture]\n" if self.pid else "")
-        if args[0] == "io":
-            Path(args[3]).write_bytes(b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 390, 844))
         return ""
 
     def call_env(self, args, label, env, timeout=60):
@@ -133,6 +136,56 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(self.runner.timeouts["signed-seed-after-terminate"], 15)
         self.assertTrue(all(args[1] == OWN for args, _ in self.runner.calls))
         self.assertFalse((self.artifacts / "startup.png").exists())  # Parent takes final stability screenshot.
+
+    def test_screenshot_timeout_recovers_to_distinct_file_without_losing_attempt_evidence(self):
+        self.runner.timeout_labels.add("unsigned-screenshot")
+        value = self.run_probe()
+        unsigned = value["unsigned"]
+        self.assertEqual(unsigned["screenshot"], "unsigned-startup-attempt-2.png")
+        self.assertEqual([entry["result"] for entry in unsigned["screenshot_attempts"]], ["timeout", "passed"])
+        self.assertEqual(unsigned["screenshot_attempts"][0]["error"]["type"], "TimeoutExpired")
+        self.assertEqual(unsigned["evidence_errors"], [])
+        for name in ("unsigned-startup.png", "unsigned-startup-attempt-2.png"):
+            self.assertTrue((self.artifacts / name).is_file())
+        for label in ("unsigned-screenshot", "unsigned-screenshot-attempt-2"):
+            self.assertEqual(self.runner.timeouts[label], 15)
+        action = value["between_phases"]["actions"][0]
+        self.assertEqual(action["result"], "passed")
+        self.assertEqual(action["screenshot"], unsigned["screenshot"])
+        self.assertEqual(len(self.runner.launches), 3)  # Retry only io screenshot, never launch.
+
+    def test_both_screenshot_timeouts_leave_pngs_but_block_b_and_export(self):
+        self.runner.timeout_labels.update(("unsigned-screenshot", "unsigned-screenshot-attempt-2"))
+        with self.assertRaisesRegex(RuntimeError, "Unsigned baseline"):
+            self.run_probe()
+        value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+        self.assertEqual([entry["result"] for entry in value["unsigned"]["screenshot_attempts"]], ["timeout", "timeout"])
+        self.assertNotIn("screenshot", value["unsigned"])
+        self.assertTrue((self.artifacts / "unsigned-startup.png").is_file())
+        self.assertTrue((self.artifacts / "unsigned-startup-attempt-2.png").is_file())
+        self.assertEqual(value["between_phases"]["actions"][0]["result"], "failed")
+        self.assertIsNone(value["between_phases"]["actions"][0]["screenshot"])
+        self.assertEqual(value["signed"]["result"], "blocked")
+        self.assertFalse(any(args[0] == "uninstall" for args, _ in self.runner.calls))
+
+    def test_nonzero_or_bad_png_is_not_a_retryable_success(self):
+        for failure in ("nonzero", "bad-png"):
+            with self.subTest(failure=failure):
+                self.runner.calls.clear()
+                self.runner.timeouts.clear()
+                self.runner.fail_labels.clear()
+                self.runner.screenshot_payloads.clear()
+                if failure == "nonzero":
+                    self.runner.fail_labels.add("unsigned-screenshot")
+                else:
+                    self.runner.screenshot_payloads["unsigned-screenshot"] = b"not a PNG"
+                with self.assertRaisesRegex(RuntimeError, "Unsigned baseline"):
+                    self.run_probe()
+                self.assertNotIn("unsigned-screenshot-attempt-2", self.runner.timeouts)
+                value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+                self.assertEqual(value["unsigned"]["screenshot_attempts"][0]["result"], "failed")
+                self.assertEqual(value["between_phases"]["actions"][0]["result"], "failed")
+                self.assertEqual(value["signed"]["result"], "blocked")
 
     def test_clean_reinstall_exports_a_before_one_owned_uninstall_and_keeps_b_install(self):
         value = self.run_probe()

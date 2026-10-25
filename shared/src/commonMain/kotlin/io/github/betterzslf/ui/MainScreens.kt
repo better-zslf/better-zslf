@@ -93,35 +93,7 @@ fun CommunityScreen(graph: AppGraph, open: (Route) -> Unit) {
 
 @Composable
 fun ProfileScreen(graph: AppGraph, open: (Route) -> Unit) {
-    val session by graph.sessions.session.collectAsState()
-    var refresh by remember { mutableIntStateOf(0) }
-    var logout by remember { mutableStateOf(false) }
-    Screen("我的", actions = { TextButton("刷新", onClick = { refresh++ }) }) { padding ->
-        PageList(padding) {
-            item {
-                AsyncContent(refresh, { graph.repositories.profile.userInfo() }) { data ->
-                    val user = data.field("userInfo")
-                    SectionCard(user.text("name").ifBlank { session?.userInfo?.text("name").orEmpty() },
-                        listOf(user.text("schoolName"), user.text("studentNum").ifBlank { user.text("account") }, user.text("typeValue")).filter { it.isNotBlank() }.joinToString("\n"))
-                }
-            }
-            item { AsyncContent(refresh, { graph.repositories.profile.statistics() }) { data ->
-                SectionCard("我的足迹", "收藏 ${data.text("collect")} · 评论 ${data.text("comment")} · 浏览 ${data.text("history")}")
-            } }
-            item { Text("账号") }
-            item { SectionCard("修改密码", onClick = { open(Route.Page("password", title = "修改密码")) }) }
-            item { SectionCard("设置", "主题、跑步偏好与本地数据", { open(Route.Page("settings", title = "设置")) }) }
-            item { Text("关于") }
-            item { SectionCard("版本更新", "better-zslf ${graph.platform.versionName}", { open(Route.Page("updates", title = "版本更新")) }) }
-            item { SectionCard("关于应用", onClick = { open(Route.Page("about", title = "关于应用")) }) }
-            item { Text("协议与帮助") }
-            listOf("用户协议", "隐私政策", "使用帮助").forEach { title -> item { SectionCard(title, onClick = { open(Route.Page("document", title, title)) }) } }
-            item { TextButton("退出登录", onClick = { logout = true }, modifier = Modifier.fillMaxWidth()) }
-        }
-        ConfirmDialog(logout, "退出登录？", "会清除本机保存的会话，账号和学校数据保持原样。", { logout = false }) {
-            graph.logout(); logout = false
-        }
-    }
+    io.github.betterzslf.ui.profile.ProfileFeatureScreen(graph, open)
 }
 
 @Composable

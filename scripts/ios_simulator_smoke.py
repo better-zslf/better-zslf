@@ -247,6 +247,20 @@ def png_dimensions(path):
     return dimensions
 
 
+def exported_png_is_valid(artifacts, filename):
+    """Validate the successful helper's filename, not an unrelated timeout leftover."""
+    if not isinstance(filename, str) or Path(filename).name != filename or not filename.endswith(".png"):
+        return False
+    path = artifacts / filename
+    if path.is_symlink() or not path.is_file():
+        return False
+    try:
+        png_dimensions(path)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=False):
     runner = runner or Simctl(artifacts)
     if (artifacts / "owner.json").exists():

@@ -326,12 +326,35 @@ def _checks_ok(report):
             and report["probeOk"] is True and report["graphOk"] is True and report["sessionAbsent"] is True)
 
 
-def _screenshot(artifacts, runner, udid, filename, label):
+def _screenshot(artifacts, runner, udid, filename, label, *, attempts=None, save=None):
     from ios_simulator_smoke import png_dimensions
-    path = artifacts / filename
-    runner.call(["io", udid, "screenshot", str(path)], label, COMMAND_TIMEOUT)
-    png_dimensions(path)
-    return filename
+    attempts = attempts if attempts is not None else []
+    original = Path(filename)
+    for attempt in range(2):
+        final_name = filename if not attempt else original.stem + "-attempt-2" + original.suffix
+        command_label = label + ("-attempt-2" if attempt else "")
+        path = artifacts / final_name
+        entry = {"attempt": attempt + 1, "file": final_name, "label": command_label,
+                 "result": "running", "started_at_utc": _utc_now()}
+        attempts.append(entry)
+        if save:
+            save()
+        try:
+            runner.call(["io", udid, "screenshot", str(path)], command_label, 15)
+            png_dimensions(path)
+            entry["result"] = "passed"
+            return final_name
+        except subprocess.TimeoutExpired as error:
+            entry.update(result="timeout", error=_error(error))
+            if attempt:
+                raise
+        except Exception as error:
+            entry.update(result="failed", error=_error(error))
+            raise  # Nonzero or bad PNG is not a retryable successful screenshot.
+        finally:
+            entry["finished_at_utc"] = _utc_now()
+            if save:
+                save()
 
 
 def _utc_now():
@@ -371,7 +394,8 @@ def _capture_failure(artifacts, runner, udid, label, record, container, phase, s
             record["failure_report_error"] = _error(error)
     try:
         record["failure_screenshot"] = _screenshot(artifacts, runner, udid, label + "-failure.png",
-                                                  label + "-failure-screenshot")
+                                                  label + "-failure-screenshot",
+                                                  attempts=record.setdefault("failure_screenshot_attempts", []), save=save)
     except Exception as error:
         record["failure_screenshot_error"] = _error(error)
     save()
@@ -504,7 +528,8 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
             result["unsigned"].update({"phase": "seed", "result": "failed", "report": None, "error": _error(error)})
             _capture_failure(artifacts, runner, udid, "unsigned", result["unsigned"], None, "seed", save, bundle)
     try:
-        result["unsigned"]["screenshot"] = _screenshot(artifacts, runner, udid, "unsigned-startup.png", "unsigned-screenshot")
+        result["unsigned"]["screenshot"] = _screenshot(artifacts, runner, udid, "unsigned-startup.png", "unsigned-screenshot",
+                                                    attempts=result["unsigned"].setdefault("screenshot_attempts", []), save=save)
     except Exception as error:
         unsigned_errors.append(_error(error))
         result["unsigned"]["screenshot_error"] = _error(error)
@@ -516,12 +541,14 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
         result["unsigned"]["termination_error"] = _error(error)
     result["unsigned"]["evidence_errors"] = unsigned_errors
     baseline = result["unsigned"]
+    from ios_simulator_smoke import exported_png_is_valid
     exported = (baseline.get("report") is not None and
                 (artifacts / "unsigned-startup-report.json").is_file() and
-                (artifacts / "unsigned-startup.png").is_file())
+                exported_png_is_valid(artifacts, baseline.get("screenshot")))
     absent = baseline.get("termination", {}).get("confirmed_absent") is True
     result["between_phases"]["actions"].extend([
-        {"action": "export-unsigned-evidence", "result": "passed" if exported else "failed"},
+        {"action": "export-unsigned-evidence", "result": "passed" if exported else "failed",
+         "screenshot": baseline.get("screenshot") if exported else None},
         {"action": "confirm-unsigned-absence", "result": "passed" if absent else "failed"},
     ])
     if absent:
@@ -555,7 +582,8 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
         save()
         seed_pid = launch_phase("signed", "seed", True)
         result["signed"]["seed"]["screenshot"] = _screenshot(
-            artifacts, runner, udid, "signed-seed.png", "signed-seed-screenshot")
+            artifacts, runner, udid, "signed-seed.png", "signed-seed-screenshot",
+            attempts=result["signed"]["seed"].setdefault("screenshot_attempts", []), save=save)
         result["signed"]["seed"]["termination"] = _terminate_and_confirm(runner, udid, bundle, seed_pid, "signed-seed")
         save()
         active_phase = "verify"

@@ -174,6 +174,16 @@ class SimulatorCommandFlowTests(unittest.TestCase):
             self.assertNotIn("all", args)
             self.assertNotIn("booted", args)
 
+    def test_exported_png_checks_returned_filename_not_any_leftover(self):
+        path = self.artifacts / "shot-attempt-2.png"
+        self.runner.call(["io", OWN, "screenshot", str(path)], "fixture-image")
+        self.assertTrue(smoke.exported_png_is_valid(self.artifacts, path.name))
+        self.assertFalse(smoke.exported_png_is_valid(self.artifacts, None))
+        self.assertFalse(smoke.exported_png_is_valid(self.artifacts, "shot.png"))
+        self.assertFalse(smoke.exported_png_is_valid(self.artifacts, "../shot-attempt-2.png"))
+        path.write_bytes(b"not a PNG")
+        self.assertFalse(smoke.exported_png_is_valid(self.artifacts, path.name))
+
     def test_initial_inventory_cold_timeout_retries_once_before_any_creation(self):
         self.runner.timeout_labels.add("inventory-before")
         self.run_smoke()

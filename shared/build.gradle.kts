@@ -30,6 +30,7 @@ kotlin {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.ui)
+            implementation(libs.coil.compose)
             implementation(libs.miuix.ui)
             implementation(libs.miuix.preference)
             implementation(libs.miuix.icons)

@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.run
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.data.RunRepository
@@ -28,7 +29,7 @@ class RunRepositoryTransport(private val repository: RunRepository) : RunUploadT
         val body = try {
             batch.toGcj02WireBody()
         } catch (_: IllegalArgumentException) {
-            return RunSendResult.NotAccepted("本地轨迹载荷预检未通过")
+            return RunSendResult.NotAccepted(AppText.Run.LOCAL_TRACK_PAYLOAD_PREFLIGHT_FAILED)
         }
         val result = when (endpoint) {
             RunUploadEndpoint.PRIMARY -> repository.addTrack(body)
@@ -67,10 +68,10 @@ class RunUploadWorker(private val queue: RunUploadQueue, private val transport: 
                 is RunUploadQueue.Claim.Complete -> return RunWorkerResult(
                     if (claim.finished) RunWorkerStop.COMPLETE else RunWorkerStop.DRAINED,
                     acknowledged,
-                    if (claim.finished) "已确认全部批次接收，请查询成绩确认最终结果" else "现有块已确认接收，等待后续定位或结束块",
+                    if (claim.finished) AppText.Run.ALL_BATCH_RECEIPTS_CONFIRMED_QUERY_SCORE_FOR_FINAL_RESULT else AppText.Run.EXISTING_BATCHES_RECEIVED_WAITING_FOR_LOCATION_OR_FINAL_BATCH,
                     failures,
                 )
-                is RunUploadQueue.Claim.NotDue -> return RunWorkerResult(RunWorkerStop.NOT_DUE, acknowledged, "下一批轨迹的计划时间尚未到达", failures, claim.dueMillis)
+                is RunUploadQueue.Claim.NotDue -> return RunWorkerResult(RunWorkerStop.NOT_DUE, acknowledged, AppText.Run.NEXT_BATCH_PLANNED_TIME_NOT_REACHED, failures, claim.dueMillis)
                 is RunUploadQueue.Claim.Blocked -> return RunWorkerResult(when (claim.status) {
                     RunBatchStatus.UNCERTAIN -> RunWorkerStop.UNCERTAIN
                     RunBatchStatus.IN_FLIGHT -> RunWorkerStop.IN_PROGRESS
@@ -83,15 +84,15 @@ class RunUploadWorker(private val queue: RunUploadQueue, private val transport: 
                     val response = try {
                         transport.send(entry.endpoint, entry.batch)
                     } catch (cancelled: CancellationException) {
-                        withContext(NonCancellable) { queue.failed(batchId, "发送被中断，接收结果待核对", uncertain = true, allowFailover = false) }
+                        withContext(NonCancellable) { queue.failed(batchId, AppText.Run.SEND_CANCELLED_RECEIPT_UNCONFIRMED, uncertain = true, allowFailover = false) }
                         throw cancelled
                     } catch (_: Exception) {
-                        RunSendResult.Unknown("发送发生异常，服务端接收结果待核对")
+                        RunSendResult.Unknown(AppText.Run.SEND_EXCEPTION_SERVER_RECEIPT_UNCONFIRMED)
                     }
                     when (response) {
                         is RunSendResult.Accepted -> {
                             if (response.batchId != batchId) {
-                                val message = "应答批次与发送批次不匹配，接收结果待核对"
+                                val message = AppText.Run.RESPONSE_BATCH_MISMATCH_RECEIPT_UNCONFIRMED
                                 queue.failed(batchId, message, uncertain = true, allowFailover = false)
                                 failures += RunUploadFailure(entry.endpoint, entry.attempts, message, true)
                                 return RunWorkerResult(RunWorkerStop.UNCERTAIN, acknowledged, message, failures)
@@ -119,8 +120,8 @@ class RunUploadWorker(private val queue: RunUploadQueue, private val transport: 
         if (run.all { it.status == RunBatchStatus.ACKNOWLEDGED }) {
             val finished = run.lastOrNull()?.batch?.payload?.finishType == "1"
             return RunWorkerResult(if (finished) RunWorkerStop.COMPLETE else RunWorkerStop.DRAINED, acknowledged,
-                if (finished) "全部批次已确认接收，请查询成绩" else "已接收当前批次，等待结束块", failures)
+                if (finished) AppText.Run.ALL_BATCHES_RECEIVED_QUERY_SCORE else AppText.Run.CURRENT_BATCH_RECEIVED_WAITING_FOR_FINAL_BATCH, failures)
         }
-        return RunWorkerResult(RunWorkerStop.LIMIT, acknowledged, "本轮上传已达批次上限，可继续处理剩余块", failures)
+        return RunWorkerResult(RunWorkerStop.LIMIT, acknowledged, AppText.Run.UPLOAD_ROUND_BATCH_LIMIT_REACHED_REMAINING_CAN_CONTINUE, failures)
     }
 }

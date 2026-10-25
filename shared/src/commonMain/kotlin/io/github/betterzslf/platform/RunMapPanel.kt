@@ -1,5 +1,6 @@
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import io.github.betterzslf.feature.run.GeoPoint
@@ -21,7 +22,7 @@ data class RunMapPath(
 data class RunMapCheckpoint(
     val id: String,
     val point: GeoPoint,
-    val label: String = "打卡点",
+    val label: String = AppText.Run.CHECKPOINT_FALLBACK_LABEL,
     val coordinateSystem: RunMapCoordinateSystem = RunMapCoordinateSystem.UNKNOWN,
 ) {
     override fun toString(): String = "RunMapCheckpoint(frame=$coordinateSystem)"

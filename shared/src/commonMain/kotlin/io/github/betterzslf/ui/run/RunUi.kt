@@ -119,40 +119,48 @@ internal fun RunMapPreview(
     val useful = paths.filter { it.second.isNotEmpty() }
     val session by graph.sessions.session.collectAsState()
     val settings by graph.settings.settings.collectAsState()
-    var selected by remember(paths) { mutableIntStateOf(0) }
-    var feedback by remember(paths, coordinateSystem) { mutableStateOf<String?>(null) }
-    val path = useful.getOrNull(selected.coerceIn(0, (useful.size - 1).coerceAtLeast(0)))
-    val line = RunMapPath(coordinateSystem = coordinateSystem, segments = useful.map { it.second })
-    val dark = when (settings.theme) { "Dark" -> true; "Light" -> false; else -> isSystemInDarkTheme() }
+    // Same proven owner scope as RunFeaturePage; credentials are only in-memory remember keys.
+    val owner = remember(graph, session?.userId, session?.token) { Any() }
     // Verified against the original client by Lead; unknown values have no guessed/key fallback.
     val provider = runMapProviderFor(session?.mapWebType)
-    val model = RunMapModel(provider = provider, apiKey = session?.mapToken,
-        actualPath = if (role == RunMapRole.ACTUAL) line else RunMapPath(),
-        recommendedPath = if (role == RunMapRole.RECOMMENDED) line else RunMapPath(),
-        importedPath = if (role == RunMapRole.IMPORTED) line else RunMapPath(),
-        checkpoints = checkpoints.mapIndexed { index, point -> RunMapCheckpoint(point.id, point.point, AppText.Run.checkpointOrdinal((index + 1)), RunMapCoordinateSystem.GCJ02) },
-        currentLocation = if (role == RunMapRole.ACTUAL) path?.second?.lastOrNull() else null,
-        currentCoordinateSystem = coordinateSystem, dark = dark, editMode = false)
+    val apiKey = session?.mapToken
+    val identity = remember(owner, provider, apiKey) { RunMapFeedbackIdentity(owner, provider, apiKey) }
     if (useful.isEmpty() && checkpoints.isEmpty()) {
         SectionCard(AppText.Run.NO_DISPLAYABLE_COORDINATES, AppText.Run.NO_REAL_POSITION_OR_ROUTE_NO_SIMULATION_HINT)
-    } else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        RunMapPanel(model, { event ->
-            feedback = when (event) {
-                RunMapEvent.Ready -> AppText.Run.MAP_READY_MARKER_VIEW_ONLY_HINT
-                is RunMapEvent.Failed -> AppText.Run.mapFallback((event.reason).toString())
-                is RunMapEvent.CheckpointSelected -> AppText.Run.selectedCheckpointNotice((checkpoints.indexOfFirst { it.id == event.id }.takeIf { it >= 0 }?.plus(1) ?: AppText.Common.UNKNOWN).toString())
-                is RunMapEvent.DrawPoint -> AppText.Run.MAP_PREVIEW_EVENTS_NOT_REAL_LOCATION_HINT
+    } else key(identity) {
+        // Feedback and the native panel share this configuration/mount lifetime, not the payload key.
+        val document = remember { Any() }
+        val data = RunMapFeedbackData(paths, checkpoints, coordinateSystem, role)
+        val latestData by rememberUpdatedState(data)
+        var feedback by remember { mutableStateOf(RunMapFeedbackState.initial(identity, document, data)) }
+        val visibleFeedback = feedback.forDocument(identity, document, data)
+        // Read the latest state here so an event delivered during apply is never overwritten.
+        SideEffect { feedback = feedback.forDocument(identity, document, latestData) }
+        var selected by remember(paths) { mutableIntStateOf(0) }
+        val path = useful.getOrNull(selected.coerceIn(0, (useful.size - 1).coerceAtLeast(0)))
+        val line = RunMapPath(coordinateSystem = coordinateSystem, segments = useful.map { it.second })
+        val dark = when (settings.theme) { "Dark" -> true; "Light" -> false; else -> isSystemInDarkTheme() }
+        val model = RunMapModel(provider = provider, apiKey = apiKey,
+            actualPath = if (role == RunMapRole.ACTUAL) line else RunMapPath(),
+            recommendedPath = if (role == RunMapRole.RECOMMENDED) line else RunMapPath(),
+            importedPath = if (role == RunMapRole.IMPORTED) line else RunMapPath(),
+            checkpoints = checkpoints.mapIndexed { index, point -> RunMapCheckpoint(point.id, point.point, AppText.Run.checkpointOrdinal((index + 1)), RunMapCoordinateSystem.GCJ02) },
+            currentLocation = if (role == RunMapRole.ACTUAL) path?.second?.lastOrNull() else null,
+            currentCoordinateSystem = coordinateSystem, dark = dark, editMode = false)
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            RunMapPanel(model, { event ->
+                feedback = feedback.forDocument(identity, document, latestData).onEvent(identity, document, event)
+            }, Modifier.fillMaxWidth().height(280.dp))
+            if (useful.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(AppText.Run.PREVIOUS_ROUTE_SEGMENT, enabled = selected > 0, onClick = { selected-- })
+                Text(AppText.Run.segmentSelection((selected + 1), (useful.size)))
+                TextButton(AppText.Run.NEXT_ROUTE_SEGMENT, enabled = selected + 1 < useful.size, onClick = { selected++ })
             }
-        }, Modifier.fillMaxWidth().height(280.dp))
-        if (useful.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(AppText.Run.PREVIOUS_ROUTE_SEGMENT, enabled = selected > 0, onClick = { selected-- })
-            Text(AppText.Run.segmentSelection((selected + 1), (useful.size)))
-            TextButton(AppText.Run.NEXT_ROUTE_SEGMENT, enabled = selected + 1 < useful.size, onClick = { selected++ })
+            visibleFeedback.text()?.let { Text(it) }
+            SectionCard(AppText.Run.coordinatePreviewFrame((coordinateSystem).toString()), (path?.let { (name, points) ->
+                AppText.Run.pathCoordinateSummary((name), (points.size), (coordinate(points.first())), (coordinate(points.last())))
+            } ?: AppText.Run.NO_AVAILABLE_PATH) + AppText.Run.checkpointPreviewFooter((checkpoints.size)))
         }
-        feedback?.let { Text(it) }
-        SectionCard(AppText.Run.coordinatePreviewFrame((coordinateSystem).toString()), (path?.let { (name, points) ->
-            AppText.Run.pathCoordinateSummary((name), (points.size), (coordinate(points.first())), (coordinate(points.last())))
-        } ?: AppText.Run.NO_AVAILABLE_PATH) + AppText.Run.checkpointPreviewFooter((checkpoints.size)))
     }
 }
 

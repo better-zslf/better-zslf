@@ -1,5 +1,6 @@
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
 import android.Manifest
 import android.content.pm.PackageManager
 import android.provider.OpenableColumns
@@ -27,12 +28,12 @@ actual fun rememberFilePicker(onResult: (FilePickResult) -> Unit): UserRequestLa
                     } ?: "attachment"
                     val bytes = resolver.openInputStream(uri)?.use { it.readNBytes(MAX_PICKED_FILE_BYTES + 1) }
                     when {
-                        bytes == null -> FilePickResult.Failed("文件读取失败，请重新选择。")
-                        bytes.size > MAX_PICKED_FILE_BYTES -> FilePickResult.Failed("文件超过 8 MiB 限制，请选择较小文件。")
+                        bytes == null -> FilePickResult.Failed(AppText.Common.PICKED_FILE_READ_FAILED_RESELECT)
+                        bytes.size > MAX_PICKED_FILE_BYTES -> FilePickResult.Failed(AppText.Common.PICKED_FILE_SIZE_LIMIT_EXCEEDED_SELECT_SMALLER)
                         else -> FilePickResult.Selected(PickedFile(name, resolver.getType(uri) ?: "application/octet-stream", bytes))
                     }
                 } catch (_: Exception) {
-                    FilePickResult.Failed("文件读取失败，请重新选择。")
+                    FilePickResult.Failed(AppText.Common.PICKED_FILE_READ_FAILED_RESELECT)
                 }
             }
             resultCallback(result)
@@ -41,7 +42,7 @@ actual fun rememberFilePicker(onResult: (FilePickResult) -> Unit): UserRequestLa
     return remember(picker) {
         UserRequestLauncher {
             runCatching { picker.launch(arrayOf("*/*")) }.onFailure {
-                resultCallback(FilePickResult.Failed("文件选择器暂不可用。"))
+                resultCallback(FilePickResult.Failed(AppText.Common.FILE_PICKER_TEMPORARILY_UNAVAILABLE))
             }
         }
     }

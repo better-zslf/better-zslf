@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.update
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.platform.ApkUpdateSpec
 import io.github.betterzslf.platform.AppUpdatePhase
 import io.github.betterzslf.platform.NativeAppUpdater
@@ -77,7 +78,7 @@ class AppUpdateController(
         if (!canDownload() || !GithubReleasePolicy.isInstallSpec(spec) ||
             (mutable.value.result as? GithubReleaseCheck.Available)?.candidate?.apk != spec) return
         try { updater.download(spec) }
-        catch (_: Exception) { mutable.value = mutable.value.copy(actionMessage = "下载未开始，请稍后重新确认。") }
+        catch (_: Exception) { mutable.value = mutable.value.copy(actionMessage = AppText.Updates.DOWNLOAD_NOT_STARTED_RECONFIRM_LATER) }
     }
 
     fun canInstall(): Boolean = !closed && updater.supportsApkInstall && updater.state.value.phase in installPhases
@@ -90,15 +91,15 @@ class AppUpdateController(
         mutable.value = mutable.value.copy(installConfirmation = false)
         if (!canInstall()) return
         try { updater.install() }
-        catch (_: Exception) { mutable.value = mutable.value.copy(actionMessage = "安装确认页未打开，请稍后重新确认。") }
+        catch (_: Exception) { mutable.value = mutable.value.copy(actionMessage = AppText.Updates.INSTALL_CONFIRMATION_NOT_OPENED_RECONFIRM_LATER) }
     }
     fun cancelDownload() {
         if (closed || !updater.supportsApkInstall || updater.state.value.phase !in busyPhases + installPhases) return
         mutable.value = mutable.value.copy(downloadConfirmation = null, installConfirmation = false)
         try { updater.cancel() }
-        catch (_: Exception) { mutable.value = mutable.value.copy(actionMessage = "取消未完成，请稍后核对更新状态。") }
+        catch (_: Exception) { mutable.value = mutable.value.copy(actionMessage = AppText.Updates.CANCELLATION_INCOMPLETE_REVIEW_UPDATE_STATUS_LATER) }
     }
-    fun browserFailed() { mutable.value = mutable.value.copy(actionMessage = "发布页面未打开，请稍后重试。") }
+    fun browserFailed() { mutable.value = mutable.value.copy(actionMessage = AppText.Updates.RELEASE_PAGE_NOT_OPENED_RETRY_LATER) }
 
     /** Cancel this page's check/dialogs only; an explicitly started app-owned download survives. */
     fun close() {
@@ -115,13 +116,13 @@ class AppUpdateController(
 }
 
 fun appUpdatePhaseMessage(phase: AppUpdatePhase): String = when (phase) {
-    AppUpdatePhase.IDLE -> "尚未开始下载。"
-    AppUpdatePhase.DOWNLOADING -> "正在下载已确认的 APK。"
-    AppUpdatePhase.VERIFYING -> "正在校验文件、版本与应用签名。"
-    AppUpdatePhase.READY_TO_INSTALL -> "校验完成，等待你明确打开系统安装确认页。"
-    AppUpdatePhase.INSTALL_PERMISSION_REQUIRED -> "请在本应用的系统设置中允许安装，返回后再次点按并确认安装；不会自动继续。"
-    AppUpdatePhase.INSTALLER_OPENED -> "已向系统请求打开安装确认；尚未确认安装。请在系统界面核对，之后重新打开应用确认版本。"
-    AppUpdatePhase.CANCELLED -> "已取消本次下载。"
-    AppUpdatePhase.FAILED -> "下载或校验未完成，未自动重试。"
-    AppUpdatePhase.UNAVAILABLE -> "此平台不提供 APK 下载或安装，请查看发布页面。"
+    AppUpdatePhase.IDLE -> AppText.Updates.DOWNLOAD_NOT_STARTED_STATUS
+    AppUpdatePhase.DOWNLOADING -> AppText.Updates.DOWNLOADING_CONFIRMED_APK_STATUS
+    AppUpdatePhase.VERIFYING -> AppText.Updates.VERIFYING_FILE_VERSION_AND_SIGNATURE_STATUS
+    AppUpdatePhase.READY_TO_INSTALL -> AppText.Updates.VERIFIED_AWAITING_EXPLICIT_SYSTEM_INSTALL_CONFIRMATION
+    AppUpdatePhase.INSTALL_PERMISSION_REQUIRED -> AppText.Updates.ALLOW_INSTALL_IN_SYSTEM_SETTINGS_AND_RECONFIRM_HINT
+    AppUpdatePhase.INSTALLER_OPENED -> AppText.Updates.SYSTEM_INSTALL_CONFIRMATION_REQUESTED_INSTALL_UNCONFIRMED_HINT
+    AppUpdatePhase.CANCELLED -> AppText.Updates.CURRENT_DOWNLOAD_CANCELLED_NOTICE
+    AppUpdatePhase.FAILED -> AppText.Updates.DOWNLOAD_OR_VERIFICATION_INCOMPLETE_NO_AUTO_RETRY
+    AppUpdatePhase.UNAVAILABLE -> AppText.Updates.APK_DOWNLOAD_AND_INSTALL_UNAVAILABLE_OPEN_RELEASE_PAGE
 }

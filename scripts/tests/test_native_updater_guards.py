@@ -126,8 +126,12 @@ class NativeUpdaterSourceTests(unittest.TestCase):
         self.assertLess(body.index("digestFile(file, transfer)"), body.index("verifyArchive(transfer)"))
         self.assertLess(body.index("verifyArchive(transfer)"), body.index("context.startActivity"))
         for text in ("Dispatchers.Main.immediate", "IMPORTANCE_FOREGROUND", "synchronized(lock)", "canRequestPackageInstalls()", "Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES",
-                     'Uri.parse("package:${context.packageName}")', "FileProvider.getUriForFile", "FLAG_GRANT_READ_URI_PERMISSION", "clipData", "尚未确认安装"):
+                     'Uri.parse("package:${context.packageName}")', "FileProvider.getUriForFile", "FLAG_GRANT_READ_URI_PERMISSION", "clipData"):
             self.assertIn(text, body)
+        self.assertIn("publish(transfer, AppUpdatePhase.INSTALLER_OPENED, AppText.Updates.SYSTEM_INSTALL_CONFIRMATION_REQUESTED_INSTALL_UNCONFIRMED, transfer.spec.sizeBytes)", body)
+        catalog = (ROOT / "shared/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt").read_text(encoding="utf-8")
+        updates = catalog.split("    object Updates {", 1)[1].split("\n    }", 1)[0]
+        self.assertIn('const val SYSTEM_INSTALL_CONFIRMATION_REQUESTED_INSTALL_UNCONFIRMED: String = "已向系统请求打开安装确认；尚未确认安装。"', updates)
         for text in ("PackageInstaller.Session", "EXTRA_NOT_UNKNOWN_SOURCE", "EXTRA_ALLOW_REPLACE", "FLAG_GRANT_WRITE_URI_PERMISSION", "su -c"):
             self.assertNotIn(text, ANDROID)
         self.assertEqual(ANDROID.count("context.startActivity("), 2)

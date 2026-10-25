@@ -2,6 +2,7 @@
 
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -60,7 +61,7 @@ private class IosFilePicker(
             if (presenter.viewIfLoaded?.window == null || presenter.presentedViewController != null ||
                 UIApplication.sharedApplication.applicationState != UIApplicationState.UIApplicationStateActive
             ) {
-                onResult?.invoke(FilePickResult.Failed("请返回当前页面后重新选择文件"))
+                onResult?.invoke(FilePickResult.Failed(AppText.Common.RETURN_TO_CURRENT_PAGE_AND_RESELECT_FILE))
                 return@launch
             }
             val next = UIDocumentPickerViewController(
@@ -84,7 +85,7 @@ private class IosFilePicker(
         releasePicker(controller)
         val url = didPickDocumentsAtURLs.singleOrNull() as? NSURL
         if (url == null || !url.fileURL) {
-            onResult?.invoke(FilePickResult.Failed("所选文件暂不可读，请重新选择"))
+            onResult?.invoke(FilePickResult.Failed(AppText.Common.SELECTED_FILE_UNREADABLE_RESELECT))
             return
         }
         val operation = NSFileCoordinator(filePresenter = null)
@@ -96,10 +97,10 @@ private class IosFilePicker(
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: PickedFileTooLarge) {
-                    FilePickResult.Failed("文件超过 8 MiB 限制")
+                    FilePickResult.Failed(AppText.Common.PICKED_FILE_SIZE_LIMIT_EXCEEDED)
                 } catch (_: Exception) {
                     // Native errors may include file paths/provider account information. Never expose them.
-                    FilePickResult.Failed("读取文件失败，请重新选择或下载到本机后重试")
+                    FilePickResult.Failed(AppText.Common.PICKED_FILE_READ_FAILED_RESELECT_OR_DOWNLOAD_LOCALLY)
                 }
                 ensureActive()
                 coordinator = null

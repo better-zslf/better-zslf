@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.content
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import kotlinx.serialization.json.*
@@ -41,8 +42,8 @@ data class ContentListState(
 
 internal fun parseContentList(data: JsonElement, field: String, notices: Boolean): ApiResult<List<ContentItem>> {
     val rows = (data as? JsonObject)?.get(field) as? JsonArray
-        ?: return ApiResult.Failure(ApiError.Decode("列表响应缺少 $field"))
-    if (rows.any { it !is JsonObject }) return ApiResult.Failure(ApiError.Decode("列表包含异常条目"))
+        ?: return ApiResult.Failure(ApiError.Decode(AppText.Content.missingListField((field))))
+    if (rows.any { it !is JsonObject }) return ApiResult.Failure(ApiError.Decode(AppText.Content.LIST_CONTAINS_INVALID_ITEMS))
     return ApiResult.Success(rows.map { if (notices) ContentItem.notice(it as JsonObject) else ContentItem.article(it as JsonObject) })
 }
 
@@ -65,9 +66,9 @@ fun parseContentTree(data: JsonElement, columns: Boolean = false): ApiResult<Con
     val roots: JsonArray = if (columns) {
         when (val single = obj["cmsColumn"]) {
             is JsonObject -> JsonArray(listOf(single))
-            else -> obj["cmsColumnList"] as? JsonArray ?: return ApiResult.Failure(ApiError.Decode("栏目结构异常"))
+            else -> obj["cmsColumnList"] as? JsonArray ?: return ApiResult.Failure(ApiError.Decode(AppText.Content.INVALID_COLUMN_STRUCTURE))
         }
-    } else obj["findList"] as? JsonArray ?: return ApiResult.Failure(ApiError.Decode("发现菜单结构异常"))
+    } else obj["findList"] as? JsonArray ?: return ApiResult.Failure(ApiError.Decode(AppText.Content.INVALID_DISCOVERY_MENU_STRUCTURE))
     data class Pending(val value: JsonObject, val key: String, val parent: String?, val depth: Int)
     val stack = ArrayDeque<Pending>()
     roots.withIndex().reversed().forEach { (index, value) ->
@@ -77,9 +78,9 @@ fun parseContentTree(data: JsonElement, columns: Boolean = false): ApiResult<Con
     val nodes = mutableListOf<ContentTreeNode>()
     while (stack.isNotEmpty()) {
         val current = stack.removeLast()
-        if (current.depth > 32 || nodes.size >= 20_000) return ApiResult.Failure(ApiError.Decode("菜单层级或数量超过显示限制"))
+        if (current.depth > 32 || nodes.size >= 20_000) return ApiResult.Failure(ApiError.Decode(AppText.Content.MENU_DEPTH_OR_COUNT_DISPLAY_LIMIT_EXCEEDED))
         val scalars = current.value.entries.mapNotNull { (key, value) -> (value as? JsonPrimitive)?.contentOrNull?.let { key to it } }
-        val label = current.value.text("name").ifBlank { current.value.text("title") }.ifBlank { "未命名条目" }
+        val label = current.value.text("name").ifBlank { current.value.text("title") }.ifBlank { AppText.Content.UNNAMED_ITEM }
         nodes += ContentTreeNode(current.key, label, current.value.text("id"), current.depth, current.parent, scalars)
         // Generic structural recursion accommodates server-owned array names without inventing them.
         val children = mutableListOf<Pair<String, JsonObject>>()

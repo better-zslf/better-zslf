@@ -1,5 +1,7 @@
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
+
 /** Immutable document authority. Only the Android owned renderer constructs it from RunMapWeb. */
 internal data class RunMapBootstrapDocument(
     val ownerId: String,
@@ -27,7 +29,7 @@ internal data class RunMapBootstrapRequest(
 /** Pure single-use policy. Android must atomically compare-and-set the returned consumed snapshot. */
 internal object RunMapBootstrapPolicy {
     const val headerName = "X-Better-Zslf-Map-Bootstrap"
-    const val emptyDocument = "<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'none'\"><title>地图暂不可用</title>"
+    const val emptyDocument = "<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'none'\"><title>" + AppText.Run.MAP_TEMPORARILY_UNAVAILABLE_DOCUMENT_TITLE + "</title>"
     private val nonce = Regex("[A-Za-z0-9_-]{1,128}")
 
     fun isCurrent(document: RunMapBootstrapDocument, context: RunMapBootstrapContext): Boolean =

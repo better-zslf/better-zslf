@@ -1,5 +1,6 @@
 package io.github.betterzslf.data
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.net.ApiClient
 import io.github.betterzslf.core.net.ApiEndpoint
 import io.github.betterzslf.core.net.ApiSessionBinding
@@ -34,7 +35,7 @@ class ProfileRepository private constructor(private val api: ApiClient, private 
         return when (result) {
             is ApiResult.Failure -> result
             is ApiResult.Success -> decode(result.data)?.let { ApiResult.Success(it, result.message) }
-                ?: ApiResult.Failure(ApiError.Decode("个人资料响应格式异常"))
+                ?: ApiResult.Failure(ApiError.Decode(AppText.Profile.INVALID_PROFILE_RESPONSE_FORMAT))
         }
     }
     override fun toString(): String = "ProfileRepository(bound=${binding != null})"

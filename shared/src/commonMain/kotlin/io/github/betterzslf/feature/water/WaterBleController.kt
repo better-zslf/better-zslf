@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.water
 
+import io.github.betterzslf.core.text.AppText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -109,7 +110,7 @@ class WaterBleController(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                mutableState.update { it.copy(message = "扫描未完成，请检查蓝牙与权限后手动重试。") }
+                mutableState.update { it.copy(message = AppText.Water.SCAN_INCOMPLETE_CHECK_BLUETOOTH_AND_PERMISSION) }
             } finally {
                 mutableState.update { it.copy(scanning = false) }
             }
@@ -140,7 +141,7 @@ class WaterBleController(
                 transport.createConnection(device)
             } catch (_: Exception) {
                 mutableState.update { it.copy(device = device, phase = WaterBlePhase.Failed,
-                    message = "设备连接准备失败，请重新扫描并选择设备。", failure = null, retryStatus = retry) }
+                    message = AppText.Water.CONNECTION_PREPARATION_FAILED_RESCAN_AND_SELECT, failure = null, retryStatus = retry) }
                 return false
             }
             Session(device, connection, manuallyConfirmedRetry).also {
@@ -337,11 +338,11 @@ class WaterBleController(
                         withTimeout(disconnectTimeoutMillis) { connection.disconnect() }
                     } catch (_: Exception) {
                         graceful = false
-                        update { old -> old.copy(message = old.message ?: "连接已强制关闭。") }
+                        update { old -> old.copy(message = old.message ?: AppText.Water.CONNECTION_FORCIBLY_CLOSED) }
                     } finally {
                         try { connection.close() } catch (_: Exception) {
                             graceful = false
-                            update { old -> old.copy(message = old.message ?: "底层连接资源释放异常。") }
+                            update { old -> old.copy(message = old.message ?: AppText.Water.CONNECTION_RESOURCE_RELEASE_FAILED) }
                         }
                     }
                     // Collectors/timers must be gone before reporting normal completion.
@@ -399,7 +400,7 @@ class WaterBleController(
             reduce { onTransportFailure(nowMillis()) }
             refresh()
             update { it.copy(phase = WaterBlePhase.Failed, failure = machine.lastFailure ?: WaterFailure(
-                WaterFailureKind.TransportFailure, "连接或写入中断，已关闭；请手动操作。")) }
+                WaterFailureKind.TransportFailure, AppText.Water.CONNECTION_OR_WRITE_INTERRUPTED_CLOSED_MANUAL_ACTION_REQUIRED)) }
             running = false
         }
 

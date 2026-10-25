@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.campusnet
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import kotlinx.coroutines.CancellationException
@@ -40,7 +41,7 @@ class CampusNetworkController(private val source: CampusNetworkSource?) {
         clearSecrets()
         targets = emptyMap()
         mutable.value = CampusNetworkState(phase = CampusPasswordPhase.SESSION_CHANGED,
-            formMessage = "本次登录会话已变化，已清除输入与旧账号结果；请重新进入", inputRevision = mutable.value.inputRevision + 1)
+            formMessage = AppText.CampusNetwork.LOGIN_CHANGED_INPUT_AND_ACCOUNT_RESULTS_CLEARED_REENTER, inputRevision = mutable.value.inputRevision + 1)
     }
 
     fun close() { alive = false; invalidateSession() }
@@ -57,7 +58,7 @@ class CampusNetworkController(private val source: CampusNetworkSource?) {
 
     fun selectAccount(key: String) {
         if (!current() || mutable.value.busy || flight.isLocked || mutable.value.terminal || !mutable.value.expanded) return
-        if (targets[key] == null) { mutable.value = mutable.value.copy(formMessage = "该条目缺少可核验的运营商账号标识，当前仅查询"); return }
+        if (targets[key] == null) { mutable.value = mutable.value.copy(formMessage = AppText.CampusNetwork.ACCOUNT_ID_UNVERIFIABLE_QUERY_ONLY); return }
         if (key == mutable.value.selectedAccountKey) return
         clearSecrets()
         mutable.value = mutable.value.copy(selectedAccountKey = key, phoneChecked = false, preview = null,
@@ -124,7 +125,7 @@ class CampusNetworkController(private val source: CampusNetworkSource?) {
             if (!current() || mutable.value.terminal || !mutable.value.expanded) return false
             val key = mutable.value.selectedAccountKey
             if (key == null || targets[key] == null) {
-                mutable.value = mutable.value.copy(formMessage = "请先选择本次查询返回的有效宽带账号")
+                mutable.value = mutable.value.copy(formMessage = AppText.CampusNetwork.SELECT_VALID_ACCOUNT_FROM_CURRENT_QUERY_FIRST)
                 return false
             }
             val invalid = campusPhoneValidation(phone)
@@ -138,14 +139,14 @@ class CampusNetworkController(private val source: CampusNetworkSource?) {
             if (!current() || ticket != generation) return false
             return when (response) {
                 is ApiResult.Failure -> {
-                    mutable.value = mutable.value.copy(formMessage = campusFailure(response.error) + "；未开放密码提交，不会自动再次检查")
+                    mutable.value = mutable.value.copy(formMessage = campusFailure(response.error) + AppText.CampusNetwork.PASSWORD_SUBMISSION_DISABLED_NO_AUTOMATIC_RECHECK_SUFFIX)
                     false
                 }
                 is ApiResult.Success -> {
                     checkedPhone = phone
                     checkedAccount = key
                     mutable.value = mutable.value.copy(phoneChecked = true,
-                        formMessage = "手机号检查已通过；该步骤不是短信验证码核验，目标账号仍以本次登录查询为准")
+                        formMessage = AppText.CampusNetwork.PHONE_CHECK_PASSED_NOT_SMS_VERIFICATION_HINT)
                     true
                 }
             }
@@ -158,10 +159,10 @@ class CampusNetworkController(private val source: CampusNetworkSource?) {
     fun prepare(phone: String, password: String, confirmation: String): Boolean {
         if (!current() || flight.isLocked || mutable.value.busy || mutable.value.phase != CampusPasswordPhase.EDITING || attempted || !mutable.value.expanded) return false
         val key = mutable.value.selectedAccountKey
-        if (key == null) { mutable.value = mutable.value.copy(formMessage = "请先选择有效宽带账号"); return false }
+        if (key == null) { mutable.value = mutable.value.copy(formMessage = AppText.CampusNetwork.SELECT_VALID_BROADBAND_ACCOUNT_FIRST); return false }
         val target = targets[key]
         if (target == null || key != checkedAccount || phone != checkedPhone || !mutable.value.phoneChecked) {
-            mutable.value = mutable.value.copy(formMessage = "请先为所选账号完成当前手机号检查；资料不足时保持只读")
+            mutable.value = mutable.value.copy(formMessage = AppText.CampusNetwork.COMPLETE_CURRENT_PHONE_CHECK_FOR_SELECTED_ACCOUNT_FIRST)
             return false
         }
         val invalid = campusPasswordValidation(password, confirmation)
@@ -190,7 +191,7 @@ class CampusNetworkController(private val source: CampusNetworkSource?) {
             checkedPhone = null
             checkedAccount = null
             mutable.value = mutable.value.copy(phase = CampusPasswordPhase.SUBMITTING, phoneChecked = false,
-                formMessage = "正在提交运营商密码修改；本次只发送一次")
+                formMessage = AppText.CampusNetwork.SUBMITTING_BROADBAND_PASSWORD_CHANGE_ONCE)
             // ApiClient also checks this exact opaque binding atomically before choosing its token.
             if (!current()) return false
             sent = true
@@ -201,31 +202,31 @@ class CampusNetworkController(private val source: CampusNetworkSource?) {
                     val phase = if (response.error is ApiError.Business || response.error is ApiError.Validation)
                         CampusPasswordPhase.FAILED else CampusPasswordPhase.UNCERTAIN
                     mutable.value = mutable.value.copy(phase = phase, formMessage = campusFailure(response.error) +
-                        if (phase == CampusPasswordPhase.UNCERTAIN) "；服务可能已接收，请先人工核对。本页停止提交，不会重试。"
-                        else "；本次已停止，不会自动重提。")
+                        if (phase == CampusPasswordPhase.UNCERTAIN) AppText.CampusNetwork.POSSIBLY_ACCEPTED_MANUAL_REVIEW_NO_RESUBMIT_SUFFIX
+                        else AppText.CampusNetwork.ATTEMPT_STOPPED_NO_AUTO_RESUBMIT_SUFFIX)
                     return false
                 }
                 is ApiResult.Success -> {
                     writeAccepted = true
                     mutable.value = mutable.value.copy(phase = CampusPasswordPhase.COMPLETED, loading = true,
-                        formMessage = "服务已返回改密成功，正在回查账号；账号查询不返回新密码")
+                        formMessage = AppText.CampusNetwork.PASSWORD_CHANGE_SUCCEEDED_REQUERYING_ACCOUNT)
                     val ticket = ++generation
                     val readBack = call { source!!.accounts() }
                     if (!current() || ticket != generation) return false
                     val refreshed = acceptAccounts(readBack, ticket)
                     mutable.value = mutable.value.copy(formMessage = if (refreshed)
-                        "服务已返回改密成功，账号已回查。查询不返回新密码，本页不重复提交。"
-                        else "服务已返回改密成功，但账号回查失败；可仅刷新查询，不重复修改。")
+                        AppText.CampusNetwork.PASSWORD_CHANGE_SUCCEEDED_ACCOUNT_REQUERIED_NO_RESUBMIT
+                        else AppText.CampusNetwork.PASSWORD_CHANGE_SUCCEEDED_ACCOUNT_REQUERY_FAILED_REFRESH_ONLY)
                     return true
                 }
             }
         } catch (cancelled: CancellationException) {
             if (sent && current()) {
                 mutable.value = if (writeAccepted) mutable.value.copy(
-                    phase = CampusPasswordPhase.COMPLETED, queryMessage = "账号回查已中断",
-                    formMessage = "服务已返回改密成功，但账号回查已中断；可仅刷新查询，不重复修改。")
+                    phase = CampusPasswordPhase.COMPLETED, queryMessage = AppText.CampusNetwork.ACCOUNT_REQUERY_INTERRUPTED,
+                    formMessage = AppText.CampusNetwork.PASSWORD_CHANGE_SUCCEEDED_ACCOUNT_REQUERY_INTERRUPTED_REFRESH_ONLY)
                 else mutable.value.copy(phase = CampusPasswordPhase.UNCERTAIN,
-                    formMessage = "提交过程已中断，服务是否接收尚未确认；请人工核对，本页不再次发送")
+                    formMessage = AppText.CampusNetwork.SUBMISSION_INTERRUPTED_ACCEPTANCE_UNCONFIRMED_MANUAL_REVIEW)
             }
             throw cancelled
         } finally {

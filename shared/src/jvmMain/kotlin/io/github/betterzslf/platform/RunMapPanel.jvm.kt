@@ -1,5 +1,6 @@
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
@@ -9,5 +10,5 @@ import top.yukonga.miuix.kmp.basic.Text
 @Composable
 actual fun RunMapPanel(model: RunMapModel, onEvent: (RunMapEvent) -> Unit, modifier: Modifier) {
     LaunchedEffect(Unit) { onEvent(RunMapEvent.Failed(RunMapFailure.UNAVAILABLE)) }
-    Text("本机测试环境不显示原生地图；可检查路线与坐标。", modifier = modifier)
+    Text(AppText.Run.HOST_TEST_NATIVE_MAP_UNAVAILABLE_INSPECT_ROUTE_AND_COORDINATES, modifier = modifier)
 }

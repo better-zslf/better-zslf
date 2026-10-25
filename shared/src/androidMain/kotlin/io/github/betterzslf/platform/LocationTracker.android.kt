@@ -1,5 +1,6 @@
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
 import android.Manifest
 import android.app.*
 import android.content.Intent
@@ -32,25 +33,25 @@ private object AndroidLocationTracker : NativeLocationTracker {
     override fun start(samplingSeconds: Int) {
         val context = AndroidPlatform.context
         if (samplingSeconds !in 10..60) {
-            LocationRuntime.status.value = LocationTrackingState(LocationPhase.Failed, "定位间隔应为 10–60 秒。")
+            LocationRuntime.status.value = LocationTrackingState(LocationPhase.Failed, AppText.Run.LOCATION_SAMPLING_INTERVAL_OUT_OF_RANGE)
             return
         }
         if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            LocationRuntime.status.value = LocationTrackingState(LocationPhase.PermissionRequired, "请先授予精确定位权限。")
+            LocationRuntime.status.value = LocationTrackingState(LocationPhase.PermissionRequired, AppText.Run.PRECISE_LOCATION_PERMISSION_REQUIRED)
             return
         }
         val manager = context.getSystemService(LocationManager::class.java)
         if (manager?.isLocationEnabled != true || !manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-            LocationRuntime.status.value = LocationTrackingState(LocationPhase.LocationDisabled, "请打开设备定位与 GPS。")
+            LocationRuntime.status.value = LocationTrackingState(LocationPhase.LocationDisabled, AppText.Run.ENABLE_DEVICE_LOCATION_AND_GPS)
             return
         }
         LocationRuntime.status.value = LocationTrackingState(LocationPhase.Starting)
         try {
             context.startForegroundService(Intent(context, RunLocationService::class.java).putExtra("samplingSeconds", samplingSeconds))
         } catch (_: SecurityException) {
-            LocationRuntime.status.value = LocationTrackingState(LocationPhase.PermissionRequired, "定位权限已变化，请重新检查。")
+            LocationRuntime.status.value = LocationTrackingState(LocationPhase.PermissionRequired, AppText.Run.LOCATION_PERMISSION_CHANGED_RECHECK)
         } catch (_: Exception) {
-            LocationRuntime.status.value = LocationTrackingState(LocationPhase.Failed, "请在应用前台重新开始定位。")
+            LocationRuntime.status.value = LocationTrackingState(LocationPhase.Failed, AppText.Run.RESTART_LOCATION_TRACKING_IN_FOREGROUND)
         }
     }
     override fun stop() {
@@ -71,7 +72,7 @@ class RunLocationService : Service(), LocationListener {
         super.onCreate()
         locations = getSystemService(LocationManager::class.java)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL, "校园跑定位", NotificationManager.IMPORTANCE_LOW),
+            NotificationChannel(CHANNEL, AppText.Run.LOCATION_TRACKING_NOTIFICATION_CHANNEL_DISPLAY_NAME, NotificationManager.IMPORTANCE_LOW),
         )
     }
 
@@ -84,24 +85,24 @@ class RunLocationService : Service(), LocationListener {
             return START_NOT_STICKY
         }
         val seconds = intent?.getIntExtra("samplingSeconds", 10) ?: 10
-        if (seconds !in 10..60) return fail(LocationPhase.Failed, "定位间隔应为 10–60 秒。")
+        if (seconds !in 10..60) return fail(LocationPhase.Failed, AppText.Run.LOCATION_SAMPLING_INTERVAL_OUT_OF_RANGE)
         intervalMillis = seconds * 1000L
         try {
             if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                return fail(LocationPhase.PermissionRequired, "请先授予精确定位权限。")
+                return fail(LocationPhase.PermissionRequired, AppText.Run.PRECISE_LOCATION_PERMISSION_REQUIRED)
             }
             startForeground(NOTIFICATION_ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
             if (!locations.isLocationEnabled || !locations.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                return fail(LocationPhase.LocationDisabled, "请打开设备定位与 GPS。")
+                return fail(LocationPhase.LocationDisabled, AppText.Run.ENABLE_DEVICE_LOCATION_AND_GPS)
             }
             locations.removeUpdates(this)
             startedAtMillis = System.currentTimeMillis()
             lastAcceptedMillis = null
             locations.requestLocationUpdates(LocationManager.GPS_PROVIDER, intervalMillis, 0f, this, Looper.getMainLooper())
         } catch (_: SecurityException) {
-            return fail(LocationPhase.PermissionRequired, "定位权限已变化，请重新检查。")
+            return fail(LocationPhase.PermissionRequired, AppText.Run.LOCATION_PERMISSION_CHANGED_RECHECK)
         } catch (_: Exception) {
-            return fail(LocationPhase.Failed, "定位启动失败，请在应用前台重试。")
+            return fail(LocationPhase.Failed, AppText.Run.LOCATION_START_FAILED_RETRY_IN_FOREGROUND)
         }
         return START_NOT_STICKY
     }
@@ -122,7 +123,7 @@ class RunLocationService : Service(), LocationListener {
     }
 
     override fun onProviderDisabled(provider: String) {
-        if (provider == LocationManager.GPS_PROVIDER) fail(LocationPhase.LocationDisabled, "设备定位已关闭，记录暂停。")
+        if (provider == LocationManager.GPS_PROVIDER) fail(LocationPhase.LocationDisabled, AppText.Run.DEVICE_LOCATION_DISABLED_RECORDING_PAUSED)
     }
 
     private fun fail(phase: LocationPhase, message: String): Int {
@@ -145,11 +146,11 @@ class RunLocationService : Service(), LocationListener {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setContentTitle("校园跑正在记录位置")
-            .setContentText("高精度定位已开启；点按返回应用管理记录。")
+            .setContentTitle(AppText.Run.LOCATION_TRACKING_NOTIFICATION_TITLE)
+            .setContentText(AppText.Run.HIGH_ACCURACY_LOCATION_ENABLED_RETURN_TO_MANAGE_RECORDING)
             .setOngoing(true)
             .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
-            .addAction(Notification.Action.Builder(null, "停止定位", stop).build())
+            .addAction(Notification.Action.Builder(null, AppText.Run.STOP_LOCATION_TRACKING_ACTION, stop).build())
             .apply {
                 packageManager.getLaunchIntentForPackage(packageName)?.let { launch ->
                     setContentIntent(PendingIntent.getActivity(this@RunLocationService, 2, launch,

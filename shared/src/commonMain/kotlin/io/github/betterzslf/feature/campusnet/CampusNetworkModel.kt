@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.campusnet
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.data.CampusNetworkRepository
@@ -56,8 +57,8 @@ internal class CampusAccountsSnapshot(val rows: List<CampusAccount>, val targets
 /** docs13 §5.7: operatorAccount[] contains id/operatorAccount/typeStatus. No phone or target aliases are invented. */
 internal fun parseCampusAccounts(data: JsonElement, generation: Long): ApiResult<CampusAccountsSnapshot> {
     val rows = (data as? JsonObject)?.get("operatorAccount") as? JsonArray
-        ?: return ApiResult.Failure(ApiError.Decode("宽带账号列表结构尚未确认"))
-    if (rows.any { it !is JsonObject }) return ApiResult.Failure(ApiError.Decode("宽带账号条目结构尚未确认"))
+        ?: return ApiResult.Failure(ApiError.Decode(AppText.CampusNetwork.BROADBAND_ACCOUNT_LIST_STRUCTURE_UNCONFIRMED))
+    if (rows.any { it !is JsonObject }) return ApiResult.Failure(ApiError.Decode(AppText.CampusNetwork.BROADBAND_ACCOUNT_ITEM_STRUCTURE_UNCONFIRMED))
     fun JsonObject.value(key: String): String = (get(key) as? JsonPrimitive)?.let {
         if (it.isString || it.longOrNull != null) it.contentOrNull.orEmpty() else ""
     }.orEmpty()
@@ -77,29 +78,29 @@ internal fun parseCampusAccounts(data: JsonElement, generation: Long): ApiResult
 }
 
 internal fun campusMask(value: String): String = when {
-    value.isBlank() -> "账号未返回"
+    value.isBlank() -> AppText.CampusNetwork.ACCOUNT_NOT_RETURNED
     value.length <= 4 -> "••••"
     else -> value.take(2) + "••••" + value.takeLast(2)
 }
 
 /** Only a basic local input check; no undocumented operator password complexity policy is asserted. */
 fun campusPhoneValidation(phone: String): String? =
-    if (phone.length == 11 && phone.all { it in '0'..'9' }) null else "请输入 11 位数字手机号"
+    if (phone.length == 11 && phone.all { it in '0'..'9' }) null else AppText.Common.MOBILE_NUMBER_MUST_HAVE_ELEVEN_DIGITS
 
 fun campusPasswordValidation(password: String, confirmation: String): String? = when {
-    password.isBlank() -> "请输入新的运营商宽带密码"
-    password.any(Char::isISOControl) -> "密码中请勿包含换行或控制字符"
-    password != confirmation -> "两次输入的运营商密码不一致"
+    password.isBlank() -> AppText.CampusNetwork.NEW_BROADBAND_PASSWORD_REQUIRED
+    password.any(Char::isISOControl) -> AppText.Common.PASSWORD_MUST_NOT_CONTAIN_NEWLINES_OR_CONTROL_CHARACTERS
+    password != confirmation -> AppText.CampusNetwork.BROADBAND_PASSWORD_CONFIRMATION_MISMATCH
     else -> null
 }
 
 internal fun campusFailure(error: ApiError): String = when (error) {
-    is ApiError.Authentication -> "本次操作的登录状态已变化，请重新进入"
-    is ApiError.Business -> "服务未接受本次请求，请核对资料后联系运营商"
-    is ApiError.Validation -> "资料不完整，请核对输入与账号标识"
-    is ApiError.Timeout -> "请求超时，结果尚未确认"
-    is ApiError.Network -> "连接中断，结果尚未确认"
-    is ApiError.Decode -> "服务返回内容尚未确认"
-    is ApiError.Http -> "服务暂时异常，结果尚未确认"
-    is ApiError.Storage -> "本机状态异常，结果尚未确认"
+    is ApiError.Authentication -> AppText.CampusNetwork.OPERATION_LOGIN_CHANGED_REENTER_REQUIRED
+    is ApiError.Business -> AppText.CampusNetwork.REQUEST_NOT_ACCEPTED_REVIEW_AND_CONTACT_CARRIER
+    is ApiError.Validation -> AppText.CampusNetwork.INCOMPLETE_DETAILS_REVIEW_INPUT_AND_ACCOUNT_ID
+    is ApiError.Timeout -> AppText.Common.REQUEST_TIMEOUT_RESULT_UNCONFIRMED
+    is ApiError.Network -> AppText.Common.CONNECTION_INTERRUPTED_RESULT_UNCONFIRMED
+    is ApiError.Decode -> AppText.CampusNetwork.SERVICE_RESPONSE_CONTENT_UNCONFIRMED
+    is ApiError.Http -> AppText.CampusNetwork.SERVICE_TEMPORARILY_FAILED_RESULT_UNCONFIRMED
+    is ApiError.Storage -> AppText.CampusNetwork.LOCAL_STATE_INVALID_RESULT_UNCONFIRMED
 }

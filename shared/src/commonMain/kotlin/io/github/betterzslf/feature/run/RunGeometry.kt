@@ -1,13 +1,14 @@
 package io.github.betterzslf.feature.run
 
+import io.github.betterzslf.core.text.AppText
 import kotlinx.serialization.Serializable
 import kotlin.math.*
 
 @Serializable
 data class GeoPoint(val longitude: Double, val latitude: Double) {
     init {
-        require(longitude.isFinite() && longitude in -180.0..180.0) { "经度须在 -180 至 180 之间" }
-        require(latitude.isFinite() && latitude in -90.0..90.0) { "纬度须在 -90 至 90 之间" }
+        require(longitude.isFinite() && longitude in -180.0..180.0) { AppText.Run.LONGITUDE_RANGE_REQUIRED }
+        require(latitude.isFinite() && latitude in -90.0..90.0) { AppText.Run.LATITUDE_RANGE_REQUIRED }
     }
 }
 
@@ -43,7 +44,7 @@ object RunGeo {
         if (fraction == 1.0) return b
         val angle = distanceMeters(a, b) / EARTH_RADIUS_METERS
         if (angle < 1e-12) return a
-        require(PI - angle > 1e-8) { "对跖点之间需补充路线中间点" }
+        require(PI - angle > 1e-8) { AppText.Run.ANTIPODAL_POINTS_REQUIRE_INTERMEDIATE_ROUTE_POINT }
         val s = sin(angle)
         val left = sin((1 - fraction) * angle) / s
         val right = sin(fraction * angle) / s

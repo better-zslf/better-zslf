@@ -1,20 +1,21 @@
 package io.github.betterzslf.feature.profile
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.net.ApiConfig
 
 enum class AvatarIssue { UNSUPPORTED_PATH, UNSUPPORTED_FORMAT, MALFORMED_IMAGE, DIMENSIONS, TOO_LARGE, HTTP, REDIRECT, NETWORK, TIMEOUT, DECODE, CLOSED }
 fun avatarIssueMessage(issue: AvatarIssue): String = when (issue) {
-    AvatarIssue.UNSUPPORTED_PATH -> "头像路径格式暂未支持。"
-    AvatarIssue.UNSUPPORTED_FORMAT -> "此头像格式暂未支持，仅支持 PNG / JPEG。"
-    AvatarIssue.MALFORMED_IMAGE -> "头像文件头异常。"
-    AvatarIssue.DIMENSIONS -> "头像尺寸超过允许范围。"
-    AvatarIssue.TOO_LARGE -> "头像文件超过 1 MiB 读取上限。"
-    AvatarIssue.HTTP -> "头像资源暂未取得，未追加认证信息或自动重试。"
-    AvatarIssue.REDIRECT -> "头像资源要求重定向，本次未继续读取。"
-    AvatarIssue.NETWORK -> "头像连接失败，可点按刷新重试。"
-    AvatarIssue.TIMEOUT -> "头像读取超时，可点按刷新重试。"
-    AvatarIssue.DECODE -> "头像解码失败，可点按刷新重试。"
-    AvatarIssue.CLOSED -> "头像读取已关闭。"
+    AvatarIssue.UNSUPPORTED_PATH -> AppText.Profile.AVATAR_PATH_FORMAT_UNSUPPORTED
+    AvatarIssue.UNSUPPORTED_FORMAT -> AppText.Profile.AVATAR_FORMAT_REQUIRES_PNG_OR_JPEG
+    AvatarIssue.MALFORMED_IMAGE -> AppText.Profile.INVALID_AVATAR_FILE_HEADER
+    AvatarIssue.DIMENSIONS -> AppText.Profile.AVATAR_DIMENSIONS_LIMIT_EXCEEDED
+    AvatarIssue.TOO_LARGE -> AppText.Profile.AVATAR_FILE_READ_SIZE_LIMIT_EXCEEDED
+    AvatarIssue.HTTP -> AppText.Profile.AVATAR_UNAVAILABLE_NO_ADDED_CREDENTIALS_OR_AUTO_RETRY
+    AvatarIssue.REDIRECT -> AppText.Profile.AVATAR_REDIRECT_READ_NOT_CONTINUED
+    AvatarIssue.NETWORK -> AppText.Profile.AVATAR_CONNECTION_FAILED_REFRESH_TO_RETRY
+    AvatarIssue.TIMEOUT -> AppText.Profile.AVATAR_READ_TIMEOUT_REFRESH_TO_RETRY
+    AvatarIssue.DECODE -> AppText.Profile.AVATAR_DECODE_FAILED_REFRESH_TO_RETRY
+    AvatarIssue.CLOSED -> AppText.Profile.AVATAR_READING_CLOSED
 }
 enum class AvatarFormat { PNG, JPEG }
 internal data class AvatarHeader(val width: Int, val height: Int, val format: AvatarFormat)

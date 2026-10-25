@@ -1,5 +1,7 @@
 package io.github.betterzslf.feature.water
 
+import io.github.betterzslf.core.text.AppText
+
 /** Share one guard across machines/device reconnects; the identity should be a stable BLE ID. */
 class WaterFailureGuard(
     val failureWindowMillis: Long = 60 * 60 * 1000L,
@@ -41,7 +43,7 @@ class WaterFailureGuard(
     }
 
     companion object {
-        const val LOCKOUT_NOTICE: String = "多次失败可能锁定水控器，需在通电状态下等待约 1 小时。认证失败后已断开，不会自动重试。"
+        const val LOCKOUT_NOTICE: String = AppText.Water.REPEATED_FAILURE_LOCKOUT_AND_NO_RETRY_NOTICE
     }
 }
 

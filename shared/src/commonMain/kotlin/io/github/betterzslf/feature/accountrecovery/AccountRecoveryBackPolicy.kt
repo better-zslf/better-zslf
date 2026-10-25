@@ -1,6 +1,8 @@
 package io.github.betterzslf.feature.accountrecovery
 
-internal const val RECOVERY_WRITE_BACK_NOTICE = "请求可能已接收，请等待回执，返回不等于撤销"
+import io.github.betterzslf.core.text.AppText
+
+internal const val RECOVERY_WRITE_BACK_NOTICE = AppText.Recovery.REQUEST_POSSIBLY_ACCEPTED_BACK_DOES_NOT_REVOKE_NOTICE
 
 /** Only SMS dispatch and password reset hold navigation; read-only verification remains cancellable. */
 internal fun recoveryWriteInFlight(state: AccountRecoveryState): Boolean =

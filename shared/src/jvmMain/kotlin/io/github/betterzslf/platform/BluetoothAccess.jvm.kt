@@ -1,5 +1,6 @@
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import io.github.betterzslf.feature.water.WaterDateTime
@@ -13,7 +14,7 @@ import kotlin.random.Random
 @Composable
 actual fun rememberBluetoothAccess(): BluetoothAccess = remember {
     object : BluetoothAccess {
-        private val status = MutableStateFlow(BluetoothAccessState(available = false, message = "宿主测试目标未连接蓝牙适配器。"))
+        private val status = MutableStateFlow(BluetoothAccessState(available = false, message = AppText.Water.HOST_TEST_BLUETOOTH_ADAPTER_NOT_CONNECTED))
         override val state = status.asStateFlow()
         override fun requestPermissions() = Unit
         override fun requestEnable() = Unit

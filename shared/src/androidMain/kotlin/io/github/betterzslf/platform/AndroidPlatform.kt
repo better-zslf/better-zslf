@@ -1,5 +1,6 @@
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ContextWrapper
@@ -97,7 +98,7 @@ private class EncryptedStore(context: Context) : KeyValueStore {
         cipher.init(Cipher.ENCRYPT_MODE, key())
         cipher.updateAAD(key.toByteArray(Charsets.UTF_8))
         val encoded = Base64.encodeToString(cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
-        check(preferences.edit().putString(key, encoded).commit()) { "本地数据保存失败" }
+        check(preferences.edit().putString(key, encoded).commit()) { AppText.Common.LOCAL_DATA_SAVE_FAILED }
     }
     override fun remove(key: String) { preferences.edit().remove(key).commit() }
     override fun clear() { preferences.edit().clear().commit() }

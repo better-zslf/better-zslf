@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.booking
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.net.UploadFile
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
@@ -21,14 +22,14 @@ class RepositoryAttachmentTransport(private val venues: VenueRepository) : Booki
 }
 
 fun attachmentValidation(applyId: String, userId: String, files: List<PickedFile>, status: String): List<String> = buildList {
-    if (applyId.isBlank() || userId.isBlank()) add("申请或用户标识缺失，请刷新详情")
-    if (status != "1") add("当前申请不在待上传文件状态，请刷新查询")
-    if (files.isEmpty()) add("请先选择盖章文件相片")
-    if (files.size > 9) add("每次最多选择 9 个附件")
+    if (applyId.isBlank() || userId.isBlank()) add(AppText.Booking.APPLICATION_OR_USER_ID_MISSING_REFRESH_DETAILS)
+    if (status != "1") add(AppText.Booking.APPLICATION_NOT_AWAITING_FILES_REFRESH_STATUS)
+    if (files.isEmpty()) add(AppText.Booking.SELECT_STAMPED_DOCUMENT_PHOTOS_FIRST)
+    if (files.size > 9) add(AppText.Booking.ATTACHMENT_SELECTION_LIMIT_PER_OPERATION)
     files.forEachIndexed { index, file ->
-        if (file.size !in 1..MAX_PICKED_FILE_BYTES) add("附件 ${index + 1} 为空或超过 8 MiB")
-        if (!file.mediaType.startsWith("image/")) add("附件 ${index + 1} 请选择盖章文件的相片")
-        if (file.name.any { it in "\"\\/\r\n\u0000" }) add("附件 ${index + 1} 名称含不支持的字符")
+        if (file.size !in 1..MAX_PICKED_FILE_BYTES) add(AppText.Booking.attachmentEmptyOrOversized((index + 1)))
+        if (!file.mediaType.startsWith("image/")) add(AppText.Booking.attachmentPhotoRequired((index + 1)))
+        if (file.name.any { it in "\"\\/\r\n\u0000" }) add(AppText.Booking.attachmentNameUnsupported((index + 1)))
     }
 }
 
@@ -49,26 +50,26 @@ fun attachmentConfirmation(
     previousReceipts: Set<String>,
 ): BookingConfirmation {
     val validation = attachmentValidation(applyId, userId, files, status)
-    val steps = files.mapIndexed { index, file -> BookingWriteStep("传输附件 ${index + 1}/${files.size}") {
-        if (validation.isNotEmpty()) BookingStepResult.Failed("附件校验未通过；未发送文件。")
+    val steps = files.mapIndexed { index, file -> BookingWriteStep(AppText.Booking.attachmentTransferStep((index + 1), (files.size))) {
+        if (validation.isNotEmpty()) BookingStepResult.Failed(AppText.Booking.ATTACHMENT_VALIDATION_FAILED_FILES_NOT_SENT)
         else when (val result = transport.transfer(UploadFile(file.name, file.readBytes(), file.mediaType), applyId, userId)) {
             is ApiResult.Success -> BookingStepResult.Completed()
             is ApiResult.Failure -> result.attachmentFailure()
         }
     } }.toMutableList()
-    steps += BookingWriteStep("通知服务端完成附件传输") {
-        if (validation.isNotEmpty()) BookingStepResult.Failed("附件校验未通过；未发送回写。")
+    steps += BookingWriteStep(AppText.Booking.NOTIFY_ATTACHMENT_TRANSFER_COMPLETION_STEP) {
+        if (validation.isNotEmpty()) BookingStepResult.Failed(AppText.Booking.ATTACHMENT_VALIDATION_FAILED_WRITEBACK_NOT_SENT)
         else when (val result = transport.finish(applyId)) {
             is ApiResult.Success -> BookingStepResult.Completed()
             is ApiResult.Failure -> result.attachmentFailure()
         }
     }
-    steps += BookingWriteStep("重新查询并核对附件列表") {
+    steps += BookingWriteStep(AppText.Booking.REQUERY_AND_REVIEW_ATTACHMENT_LIST_STEP) {
         when (val result = transport.detail(applyId)) {
-            is ApiResult.Failure -> BookingStepResult.Failed("传输结果待核对，请刷新申请详情；不会自动重传。", uncertain = true)
+            is ApiResult.Failure -> BookingStepResult.Failed(AppText.Booking.TRANSFER_RESULT_UNCONFIRMED_REFRESH_WITHOUT_AUTO_REUPLOAD, uncertain = true)
             is ApiResult.Success -> {
                 val newReceipts = attachmentReceipts(result.data) - previousReceipts
-                if (newReceipts.size < files.size) BookingStepResult.Failed("已结束传输，但附件列表尚未确认全部新文件。请先查询申请，勿重复上传。", uncertain = true)
+                if (newReceipts.size < files.size) BookingStepResult.Failed(AppText.Booking.TRANSFER_ENDED_NEW_ATTACHMENTS_UNCONFIRMED_QUERY_FIRST, uncertain = true)
                 else BookingStepResult.Completed()
             }
         }

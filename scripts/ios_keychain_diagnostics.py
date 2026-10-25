@@ -28,6 +28,7 @@ import uuid
 REPORT_RELATIVE = Path("Library/Caches/better-zslf-ci-startup.json")
 MAX_REPORT_BYTES = 64 * 1024
 REPORT_TIMEOUT = 30.0
+FAILURE_LOG_LOOKBACK_SECONDS = 90
 COMMAND_TIMEOUT = 5
 POLL_INTERVAL = 0.5
 TEAM_ID = "CIKEYCHAIN"  # Synthetic ten-letter CI fixture; no developer account.
@@ -856,6 +857,31 @@ def _observe_failed_launch(artifacts, runner, udid, label, record, container, ph
         save()
 
 
+def _failure_log_coverage(query_started_at_utc, launch_started_at_utc):
+    """Nominal dispatch-time lookback only; no Native lifecycle or PASS inference."""
+    value = {"query_started_at_utc": query_started_at_utc if type(query_started_at_utc) is str else None,
+             "window_seconds": FAILURE_LOG_LOOKBACK_SECONDS,
+             "launch_started_at_utc": launch_started_at_utc if type(launch_started_at_utc) is str else None,
+             "launch_start_in_nominal_window": None, "nominal_only": True}
+    pattern = (r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+               r"(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])")
+    times = []
+    for timestamp in (query_started_at_utc, launch_started_at_utc):
+        if type(timestamp) is not str or not re.fullmatch(pattern, timestamp) or timestamp.endswith("-00:00"):
+            return value
+        try:
+            parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            if parsed.utcoffset() is None:
+                return value
+            times.append(parsed)
+        except (ValueError, OverflowError):
+            return value
+    elapsed = (times[0] - times[1]).total_seconds()
+    if elapsed >= 0:  # A wall-clock reversal is unknown, not a covered window.
+        value["launch_start_in_nominal_window"] = elapsed <= FAILURE_LOG_LOOKBACK_SECONDS
+    return value
+
+
 def _capture_failure(artifacts, runner, udid, label, record, container, phase, save, bundle,
                      *, primary=None, executable=None, app_name=None, clock=time.monotonic):
     from ios_simulator_smoke import is_smoke_deadline
@@ -879,7 +905,7 @@ def _capture_failure(artifacts, runner, udid, label, record, container, phase, s
                 return
         record["failure_observed_at_utc"] = _utc_now()
         record["failure_launch_log"] = label + "-launch-system-log.stdout.log"
-        record["failure_launch_log_window_seconds"] = 30
+        record["failure_launch_log_window_seconds"] = FAILURE_LOG_LOOKBACK_SECONDS
         record["failure_launch_log_complete"] = False
         record["failure_launch_log_started_at_utc"] = _utc_now()
         persist()
@@ -888,7 +914,10 @@ def _capture_failure(artifacts, runner, udid, label, record, container, phase, s
                          'process == "runningboardd" OR process == "amfid" OR process == "installd" OR '
                          'process == "launchd_sim") AND (eventMessage CONTAINS[c] "' + bundle +
                          '" OR eventMessage CONTAINS[c] "BetterZslf"))')
-            runner.call(["spawn", udid, "log", "show", "--style", "compact", "--last", "30s",
+            record["failure_launch_log_coverage"] = _failure_log_coverage(
+                _utc_now(), record.get("launch_started_at_utc"))
+            runner.call(["spawn", udid, "log", "show", "--style", "compact", "--last",
+                         str(FAILURE_LOG_LOOKBACK_SECONDS) + "s",
                          "--predicate", predicate], label + "-launch-system-log", 15)
             record["failure_launch_log_complete"] = True
         except Exception as error:

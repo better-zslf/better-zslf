@@ -2,6 +2,7 @@
 
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.feature.run.GeoPoint
 import io.github.betterzslf.feature.run.RunLocationSample
 import kotlinx.cinterop.useContents
@@ -64,36 +65,36 @@ private class IosLocationTracker : NativeLocationTracker {
 
     override fun start(samplingSeconds: Int) = onMain {
         if (closed) {
-            mutableState.value = LocationTrackingState(LocationPhase.Unavailable, "定位记录器已关闭")
+            mutableState.value = LocationTrackingState(LocationPhase.Unavailable, AppText.Run.LOCATION_TRACKER_CLOSED)
             return@onMain
         }
         if (active || startJob?.isActive == true) return@onMain
         accessCheckJob?.cancel()
         accessCheckJob = null
         val currentGeneration = ++generation
-        mutableState.value = LocationTrackingState(LocationPhase.Starting, "正在检查定位服务")
+        mutableState.value = LocationTrackingState(LocationPhase.Starting, AppText.Run.CHECKING_LOCATION_SERVICES)
         startJob = scope.launch {
             val enabled = withContext(Dispatchers.Default) { CLLocationManager.locationServicesEnabled() }
             ensureActive()
             if (currentGeneration != generation || closed) return@launch
             if (!enabled) {
-                terminate(LocationPhase.LocationDisabled, "系统定位服务已关闭，请在设置中开启")
+                terminate(LocationPhase.LocationDisabled, AppText.Run.SYSTEM_LOCATION_SERVICES_DISABLED_ENABLE_IN_SETTINGS)
                 return@launch
             }
             if (UIApplication.sharedApplication.applicationState != UIApplicationState.UIApplicationStateActive) {
-                terminate(LocationPhase.Failed, "请在应用前台明确开始或恢复记录")
+                terminate(LocationPhase.Failed, AppText.Run.EXPLICIT_RECORDING_START_OR_RESUME_IN_FOREGROUND_REQUIRED)
                 return@launch
             }
             val modes = NSBundle.mainBundle.objectForInfoDictionaryKey("UIBackgroundModes") as? List<*>
             if (modes?.contains("location") != true) {
-                terminate(LocationPhase.Unavailable, "当前应用未配置连续后台定位")
+                terminate(LocationPhase.Unavailable, AppText.Run.CONTINUOUS_BACKGROUND_LOCATION_NOT_CONFIGURED)
                 return@launch
             }
             val next = CLLocationManager()
             manager = next
             next.delegate = nativeDelegate
             if (!hasPreciseLocationPermission(next)) {
-                terminate(LocationPhase.PermissionRequired, "请先允许使用期间的精确定位，再明确开始记录")
+                terminate(LocationPhase.PermissionRequired, AppText.Run.ALLOW_PRECISE_LOCATION_WHILE_USING_BEFORE_EXPLICIT_RECORDING)
                 return@launch
             }
             gate = IosLocationSampleGate(samplingSeconds, currentWallMillis())
@@ -104,7 +105,7 @@ private class IosLocationTracker : NativeLocationTracker {
             next.showsBackgroundLocationIndicator = true
             next.allowsBackgroundLocationUpdates = true
             active = true
-            mutableState.value = LocationTrackingState(LocationPhase.Starting, "正在等待精确定位信号")
+            mutableState.value = LocationTrackingState(LocationPhase.Starting, AppText.Run.AWAITING_PRECISE_LOCATION_SIGNAL)
             next.startUpdatingLocation()
         }
     }
@@ -116,7 +117,7 @@ private class IosLocationTracker : NativeLocationTracker {
     override fun close() = onMain {
         if (closed) return@onMain
         closed = true
-        terminate(LocationPhase.Unavailable, "定位记录器已关闭")
+        terminate(LocationPhase.Unavailable, AppText.Run.LOCATION_TRACKER_CLOSED)
         nativeDelegate.clear()
         scope.cancel()
     }
@@ -149,7 +150,7 @@ private class IosLocationTracker : NativeLocationTracker {
             }
             if (emissionJob?.isActive == true) {
                 // Never silently queue/drop unbounded private coordinates behind a stalled consumer.
-                terminate(LocationPhase.Failed, "定位样本处理阻塞，请返回前台后重新开始")
+                terminate(LocationPhase.Failed, AppText.Run.LOCATION_SAMPLE_PROCESSING_BLOCKED_RESTART_IN_FOREGROUND)
                 return
             }
             val sample = RunLocationSample(
@@ -173,21 +174,21 @@ private class IosLocationTracker : NativeLocationTracker {
             didFailWithError.domain == kCLErrorDomain &&
                 (didFailWithError.code == kCLErrorLocationUnknown || didFailWithError.code == kCLErrorNetwork) -> {
                 // Standard updates remain active; no request/restart/retry is issued here.
-                mutableState.value = LocationTrackingState(LocationPhase.Starting, "定位信号暂不可用，正在等待新样本")
+                mutableState.value = LocationTrackingState(LocationPhase.Starting, AppText.Run.LOCATION_SIGNAL_UNAVAILABLE_AWAITING_NEW_SAMPLE)
             }
-            else -> terminate(LocationPhase.Failed, "定位服务发生错误，请返回前台后明确重新开始")
+            else -> terminate(LocationPhase.Failed, AppText.Run.LOCATION_SERVICE_ERROR_RESTART_EXPLICITLY_IN_FOREGROUND)
         }
     }
 
     private fun haltForAccessChange() {
-        terminate(LocationPhase.PermissionRequired, "精确定位权限已变化，请检查系统设置")
+        terminate(LocationPhase.PermissionRequired, AppText.Run.PRECISE_LOCATION_PERMISSION_CHANGED_CHECK_SYSTEM_SETTINGS)
         val currentGeneration = generation
         accessCheckJob = scope.launch {
             val enabled = withContext(Dispatchers.Default) { CLLocationManager.locationServicesEnabled() }
             ensureActive()
             if (closed || currentGeneration != generation) return@launch
             if (!enabled) {
-                mutableState.value = LocationTrackingState(LocationPhase.LocationDisabled, "系统定位服务已关闭，请在设置中开启")
+                mutableState.value = LocationTrackingState(LocationPhase.LocationDisabled, AppText.Run.SYSTEM_LOCATION_SERVICES_DISABLED_ENABLE_IN_SETTINGS)
             }
         }
     }

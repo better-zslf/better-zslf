@@ -1,5 +1,6 @@
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.feature.run.GeoPoint
 import kotlinx.serialization.json.*
 
@@ -15,12 +16,12 @@ fun runMapProviderFor(webType: String?): RunMapProvider? = when (webType?.trim()
 }
 
 fun runMapFailureMessage(reason: RunMapFailure): String = when (reason) {
-    RunMapFailure.CONFIGURATION -> "请先配置地图服务与公开 API Key。"
-    RunMapFailure.UNCONFIRMED_COORDINATES -> "地图坐标系尚未确认，请先确认轨迹来源。"
-    RunMapFailure.TOO_MANY_POINTS -> "地图数据超过显示上限，请缩小轨迹后重试。"
-    RunMapFailure.NETWORK -> "地图资源加载超时，请检查网络后重试。"
-    RunMapFailure.SDK -> "地图服务暂未就绪，请稍后重试。"
-    RunMapFailure.UNAVAILABLE -> "当前环境暂未提供地图显示。"
+    RunMapFailure.CONFIGURATION -> AppText.Run.MAP_PROVIDER_AND_PUBLIC_KEY_CONFIGURATION_REQUIRED
+    RunMapFailure.UNCONFIRMED_COORDINATES -> AppText.Run.MAP_COORDINATE_FRAME_UNCONFIRMED_CHECK_TRACK_SOURCE
+    RunMapFailure.TOO_MANY_POINTS -> AppText.Run.MAP_DATA_DISPLAY_LIMIT_EXCEEDED_REDUCE_TRACK
+    RunMapFailure.NETWORK -> AppText.Run.MAP_RESOURCE_LOAD_TIMEOUT_CHECK_NETWORK
+    RunMapFailure.SDK -> AppText.Run.MAP_SERVICE_NOT_READY_RETRY_LATER
+    RunMapFailure.UNAVAILABLE -> AppText.Run.MAP_DISPLAY_UNAVAILABLE_IN_CURRENT_ENVIRONMENT
 }
 
 /** Owned map document only. Events select/edit UI; none is a GPS sample or an API action. */
@@ -59,7 +60,7 @@ object RunMapWeb {
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <meta http-equiv="Content-Security-Policy" content="$csp">
 <style>html,body,#map{width:100%;height:100%;margin:0;overflow:hidden}body{background:#eef2f5}.checkpoint-label{display:inline-block;background:#fff;color:#17212b;border:2px solid #34F18C;border-radius:8px;padding:4px 7px;font:13px sans-serif;white-space:pre-wrap;max-width:180px}.position-dot{width:12px;height:12px;background:#2688ff;border:2px solid white;border-radius:50%}</style>
-</head><body><div id="map" role="img" aria-label="路线地图"></div>
+</head><body><div id="map" role="img" aria-label="${AppText.Run.ROUTE_MAP_ACCESSIBILITY_LABEL}"></div>
 <script id="run-map-data" type="application/json">$data</script>
 <script nonce="$documentId">
 (function(){'use strict';

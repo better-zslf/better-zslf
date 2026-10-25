@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.booking
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.platform.MAX_PICKED_FILE_BYTES
 import io.github.betterzslf.platform.PickedFile
 import kotlinx.coroutines.CancellationException
@@ -8,10 +9,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 
 enum class BookingAction(val title: String, val evidenceGap: String) {
-    VENUE_APPLY("预约申请", "docs/13 仅验证了空参失败；申请必填字段、成功申请标识、时段关联顺序及预约附件上传契约尚未确认。当前仅保留本地草稿，不发送申请或附件。"),
-    VENUE_CANCEL("取消预约", "取消预约暂未接通。现有申请查询与审批进度不用于取消，当前申请状态保持不变。"),
-    FITNESS_ENROL("体测报名", "docs/13 未确认 addPhysicalUser 的真实必填字段和成功报名标识；api-spec 只记录透传参数。当前仅预览选择，不发送报名。"),
-    FITNESS_CANCEL("取消体测报名", "docs/13 未确认 cancelPhysical 的真实请求字段与报名标识。当前仅展示查询结果，不发送取消请求。"),
+    VENUE_APPLY(AppText.Booking.BOOKING_APPLICATION_TITLE, AppText.Booking.APPLICATION_CONTRACT_UNVERIFIED_LOCAL_DRAFT_ONLY_HINT),
+    VENUE_CANCEL(AppText.Booking.CANCEL_BOOKING_TITLE, AppText.Booking.CANCELLATION_UNCONNECTED_QUERY_DOES_NOT_CHANGE_STATE_HINT),
+    FITNESS_ENROL(AppText.Booking.FITNESS_REGISTRATION_TITLE, AppText.Booking.FITNESS_REGISTRATION_CONTRACT_UNVERIFIED_PREVIEW_ONLY_HINT),
+    FITNESS_CANCEL(AppText.Booking.CANCEL_FITNESS_REGISTRATION_TITLE, AppText.Booking.FITNESS_CANCELLATION_CONTRACT_UNVERIFIED_QUERY_ONLY_HINT),
 }
 
 /** These are local draft fields, deliberately NOT serialized into an API request. */
@@ -22,28 +23,28 @@ class VenueDraft(
     val acknowledged: Boolean,
 ) {
     fun validation(ownerId: String, selectableTimeIds: Set<String>): List<String> = buildList {
-        if (ownerId.isBlank()) add("请先登录")
-        if (selection.siteId.isBlank()) add("缺少场馆标识，请返回场馆列表重新选择")
-        if (selection.timeIds.isEmpty()) add("请选择至少一个时段")
-        if (selection.timeIds.any { it !in selectableTimeIds }) add("所选时段已变化或未返回，请重新查询时段")
-        if (note.isBlank()) add("请填写本地申请说明")
-        if (note.length > 2000) add("本地申请说明请控制在 2000 字以内")
+        if (ownerId.isBlank()) add(AppText.Auth.LOGIN_REQUIRED)
+        if (selection.siteId.isBlank()) add(AppText.Booking.VENUE_ID_MISSING_RETURN_TO_VENUE_LIST)
+        if (selection.timeIds.isEmpty()) add(AppText.Booking.SELECT_AT_LEAST_ONE_TIME_SLOT)
+        if (selection.timeIds.any { it !in selectableTimeIds }) add(AppText.Booking.SELECTED_SLOTS_CHANGED_OR_MISSING_REQUERY)
+        if (note.isBlank()) add(AppText.Booking.LOCAL_APPLICATION_DESCRIPTION_REQUIRED)
+        if (note.length > 2000) add(AppText.Booking.LOCAL_APPLICATION_DESCRIPTION_LENGTH_LIMIT)
         attachment?.let {
-            if (it.size == 0) add("附件为空，请重新选择")
-            if (it.size > MAX_PICKED_FILE_BYTES) add("附件超过 8 MiB")
-            if (it.name.any { char -> char in "\"\\/\r\n\u0000" }) add("附件名称含有不支持的字符，请重命名后选择")
+            if (it.size == 0) add(AppText.Booking.ATTACHMENT_EMPTY_RESELECT)
+            if (it.size > MAX_PICKED_FILE_BYTES) add(AppText.Booking.ATTACHMENT_SIZE_LIMIT_EXCEEDED)
+            if (it.name.any { char -> char in "\"\\/\r\n\u0000" }) add(AppText.Booking.ATTACHMENT_NAME_UNSUPPORTED_CHARACTERS_RENAME)
         }
-        if (!acknowledged) add("请勾选已核对场馆、时段和本地附件")
+        if (!acknowledged) add(AppText.Booking.ACKNOWLEDGE_VENUE_SLOTS_AND_LOCAL_ATTACHMENTS)
     }
     override fun toString(): String = "VenueDraft(times=${selection.timeIds.size}, attachment=${attachment != null})"
 }
 
 fun fitnessValidation(ownerId: String, selection: BookingSelection, returnedIds: Set<String>, acknowledged: Boolean): List<String> = buildList {
-    if (ownerId.isBlank()) add("请先登录")
-    if (selection.physicalId.isBlank()) add("尚未选择体测场次；全局项目列表仅供查询")
-    if (selection.itemIds.isEmpty()) add("请选择至少一个体测项目")
-    if (selection.itemIds.any { it !in returnedIds }) add("所选项目已变化或未返回，请重新选择")
-    if (!acknowledged) add("请勾选已核对场次、项目及当前报名信息")
+    if (ownerId.isBlank()) add(AppText.Auth.LOGIN_REQUIRED)
+    if (selection.physicalId.isBlank()) add(AppText.Booking.FITNESS_SESSION_UNSELECTED_GLOBAL_ITEMS_QUERY_ONLY)
+    if (selection.itemIds.isEmpty()) add(AppText.Booking.SELECT_AT_LEAST_ONE_FITNESS_ITEM)
+    if (selection.itemIds.any { it !in returnedIds }) add(AppText.Booking.SELECTED_ITEMS_CHANGED_OR_MISSING_RESELECT)
+    if (!acknowledged) add(AppText.Booking.ACKNOWLEDGE_SESSION_ITEMS_AND_CURRENT_REGISTRATION)
 }
 
 data class BookingPreview(val title: String, val lines: List<String>, val validation: List<String> = emptyList()) {
@@ -116,10 +117,10 @@ class BookingConfirmation private constructor(
                 } catch (cancelled: CancellationException) {
                     updateStep(index, BookingStepPhase.UNCERTAIN)
                     mutableState.value = mutableState.value.copy(phase = BookingPhase.UNCERTAIN,
-                        message = "操作已中断，服务端结果待核对；已完成步骤保留，不会自动重提。")
+                        message = AppText.Booking.OPERATION_INTERRUPTED_RESULT_UNCONFIRMED_COMPLETED_STEPS_RETAINED)
                     throw cancelled
                 } catch (_: Exception) {
-                    BookingStepResult.Failed("操作结果待核对，请先刷新查询；不会自动重提。", uncertain = true)
+                    BookingStepResult.Failed(AppText.Booking.OPERATION_RESULT_UNCONFIRMED_REFRESH_WITHOUT_AUTO_RESUBMIT, uncertain = true)
                 }
                 when (result) {
                     is BookingStepResult.Completed -> {
@@ -136,7 +137,7 @@ class BookingConfirmation private constructor(
                     }
                 }
             }
-            mutableState.value = mutableState.value.copy(phase = BookingPhase.COMPLETED, message = "操作完成，请刷新查询状态。")
+            mutableState.value = mutableState.value.copy(phase = BookingPhase.COMPLETED, message = AppText.Booking.OPERATION_FINISHED_REFRESH_STATUS)
         } finally { mutex.unlock() }
     }
 

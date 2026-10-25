@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.waterui
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.feature.water.WaterBleController
 import io.github.betterzslf.feature.water.WaterBleDevice
 import io.github.betterzslf.feature.water.WaterBlePhase
@@ -60,29 +61,29 @@ data class WaterHeaterModel(
     val observedMillis: Long,
     val notice: String?,
 ) {
-    val title: String get() = if (ble.normalEndCompleted && ble.phase == WaterBlePhase.Disconnected) "正常结束流程已完成" else when (ble.phase) {
-        WaterBlePhase.Disconnected -> "尚未连接 / 连接已关闭"
-        WaterBlePhase.Connecting -> "正在连接并订阅通知"
-        WaterBlePhase.Ready -> "已连接，尚未开启"
-        WaterBlePhase.Authenticating -> "正在认证，等待设备响应"
-        WaterBlePhase.Active -> "设备已确认开启"
-        WaterBlePhase.Stopping -> "正在正常结束，等待设备确认"
-        WaterBlePhase.Failed -> "操作未完成，连接已关闭"
-        WaterBlePhase.ManualConfirmationRequired -> "重试保护：需要手动强确认"
-        WaterBlePhase.Closed -> "控制器已关闭"
+    val title: String get() = if (ble.normalEndCompleted && ble.phase == WaterBlePhase.Disconnected) AppText.Water.NORMAL_END_FLOW_COMPLETED_TITLE else when (ble.phase) {
+        WaterBlePhase.Disconnected -> AppText.Water.NOT_CONNECTED_OR_CONNECTION_CLOSED_TITLE
+        WaterBlePhase.Connecting -> AppText.Water.CONNECTING_AND_SUBSCRIBING_NOTIFICATIONS_TITLE
+        WaterBlePhase.Ready -> AppText.Water.CONNECTED_AWAITING_START_TITLE
+        WaterBlePhase.Authenticating -> AppText.Water.AUTHENTICATING_AWAITING_DEVICE_RESPONSE_TITLE
+        WaterBlePhase.Active -> AppText.Water.DEVICE_CONFIRMED_STARTED_TITLE
+        WaterBlePhase.Stopping -> AppText.Water.STOPPING_NORMALLY_AWAITING_DEVICE_CONFIRMATION_TITLE
+        WaterBlePhase.Failed -> AppText.Water.OPERATION_INCOMPLETE_CONNECTION_CLOSED_TITLE
+        WaterBlePhase.ManualConfirmationRequired -> AppText.Water.RETRY_PROTECTION_REQUIRES_STRONG_MANUAL_CONFIRMATION_TITLE
+        WaterBlePhase.Closed -> AppText.Water.CONTROLLER_CLOSED_TITLE
     }
     val summary: String get() = if (ble.normalEndCompleted && ble.phase == WaterBlePhase.Disconnected)
-        "设备 B3 已确认、B4 写入及蓝牙资源收尾已完成；仍请确认现场实际水流。" else when (ble.phase) {
-        WaterBlePhase.Ready -> "连接只完成蓝牙通知订阅，没有发送开启命令。请另行确认开启。"
-        WaterBlePhase.Authenticating -> "开启请求不等于开启成功；只有设备的开启通知到达后才显示成功。"
-        WaterBlePhase.Active -> "返回页面不会自动结束或断开，可再次进入此页操作。请留意现场水流。"
+        AppText.Water.NORMAL_END_FINALIZATION_COMPLETE_VERIFY_ACTUAL_WATER_HINT else when (ble.phase) {
+        WaterBlePhase.Ready -> AppText.Water.NOTIFICATION_SUBSCRIBED_START_COMMAND_NOT_SENT_HINT
+        WaterBlePhase.Authenticating -> AppText.Water.START_REQUEST_REQUIRES_DEVICE_NOTIFICATION_FOR_SUCCESS_HINT
+        WaterBlePhase.Active -> AppText.Water.RETURN_KEEPS_SESSION_ACTIVE_WATCH_ACTUAL_WATER_HINT
         WaterBlePhase.Stopping -> if (ble.protocolState == WaterSessionState.Closed)
-            "设备结束确认已到达，正在完成 B4 与连接资源收尾；尚未确认流程完成。"
-            else "正在等待 B3 确认并完成 B4 收尾；此时不要把断开蓝牙当作正常结束。"
-        WaterBlePhase.Disconnected -> "蓝牙连接状态不代表现场水流状态；结束后请确认设备的实际状态。"
-        WaterBlePhase.Failed, WaterBlePhase.ManualConfirmationRequired -> "不会自动重试或自动重连。请先阅读失败说明，再自行选择下一步。"
-        WaterBlePhase.Closed -> "请返回后重新打开功能；本页不会自行重建共享控制器。"
-        WaterBlePhase.Connecting -> "只连接所选设备，不会自动认证或开启。"
+            AppText.Water.END_ACKNOWLEDGED_FINALIZATION_PENDING_HINT
+            else AppText.Water.NORMAL_END_ACKNOWLEDGEMENT_AND_FINALIZATION_PENDING_HINT
+        WaterBlePhase.Disconnected -> AppText.Water.BLUETOOTH_STATE_NOT_ACTUAL_WATER_STATE_HINT
+        WaterBlePhase.Failed, WaterBlePhase.ManualConfirmationRequired -> AppText.Water.NO_AUTO_RETRY_OR_RECONNECT_READ_FAILURE_FIRST_HINT
+        WaterBlePhase.Closed -> AppText.Water.REOPEN_FEATURE_SHARED_CONTROLLER_NOT_REBUILT_HINT
+        WaterBlePhase.Connecting -> AppText.Water.CONNECT_ONLY_NO_AUTOMATIC_AUTHENTICATION_OR_START_HINT
     }
 }
 
@@ -221,31 +222,31 @@ class WaterHeaterPresenter(
             WaterConfirmation.Leave -> onBack() // Keep the shared session alive; no close/disconnect.
             is WaterConfirmation.RetryConnect -> perform {
                 if (eligible(confirmation.device)) controller.connect(confirmation.device, manuallyConfirmedRetry = true)
-                else notice("权限或设备状态已变化，请重新扫描并选择。")
+                else notice(AppText.Water.PERMISSION_OR_DEVICE_CHANGED_RESCAN_AND_SELECT)
             }
             is WaterConfirmation.Begin -> perform {
                 if (!readyFor(confirmation)) {
-                    notice("连接或权限状态已变化，尚未发送开启命令。")
+                    notice(AppText.Water.CONNECTION_OR_PERMISSION_CHANGED_START_NOT_SENT)
                     return@perform
                 }
                 val retry = controller.retryStatus(confirmation.deviceId)
                 if (!readyFor(confirmation)) {
-                    notice("连接或权限状态已变化，请重新确认开启。")
+                    notice(AppText.Water.CONNECTION_OR_PERMISSION_CHANGED_RECONFIRM_START)
                 } else if (retry.requiresManualConfirmation && !acknowledged) {
                     dialog(confirmation.copy(requiresAcknowledgement = true))
                 } else if (!controller.begin(manuallyConfirmedRetry = retry.requiresManualConfirmation && acknowledged)) {
-                    notice("开启请求未被当前会话接受；请以设备通知及失败说明为准。")
+                    notice(AppText.Water.SESSION_DID_NOT_ACCEPT_START_CHECK_DEVICE_NOTICE)
                 }
                 // begin(true) means B0 was sent, NOT that water is active.
             }
             WaterConfirmation.End -> perform {
                 if (controller.state.value.phase == WaterBlePhase.Active && !controller.end()) {
-                    notice("结束请求未被当前会话接受，尚未确认设备停止。")
+                    notice(AppText.Water.SESSION_DID_NOT_ACCEPT_END_DEVICE_STOP_UNCONFIRMED)
                 }
             }
             WaterConfirmation.Disconnect -> perform(allowConcurrent = true, disconnecting = true) {
                 controller.disconnect()
-                notice("已请求断开蓝牙；这不等于正常结束或硬件断水，请确认现场水流。")
+                notice(AppText.Water.DISCONNECT_REQUESTED_NORMAL_END_AND_WATER_STOP_UNCONFIRMED)
             }
         }
     }
@@ -273,7 +274,7 @@ class WaterHeaterPresenter(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                notice("操作未完成，请检查蓝牙、权限和当前会话状态后手动操作；不会自动重试。")
+                notice(AppText.Water.OPERATION_INCOMPLETE_CHECK_BLUETOOTH_PERMISSION_AND_SESSION)
             } finally {
                 interaction.update { it.copy(operations = (it.operations - 1).coerceAtLeast(0),
                     disconnecting = if (disconnecting) false else it.disconnecting) }

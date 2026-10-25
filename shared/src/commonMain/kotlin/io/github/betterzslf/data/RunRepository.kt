@@ -1,5 +1,6 @@
 package io.github.betterzslf.data
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.net.ApiClient
 import io.github.betterzslf.core.net.ApiEndpoint
 import io.github.betterzslf.core.net.ApiSessionBinding
@@ -29,7 +30,7 @@ class RunRepository private constructor(private val api: ApiClient, private val 
     }
 
     suspend fun tasks(userId: String, offset: Int = 0, limit: Int = 20, isFinish: String = "0"): ApiResult<JsonElement> {
-        if (offset < 0 || limit <= 0) return ApiResult.Failure(ApiError.Validation(listOf("offset", "limit"), "分页参数应为非负偏移和正数条数"))
+        if (offset < 0 || limit <= 0) return ApiResult.Failure(ApiError.Validation(listOf("offset", "limit"), AppText.Common.PAGINATION_REQUIRES_NONNEGATIVE_OFFSET_AND_POSITIVE_LIMIT))
         // Always send all four required query keys; callers select the desired status.
         return execute(ApiEndpoint.RUN_TASKS, buildJsonObject {
             put("userId", userId)
@@ -44,10 +45,10 @@ class RunRepository private constructor(private val api: ApiClient, private val 
         queryParameters("errandId" to errandId, "userId" to userId, "errandScheduleId" to errandScheduleId))
 
     /** Kept source-compatible only; the former trid-only detail query was not the shipped protocol. */
-    @Deprecated("任务详情请提供errandId、userId、errandScheduleId；请从任务列表重新进入")
+    @Deprecated(AppText.Run.TASK_DETAIL_REQUIRES_TASK_USER_AND_SCHEDULE_IDS_REOPEN_LIST)
     @Suppress("UNUSED_PARAMETER")
     suspend fun detail(trid: String): ApiResult<JsonElement> = ApiResult.Failure(ApiError.Validation(
-        listOf("errandId", "userId", "errandScheduleId"), "任务详情缺少任务与排期信息，请从任务列表重新进入"))
+        listOf("errandId", "userId", "errandScheduleId"), AppText.Run.TASK_DETAIL_TASK_OR_SCHEDULE_MISSING_REOPEN_LIST))
 
     /** Existing successful user-wide query remains supported without an invented filter. */
     suspend fun records(userId: String) = execute(ApiEndpoint.RUN_RECORDS, queryParameters("userId" to userId))
@@ -85,7 +86,7 @@ class RunRepository private constructor(private val api: ApiClient, private val 
             // parameter (track/record/punch) still authenticate with the exact captured binding.
             if ((body != null || userId != null) &&
                 (owner == null || userId !is JsonPrimitive || !userId.isString || userId.content != owner)
-            ) return ApiResult.Failure(ApiError.Validation(listOf("userId"), "请求归属与本次操作的登录账号不一致"))
+            ) return ApiResult.Failure(ApiError.Validation(listOf("userId"), AppText.Auth.REQUEST_ACCOUNT_OWNERSHIP_MISMATCH))
         }
         return api.execute(endpoint, query, body, expectedSession = binding)
     }

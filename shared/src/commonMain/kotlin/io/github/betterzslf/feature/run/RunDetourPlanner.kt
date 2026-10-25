@@ -1,5 +1,7 @@
 package io.github.betterzslf.feature.run
 
+import io.github.betterzslf.core.text.AppText
+
 sealed interface DetourResult {
     data class Success(
         val points: List<GeoPoint>,
@@ -33,20 +35,20 @@ object RunDetourPlanner {
         checkpoints: List<RunCheckpoint>,
         targetDistanceMeters: Double,
     ): DetourResult {
-        if (!targetDistanceMeters.isFinite() || targetDistanceMeters <= 0) return DetourResult.Failure("目标距离须为正数")
-        if (points.size < 2 || points.size > RunRouteParser.MAX_POINTS) return DetourResult.Failure("基础路线点数异常")
-        if (points.zipWithNext().any { (a, b) -> RunGeo.distanceMeters(a, b) > MAX_JOIN_METERS + 1e-6 }) return DetourResult.Failure("基础路线存在超过 45 米的跳点，请先检查并加密")
+        if (!targetDistanceMeters.isFinite() || targetDistanceMeters <= 0) return DetourResult.Failure(AppText.Run.TARGET_DISTANCE_MUST_BE_POSITIVE)
+        if (points.size < 2 || points.size > RunRouteParser.MAX_POINTS) return DetourResult.Failure(AppText.Run.INVALID_BASE_ROUTE_POINT_COUNT)
+        if (points.zipWithNext().any { (a, b) -> RunGeo.distanceMeters(a, b) > MAX_JOIN_METERS + 1e-6 }) return DetourResult.Failure(AppText.Run.BASE_ROUTE_JUMP_EXCEEDS_LIMIT_INSPECT_AND_INTERPOLATE)
         val cumulative = RunGeo.cumulative(points)
         val originalLength = cumulative.last()
-        if (originalLength > targetDistanceMeters + 1e-6) return DetourResult.Failure("目标距离短于基础路线，保留终点时没有补距空间")
+        if (originalLength > targetDistanceMeters + 1e-6) return DetourResult.Failure(AppText.Run.TARGET_SHORTER_THAN_BASE_ROUTE_NO_EXTENSION_ROOM)
         if (targetDistanceMeters - originalLength < 1e-6) return DetourResult.Success(points.toList(), originalLength, 0.0, null, emptyList())
-        if (originalLength <= END_RESERVE_METERS + MIN_LEG_METERS) return DetourResult.Failure("基础路线过短，缺少距终点 50 米的折返点")
-        if (walkPaths.isEmpty()) return DetourResult.Failure("任务尚未提供推荐路径")
+        if (originalLength <= END_RESERVE_METERS + MIN_LEG_METERS) return DetourResult.Failure(AppText.Run.BASE_ROUTE_TOO_SHORT_FOR_END_RESERVED_TURNAROUND)
+        if (walkPaths.isEmpty()) return DetourResult.Failure(AppText.Run.TASK_RECOMMENDED_PATH_NOT_PROVIDED)
         return try {
             val graph = RoadGraph(walkPaths)
             val pivotDistance = originalLength - END_RESERVE_METERS
             val pivot = RunGeo.pointAt(points, cumulative, pivotDistance)
-            val source = graph.attach(pivot) ?: return DetourResult.Failure("折返点与推荐路径之间存在超过 45 米的断点")
+            val source = graph.attach(pivot) ?: return DetourResult.Failure(AppText.Run.TURNAROUND_RECOMMENDED_PATH_JOIN_GAP_EXCEEDED)
             val candidates = checkpoints.dropLast(1).take(256).mapNotNull { checkpoint ->
                 val vertex = graph.attach(checkpoint.point)
                 if (vertex == null) null else checkpoint.id to vertex
@@ -85,16 +87,16 @@ object RunDetourPlanner {
                     visited += leg.id
                     lastId = leg.id
                 }
-                if (prefix.size + suffix.size > RunRouteParser.MAX_POINTS) return DetourResult.Failure("补距后点数超过本地处理上限")
+                if (prefix.size + suffix.size > RunRouteParser.MAX_POINTS) return DetourResult.Failure(AppText.Run.EXTENDED_ROUTE_POINT_PROCESSING_LIMIT_EXCEEDED)
             }
-            if (budget >= targetDistanceMeters - originalLength - 1e-6) return DetourResult.Failure("推荐路径中没有满足最短折返距离的可达道路")
+            if (budget >= targetDistanceMeters - originalLength - 1e-6) return DetourResult.Failure(AppText.Run.NO_REACHABLE_ROAD_MEETS_MINIMUM_RETURN_DISTANCE)
             append(prefix, suffix)
             val length = RunGeo.pathLengthMeters(prefix)
-            if (length > targetDistanceMeters + 1e-5) return DetourResult.Failure("补距结果超过目标距离")
-            if (prefix.zipWithNext().any { (a, b) -> RunGeo.distanceMeters(a, b) > MAX_JOIN_METERS + 1e-6 }) return DetourResult.Failure("补距结果含超过 45 米的拼接断点")
+            if (length > targetDistanceMeters + 1e-5) return DetourResult.Failure(AppText.Run.EXTENSION_RESULT_EXCEEDS_TARGET_DISTANCE)
+            if (prefix.zipWithNext().any { (a, b) -> RunGeo.distanceMeters(a, b) > MAX_JOIN_METERS + 1e-6 }) return DetourResult.Failure(AppText.Run.EXTENSION_RESULT_JOIN_GAP_LIMIT_EXCEEDED)
             DetourResult.Success(prefix, length, (targetDistanceMeters - length).coerceAtLeast(0.0), pivot, visited)
         } catch (error: IllegalArgumentException) {
-            DetourResult.Failure(error.message ?: "推荐路径数据异常")
+            DetourResult.Failure(error.message ?: AppText.Run.INVALID_RECOMMENDED_PATH_DATA)
         }
     }
 
@@ -103,17 +105,17 @@ object RunDetourPlanner {
         return try {
             val graph = RoadGraph(walkPaths)
             val waypoints = listOf(start) + checkpoints.map { it.point } + end
-            val nodes = waypoints.map { graph.attach(it) ?: return DetourResult.Failure("打卡点与推荐路径的间隔超过 45 米") }
+            val nodes = waypoints.map { graph.attach(it) ?: return DetourResult.Failure(AppText.Run.CHECKPOINT_RECOMMENDED_PATH_GAP_LIMIT_EXCEEDED) }
             val result = mutableListOf(start)
             for (i in 1 until nodes.size) {
                 val shortest = graph.shortest(nodes[i - 1])
-                if (!shortest.distances[nodes[i]].isFinite()) return DetourResult.Failure("推荐路径分段不连通")
+                if (!shortest.distances[nodes[i]].isFinite()) return DetourResult.Failure(AppText.Run.RECOMMENDED_PATH_SEGMENTS_DISCONNECTED)
                 append(result, graph.path(shortest, nodes[i]))
-                if (result.size > RunRouteParser.MAX_POINTS) return DetourResult.Failure("修正后的路线点数超过上限")
+                if (result.size > RunRouteParser.MAX_POINTS) return DetourResult.Failure(AppText.Run.REROUTED_POINT_COUNT_LIMIT_EXCEEDED)
             }
             DetourResult.Success(result, RunGeo.pathLengthMeters(result), 0.0, null, checkpoints.map { it.id })
         } catch (error: IllegalArgumentException) {
-            DetourResult.Failure(error.message ?: "推荐路径数据异常")
+            DetourResult.Failure(error.message ?: AppText.Run.INVALID_RECOMMENDED_PATH_DATA)
         }
     }
 
@@ -133,7 +135,7 @@ object RunDetourPlanner {
         private val roadEdges = mutableListOf<Pair<Int, Int>>()
 
         init {
-            require(paths.size <= 256) { "推荐路径分段过多" }
+            require(paths.size <= 256) { AppText.Run.TOO_MANY_RECOMMENDED_PATH_SEGMENTS }
             val endpoints = mutableListOf<Int>()
             for (path in paths.filter { it.isNotEmpty() }) {
                 val dense = RunRouteNormalizer.normalize(path)
@@ -147,7 +149,7 @@ object RunDetourPlanner {
                     }
                 }
             }
-            require(roadEdges.isNotEmpty()) { "推荐路径没有可行走的线段" }
+            require(roadEdges.isNotEmpty()) { AppText.Run.RECOMMENDED_PATH_HAS_NO_WALKABLE_SEGMENT }
             for (i in endpoints.indices) for (j in 0 until i) {
                 if (endpoints[i] != endpoints[j] && RunGeo.distanceMeters(points[endpoints[i]], points[endpoints[j]]) <= MAX_JOIN_METERS) {
                     edge(endpoints[i], endpoints[j])
@@ -159,7 +161,7 @@ object RunDetourPlanner {
         private fun node(point: GeoPoint): Int {
             val key = point.longitude to point.latitude
             return known.getOrPut(key) {
-                require(points.size < MAX_NODES) { "推荐路径图超过本地处理上限" }
+                require(points.size < MAX_NODES) { AppText.Run.RECOMMENDED_PATH_GRAPH_PROCESSING_LIMIT_EXCEEDED }
                 points.add(point)
                 links.add(mutableMapOf())
                 points.lastIndex
@@ -168,7 +170,7 @@ object RunDetourPlanner {
         private fun edge(a: Int, b: Int) {
             if (a == b) return
             val distance = RunGeo.distanceMeters(points[a], points[b])
-            require(distance <= MAX_JOIN_METERS + 1e-6) { "推荐路径中存在超过 45 米的跳点" }
+            require(distance <= MAX_JOIN_METERS + 1e-6) { AppText.Run.RECOMMENDED_PATH_JUMP_LIMIT_EXCEEDED }
             links[a][b] = distance
             links[b][a] = distance
         }

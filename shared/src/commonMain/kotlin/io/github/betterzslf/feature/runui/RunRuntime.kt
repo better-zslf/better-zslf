@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.runui
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.model.Session
 import io.github.betterzslf.core.storage.KeyValueStore
 import io.github.betterzslf.data.RunRepository
@@ -100,19 +101,19 @@ class RunRuntime(
     }
 
     suspend fun start(detail: RunTaskDetail, uploadConfirmed: Boolean, samplingSeconds: Int): RunCommandResult = command { active ->
-        if (uploadJob?.isActive == true) return@command RunCommandResult(false, "请先等待或停止当前已确认记录的上传")
-        if (!detail.canStart) return@command RunCommandResult(false, "服务端任务、计划或有序点字段不完整，当前只展示任务")
-        if (samplingSeconds !in 10..60) return@command RunCommandResult(false, "采样设置须在 10 至 60 秒之间，请先检查设置")
-        if (!uploadConfirmed) return@command RunCommandResult(false, "请先勾选本次真实轨迹上传确认")
-        val selection = RunTaskSelection.from(detail.task) ?: return@command RunCommandResult(false, "缺少真实 errandId / errandScheduleId")
+        if (uploadJob?.isActive == true) return@command RunCommandResult(false, AppText.Run.WAIT_OR_STOP_CONFIRMED_RECORD_UPLOAD_FIRST)
+        if (!detail.canStart) return@command RunCommandResult(false, AppText.Run.SERVER_TASK_SCHEDULE_OR_ORDERED_POINTS_INCOMPLETE_DISPLAY_ONLY)
+        if (samplingSeconds !in 10..60) return@command RunCommandResult(false, AppText.Run.SAMPLING_SETTING_OUT_OF_RANGE_CHECK_SETTINGS)
+        if (!uploadConfirmed) return@command RunCommandResult(false, AppText.Run.CURRENT_REAL_TRACK_UPLOAD_ACKNOWLEDGEMENT_REQUIRED)
+        val selection = RunTaskSelection.from(detail.task) ?: return@command RunCommandResult(false, AppText.Run.REAL_TASK_OR_SCHEDULE_ID_MISSING)
         val capturedSession = sessions.value
-        if (!active.matches(capturedSession)) return@command RunCommandResult(false, "登录状态已变化，请重新选择任务")
+        if (!active.matches(capturedSession)) return@command RunCommandResult(false, AppText.Run.LOGIN_CHANGED_RESELECT_TASK)
         val user = capturedSession!!.userInfo
         val account = (user["account"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
-        if (account.isNullOrBlank()) return@command RunCommandResult(false, "登录资料缺少 account；不会用 userId 或占位值代替会话账号")
+        if (account.isNullOrBlank()) return@command RunCommandResult(false, AppText.Run.LOGIN_ACCOUNT_MISSING_NO_SESSION_ACCOUNT_SUBSTITUTION)
         val history = coordinator.sessions(active.owner)
         if (history.any { it.phase in listOf(RunSessionPhase.RECORDING, RunSessionPhase.PAUSED, RunSessionPhase.FINISHING, RunSessionPhase.RECOVERED) }) {
-            return@command RunCommandResult(false, "已有未结束的本机记录，请先明确恢复处理；重复点击不会再生成会话标识")
+            return@command RunCommandResult(false, AppText.Run.UNFINISHED_LOCAL_RECORD_REQUIRES_EXPLICIT_RECOVERY_NO_NEW_ID)
         }
         val link = links.prepare(active.owner, account, selection, nowMillis(), history.map { it.metadata.trid }.toSet())
         contextTrid = link.trid
@@ -132,17 +133,17 @@ class RunRuntime(
     }
 
     suspend fun restore(trid: String? = null): RunCommandResult = command { active ->
-        if (uploadJob?.isActive == true) RunCommandResult(false, "请先等待或停止当前上传，再恢复查看另一条记录")
+        if (uploadJob?.isActive == true) RunCommandResult(false, AppText.Run.WAIT_OR_STOP_UPLOAD_BEFORE_RESTORING_ANOTHER_RECORD)
         else applyAction(coordinator.restore(active.owner, trid))
     }
     suspend fun pause(): RunCommandResult = command { active -> applyAction(coordinator.pause(active.owner)) }
     suspend fun resume(uploadConfirmed: Boolean): RunCommandResult = command { active -> applyAction(coordinator.resume(active.owner, uploadConfirmed)) }
     suspend fun finish(userConfirmed: Boolean): RunCommandResult = command { active ->
-        if (!userConfirmed) RunCommandResult(false, "请先确认结束本次真实记录")
+        if (!userConfirmed) RunCommandResult(false, AppText.Run.CONFIRM_END_CURRENT_REAL_RECORD_FIRST)
         else applyAction(coordinator.finish(active.owner, uploadConfirmed = false))
     }
     suspend fun cancel(userConfirmed: Boolean): RunCommandResult = command { active ->
-        if (!userConfirmed) RunCommandResult(false, "请先确认取消记录并暂停未发送的批次")
+        if (!userConfirmed) RunCommandResult(false, AppText.Run.CONFIRM_CANCEL_RECORD_AND_PAUSE_UNSENT_BATCHES_FIRST)
         else applyAction(coordinator.cancel(active.owner))
     }
     suspend fun retryPersistence(): RunCommandResult = command { active -> applyAction(coordinator.retryPersistence(active.owner)) }
@@ -153,7 +154,7 @@ class RunRuntime(
      * No timer, location callback, restore, mode switch, or page composition invokes this method.
      */
     suspend fun upload(expectedBatchIds: List<String>, userConfirmed: Boolean): RunCommandResult {
-        if (!uploadGate.tryLock()) return RunCommandResult(false, "本次上传已在处理中")
+        if (!uploadGate.tryLock()) return RunCommandResult(false, AppText.Run.UPLOAD_ALREADY_IN_PROGRESS)
         var delegated = false
         try {
             val prepared = control.withLock {
@@ -161,63 +162,63 @@ class RunRuntime(
                 val active = validIdentity() ?: return@withLock null
                 val local = coordinator.state.value
                 if (!userConfirmed) {
-                    message("请先核对批次并确认最终上传")
+                    message(AppText.Run.REVIEW_BATCHES_AND_CONFIRM_FINAL_UPLOAD_FIRST)
                     return@withLock null
                 }
                 if (visibleGeneration != generation || local.metadata?.userId != active.owner || local.phase != RunSessionPhase.FINISHED) {
-                    message("请先结束当前账号的真实记录；恢复记录需要明确选择后再上传")
+                    message(AppText.Run.END_CURRENT_ACCOUNT_RECORD_AND_EXPLICITLY_SELECT_RECOVERY_FIRST)
                     return@withLock null
                 }
                 if (local.acceptedSampleCount < 2) {
-                    message("零点或单点记录仅保留在本机，没有可上传的完整轨迹")
+                    message(AppText.Run.ZERO_OR_SINGLE_POINT_RECORD_LOCAL_ONLY_NO_COMPLETE_TRACK_UPLOAD)
                     return@withLock null
                 }
                 val factory = transportFactory
                 if (factory == null) {
-                    mutableState.value = mutableState.value.copy(upload = RunUploadUiPhase.UNAVAILABLE, message = "当前运行环境未启用上传传输，真实轨迹仍保留在本机")
+                    mutableState.value = mutableState.value.copy(upload = RunUploadUiPhase.UNAVAILABLE, message = AppText.Run.UPLOAD_TRANSPORT_DISABLED_REAL_TRACK_RETAINED_LOCALLY)
                     return@withLock null
                 }
                 val pending = queue.snapshot().filter { it.batch.trid == local.metadata.trid && it.status != RunBatchStatus.ACKNOWLEDGED }.sortedBy { it.batch.index }
                 if (pending.isEmpty() || pending.map { it.batch.batchId } != expectedBatchIds) {
-                    message("待上传批次已变化，请刷新并重新预览")
+                    message(AppText.Run.PENDING_UPLOAD_BATCHES_CHANGED_REFRESH_AND_PREVIEW_AGAIN)
                     return@withLock null
                 }
                 if (pending.any { it.status in listOf(RunBatchStatus.UNCERTAIN, RunBatchStatus.IN_FLIGHT, RunBatchStatus.FAILED) }) {
-                    message("请先核对结果不明、发送中或已失败的批次；此按钮不会自动重试")
+                    message(AppText.Run.REVIEW_UNCERTAIN_IN_FLIGHT_OR_FAILED_BATCHES_NO_AUTO_RETRY)
                     return@withLock null
                 }
                 // One repository call captures the owner+token pair. Its request layer rechecks the
                 // binding and always uses the captured token, including across a concurrent login.
                 val bound = repository.boundToCurrentSession()
                 if (bound == null || bound.boundOwnerId != active.owner || !active.matches(sessions.value)) {
-                    message("登录状态已变化，请重新选择记录并确认")
+                    message(AppText.Run.LOGIN_CHANGED_RESELECT_RECORD_AND_CONFIRM)
                     return@withLock null
                 }
                 queue.confirmUpload(local.metadata.trid, active.owner, expectedBatchIds)
                 val transport = factory(bound)
                 val startGeneration = generation
                 val trid = local.metadata.trid
-                mutableState.value = mutableState.value.copy(upload = RunUploadUiPhase.SENDING, message = "正在发送已确认批次；接收结果与最终成绩分开显示")
+                mutableState.value = mutableState.value.copy(upload = RunUploadUiPhase.SENDING, message = AppText.Run.SENDING_CONFIRMED_BATCHES_RECEIPT_SEPARATE_FROM_SCORE)
                 appScope.async(start = CoroutineStart.LAZY) { performUpload(startGeneration, active, trid, transport) }.also { job ->
                     uploadJob = job
                     // Also runs if an account switch cancels the lazy job before its body starts.
                     job.invokeOnCompletion { uploadGate.unlock() }
                 }
             }
-            if (prepared == null) return RunCommandResult(false, state.value.message ?: "请登录后重新确认上传")
+            if (prepared == null) return RunCommandResult(false, state.value.message ?: AppText.Run.LOG_IN_AND_RECONFIRM_UPLOAD)
             delegated = true
             prepared.start()
             return prepared.await()
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) {
-            control.withLock { message("上传准备失败，原轨迹和队列已保留，请检查后刷新") }
-            return RunCommandResult(false, "上传准备失败，原轨迹和队列已保留")
+            control.withLock { message(AppText.Run.UPLOAD_PREPARATION_FAILED_TRACK_AND_QUEUE_RETAINED_REFRESH) }
+            return RunCommandResult(false, AppText.Run.UPLOAD_PREPARATION_FAILED_TRACK_AND_QUEUE_RETAINED)
         } finally { if (!delegated) uploadGate.unlock() }
     }
 
     suspend fun stopUpload(): RunCommandResult {
         val stopping = control.withLock { Triple(uploadJob, generation, identity) }
-        val job = stopping.first ?: return RunCommandResult(false, "当前没有正在发送的批次")
+        val job = stopping.first ?: return RunCommandResult(false, AppText.Run.NO_BATCH_CURRENTLY_SENDING)
         job.cancel()
         withContext(NonCancellable) {
             job.join()
@@ -229,12 +230,12 @@ class RunRuntime(
                     val entries = queue.snapshot().filter { it.batch.trid == local.metadata?.trid && it.batch.payload.userId == active.owner }.sortedBy { it.batch.index }
                     mutableState.value = mutableState.value.copy(session = visibleSession(local), queue = entries,
                         upload = if (entries.any { it.status == RunBatchStatus.UNCERTAIN || it.status == RunBatchStatus.IN_FLIGHT }) RunUploadUiPhase.UNCERTAIN else RunUploadUiPhase.IDLE,
-                        message = "已停止后续发送；已经发出的批次仍需核对接收结果")
+                        message = AppText.Run.FUTURE_SENDS_STOPPED_SENT_BATCH_RECEIPTS_REQUIRE_REVIEW)
                 }
                 if (uploadJob === job) uploadJob = null
             }
         }
-        return RunCommandResult(true, "已停止后续发送；已经发出的批次仍需核对接收结果")
+        return RunCommandResult(true, AppText.Run.FUTURE_SENDS_STOPPED_SENT_BATCH_RECEIPTS_REQUIRE_REVIEW)
     }
 
     fun isCurrentSession(): Boolean = !closed && identity?.matches(sessions.value) == true
@@ -294,7 +295,7 @@ class RunRuntime(
                         coordinator.refreshUploadState(active.owner)
                         mutableState.value = mutableState.value.copy(upload = if (entries == null || entries.any { it.status == RunBatchStatus.UNCERTAIN }) RunUploadUiPhase.UNCERTAIN else RunUploadUiPhase.IDLE,
                             session = visibleSession(coordinator.state.value), queue = entries ?: mutableState.value.queue,
-                            message = "发送已中断，已发请求的接收结果待核对；不会自动再次发送")
+                            message = AppText.Run.SEND_INTERRUPTED_SENT_REQUEST_RECEIPT_UNCONFIRMED_NO_AUTO_RESEND)
                     }
                 }
             }
@@ -307,11 +308,11 @@ class RunRuntime(
                         coordinator.refreshUploadState(active.owner)
                         mutableState.value = mutableState.value.copy(upload = if (entries == null || entries.any { it.status == RunBatchStatus.UNCERTAIN }) RunUploadUiPhase.UNCERTAIN else RunUploadUiPhase.FAILED,
                             session = visibleSession(coordinator.state.value), queue = entries ?: mutableState.value.queue,
-                            message = "上传过程或本地确认保存失败；原轨迹保留，请刷新队列核对")
+                            message = AppText.Run.UPLOAD_OR_ACKNOWLEDGEMENT_SAVE_FAILED_TRACK_RETAINED_REVIEW_QUEUE)
                     }
                 }
             }
-            return RunCommandResult(false, "上传过程或本地确认保存失败，请核对队列")
+            return RunCommandResult(false, AppText.Run.UPLOAD_OR_ACKNOWLEDGEMENT_SAVE_FAILED_REVIEW_QUEUE)
         } finally {
             withContext(NonCancellable) { control.withLock { uploadJob = null } }
         }
@@ -321,7 +322,7 @@ class RunRuntime(
     private suspend fun settleInterruptedWorker(trid: String, owner: String): List<RunQueuedBatch>? = try {
         val run = queue.snapshot().filter { it.batch.trid == trid && it.batch.payload.userId == owner }
         run.filter { it.status == RunBatchStatus.IN_FLIGHT }.forEach {
-            queue.failed(it.batch.batchId, "发送或本地应答保存中断，接收结果待核对", uncertain = true, allowFailover = false)
+            queue.failed(it.batch.batchId, AppText.Run.SEND_OR_ACKNOWLEDGEMENT_SAVE_INTERRUPTED_RECEIPT_UNCONFIRMED, uncertain = true, allowFailover = false)
         }
         queue.snapshot().filter { it.batch.trid == trid && it.batch.payload.userId == owner }.sortedBy { it.batch.index }
     } catch (_: Exception) { null }
@@ -331,15 +332,15 @@ class RunRuntime(
         else local.copy(distanceToNextCheckpointMeters = null, nextCheckpointIndex = 0)
 
     private suspend fun command(block: suspend (Identity) -> RunCommandResult): RunCommandResult = control.withLock {
-        if (closed) return@withLock RunCommandResult(false, "校园跑运行环境已关闭")
-        val active = validIdentity() ?: return@withLock RunCommandResult(false, "请先登录，再选择当前账号的本地记录")
+        if (closed) return@withLock RunCommandResult(false, AppText.Run.RUNTIME_CLOSED)
+        val active = validIdentity() ?: return@withLock RunCommandResult(false, AppText.Run.LOG_IN_BEFORE_SELECTING_CURRENT_ACCOUNT_LOCAL_RECORD)
         mutableState.value = mutableState.value.copy(busy = true, message = null)
         try {
             visibleGeneration = generation
             val result = block(active)
             if (!active.matches(sessions.value)) {
                 fence(Identity.of(sessions.value))
-                return@withLock RunCommandResult(false, "账号或登录状态已变化，已停止旧记录")
+                return@withLock RunCommandResult(false, AppText.Run.ACCOUNT_OR_LOGIN_CHANGED_OLD_RECORD_STOPPED)
             }
             val local = coordinator.state.value
             val owned = local.metadata?.userId == active.owner
@@ -353,8 +354,8 @@ class RunRuntime(
             mutableState.value = mutableState.value.copy(busy = false)
             throw cancelled
         } catch (_: Exception) {
-            mutableState.value = mutableState.value.copy(busy = false, message = "本地会话处理失败，已保存的真实轨迹仍保留")
-            RunCommandResult(false, "本地会话处理失败，请刷新检查")
+            mutableState.value = mutableState.value.copy(busy = false, message = AppText.Run.LOCAL_SESSION_PROCESSING_FAILED_SAVED_TRACK_RETAINED)
+            RunCommandResult(false, AppText.Run.LOCAL_SESSION_PROCESSING_FAILED_REFRESH_AND_INSPECT)
         }
     }
 
@@ -376,7 +377,7 @@ class RunRuntime(
         uploadJob?.cancel()
         identity = next
         mutableState.value = RunRuntimeState(ownerId = next?.owner, requiresRestore = true,
-            transportAvailable = transportFactory != null, message = "登录状态已变化，旧采样与上传已停止；请明确恢复当前账号记录")
+            transportAvailable = transportFactory != null, message = AppText.Run.LOGIN_CHANGED_SAMPLING_AND_UPLOAD_STOPPED_EXPLICIT_RECOVERY_REQUIRED)
         val local = coordinator.state.value
         if (previous != null && local.metadata?.userId == previous.owner) {
             try {
@@ -384,7 +385,7 @@ class RunRuntime(
                 val entries = queue.snapshot().filter { it.batch.trid == local.metadata.trid && it.batch.payload.userId == previous.owner }
                 if (entries.isNotEmpty()) queue.holdRun(local.metadata.trid, previous.owner)
             } catch (_: Exception) {
-                mutableState.value = mutableState.value.copy(message = "登录状态已变化；旧记录仍保留，停止或保存结果请回原账号核对")
+                mutableState.value = mutableState.value.copy(message = AppText.Run.LOGIN_CHANGED_OLD_RECORD_RETAINED_REVIEW_WITH_ORIGINAL_ACCOUNT)
             }
         }
     }

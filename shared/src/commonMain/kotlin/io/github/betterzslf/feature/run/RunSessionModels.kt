@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.run
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.platform.LocationTrackingState
 import kotlinx.serialization.Serializable
 
@@ -11,9 +12,9 @@ data class RunSessionStart(
     val batchIdPrefix: String = metadata.trid,
 ) {
     init {
-        require(samplingSeconds in 10..60) { "采样间隔须为 10 至 60 秒" }
-        require(batchIdPrefix.isNotBlank() && batchIdPrefix.length <= 128) { "批次前缀须为稳定的非空标识" }
-        require(checkpoints.size <= 256 && checkpoints.all { it.id.isNotBlank() } && checkpoints.map { it.id }.distinct().size == checkpoints.size) { "打卡点标识须唯一且数量不超过 256" }
+        require(samplingSeconds in 10..60) { AppText.Run.SAMPLING_INTERVAL_RANGE_REQUIRED }
+        require(batchIdPrefix.isNotBlank() && batchIdPrefix.length <= 128) { AppText.Run.BATCH_PREFIX_REQUIRES_STABLE_NONEMPTY_ID }
+        require(checkpoints.size <= 256 && checkpoints.all { it.id.isNotBlank() } && checkpoints.map { it.id }.distinct().size == checkpoints.size) { AppText.Run.CHECKPOINT_IDS_MUST_BE_UNIQUE_AND_WITHIN_LIMIT }
     }
 }
 

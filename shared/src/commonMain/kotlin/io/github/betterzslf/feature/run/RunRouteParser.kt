@@ -1,5 +1,7 @@
 package io.github.betterzslf.feature.run
 
+import io.github.betterzslf.core.text.AppText
+
 enum class RouteParseError { EMPTY, TOO_LARGE, XML_DECLARATION, MALFORMED_XML, WRONG_FORMAT, INVALID_COORDINATE, TOO_MANY_POINTS, NO_ROUTE }
 
 sealed interface RouteParseResult {
@@ -19,8 +21,8 @@ object RunRouteParser {
     fun parseKml(xml: String): RouteParseResult = parse(xml, gpx = false)
 
     private fun parse(xml: String, gpx: Boolean): RouteParseResult {
-        if (xml.isBlank()) return RouteParseResult.Failure(RouteParseError.EMPTY, "路线文件为空")
-        if (xml.length > MAX_DOCUMENT_CHARS) return RouteParseResult.Failure(RouteParseError.TOO_LARGE, "路线文件超过本地解析上限")
+        if (xml.isBlank()) return RouteParseResult.Failure(RouteParseError.EMPTY, AppText.Run.ROUTE_FILE_EMPTY)
+        if (xml.length > MAX_DOCUMENT_CHARS) return RouteParseResult.Failure(RouteParseError.TOO_LARGE, AppText.Run.ROUTE_FILE_PARSE_SIZE_LIMIT_EXCEEDED)
         return try {
             val tracks = mutableListOf<MutableList<GeoPoint>>()
             val routes = mutableListOf<MutableList<GeoPoint>>()
@@ -30,20 +32,20 @@ object RunRouteParser {
             var rootSeen = false
             fun add(point: GeoPoint) {
                 total++
-                if (total > MAX_POINTS) fail(RouteParseError.TOO_MANY_POINTS, "路线点数超过本地解析上限")
-                current?.add(point) ?: fail(RouteParseError.MALFORMED_XML, "坐标缺少路线段")
+                if (total > MAX_POINTS) fail(RouteParseError.TOO_MANY_POINTS, AppText.Run.ROUTE_POINT_PARSE_LIMIT_EXCEEDED)
+                current?.add(point) ?: fail(RouteParseError.MALFORMED_XML, AppText.Run.COORDINATE_ROUTE_SEGMENT_MISSING)
             }
             SmallXmlReader(xml).read(
                 start = { name, attributes, ancestors ->
                     val local = name.substringAfter(':')
                     if (ancestors.isEmpty()) {
                         rootSeen = true
-                        if (local != if (gpx) "gpx" else "kml") fail(RouteParseError.WRONG_FORMAT, "文件格式与导入类型不符")
+                        if (local != if (gpx) "gpx" else "kml") fail(RouteParseError.WRONG_FORMAT, AppText.Run.ROUTE_FILE_IMPORT_FORMAT_MISMATCH)
                     }
                     val parent = ancestors.lastOrNull()?.substringAfter(':')
                     if (gpx) {
                         if ((local == "trkseg" && parent == "trk") || (local == "rte" && parent == "gpx")) {
-                            if (current != null) fail(RouteParseError.MALFORMED_XML, "路线段嵌套异常")
+                            if (current != null) fail(RouteParseError.MALFORMED_XML, AppText.Run.INVALID_NESTED_ROUTE_SEGMENTS)
                             current = mutableListOf<GeoPoint>().also { if (local == "trkseg") tracks.add(it) else routes.add(it) }
                         }
                         if ((local == "trkpt" && parent == "trkseg") || (local == "rtept" && parent == "rte")) {
@@ -53,11 +55,11 @@ object RunRouteParser {
                         }
                     } else {
                         if (local == "LineString") {
-                            if (current != null) fail(RouteParseError.MALFORMED_XML, "路线段嵌套异常")
+                            if (current != null) fail(RouteParseError.MALFORMED_XML, AppText.Run.INVALID_NESTED_ROUTE_SEGMENTS)
                             current = mutableListOf<GeoPoint>().also { tracks.add(it) }
                         }
                         if (local == "coordinates" && parent == "LineString") {
-                            if (coordinateText != null) fail(RouteParseError.MALFORMED_XML, "坐标节点嵌套异常")
+                            if (coordinateText != null) fail(RouteParseError.MALFORMED_XML, AppText.Run.INVALID_NESTED_COORDINATE_ELEMENTS)
                             coordinateText = StringBuilder()
                         }
                     }
@@ -72,7 +74,7 @@ object RunRouteParser {
                         if (content.isNotEmpty()) for (tuple in content.split(Regex("\\s+"))) {
                             val parts = tuple.split(',')
                             if (parts.size !in 2..3 || (parts.size == 3 && parts[2].toDoubleOrNull()?.isFinite() != true)) {
-                                fail(RouteParseError.INVALID_COORDINATE, "KML 坐标须为经度,纬度[,海拔]")
+                                fail(RouteParseError.INVALID_COORDINATE, AppText.Run.KML_COORDINATE_TUPLE_FORMAT_REQUIRED)
                             }
                             add(coordinate(parts[0].toDoubleOrNull(), parts[1].toDoubleOrNull()))
                         }
@@ -81,21 +83,21 @@ object RunRouteParser {
                     if ((gpx && local in listOf("trkseg", "rte")) || (!gpx && local == "LineString")) current = null
                 },
             )
-            if (!rootSeen) fail(RouteParseError.MALFORMED_XML, "缺少 XML 根节点")
+            if (!rootSeen) fail(RouteParseError.MALFORMED_XML, AppText.Run.XML_ROOT_ELEMENT_MISSING)
             // GPX exports sometimes include both an intended route and a recorded track. Do not concatenate them.
             val segments = (if (tracks.any { it.isNotEmpty() }) tracks else routes).filter { it.isNotEmpty() }.map { it.toList() }
-            if (segments.sumOf { it.size } < 2) fail(RouteParseError.NO_ROUTE, "路线至少需要两个坐标点")
+            if (segments.sumOf { it.size } < 2) fail(RouteParseError.NO_ROUTE, AppText.Run.ROUTE_REQUIRES_TWO_COORDINATES)
             RouteParseResult.Success(segments, if (gpx) "GPX" else "KML")
         } catch (error: ParseFailure) {
-            RouteParseResult.Failure(error.reason, error.message ?: "路线解析失败")
+            RouteParseResult.Failure(error.reason, error.message ?: AppText.Run.ROUTE_PARSE_FAILED)
         } catch (_: IllegalArgumentException) {
-            RouteParseResult.Failure(RouteParseError.INVALID_COORDINATE, "路线含无效或越界经纬度")
+            RouteParseResult.Failure(RouteParseError.INVALID_COORDINATE, AppText.Run.INVALID_OR_OUT_OF_RANGE_ROUTE_COORDINATES)
         }
     }
 
     private fun coordinate(lon: Double?, lat: Double?): GeoPoint {
         if (lon == null || lat == null || !lon.isFinite() || !lat.isFinite() || lon !in -180.0..180.0 || lat !in -90.0..90.0) {
-            fail(RouteParseError.INVALID_COORDINATE, "路线含无效或越界经纬度")
+            fail(RouteParseError.INVALID_COORDINATE, AppText.Run.INVALID_OR_OUT_OF_RANGE_ROUTE_COORDINATES)
         }
         return GeoPoint(lon, lat)
     }
@@ -132,13 +134,13 @@ object RunRouteParser {
                         text(input.substring(position + 9, close), stack.toList())
                         position = close + 3
                     }
-                    input.startsWith("<!", position) -> fail(RouteParseError.XML_DECLARATION, "路线文件含 DTD 或实体声明")
+                    input.startsWith("<!", position) -> fail(RouteParseError.XML_DECLARATION, AppText.Run.ROUTE_FILE_CONTAINS_DTD_OR_ENTITY_DECLARATION)
                     input.startsWith("<?", position) -> {
                         val close = input.indexOf("?>", position + 2)
                         if (close < 0) malformed()
                         val instruction = input.substring(position + 2, close)
                         if (!instruction.startsWith("xml ") && !instruction.startsWith("xml\n") && !instruction.startsWith("xml\r") && !instruction.startsWith("xml\t")) {
-                            fail(RouteParseError.XML_DECLARATION, "路线文件含处理指令")
+                            fail(RouteParseError.XML_DECLARATION, AppText.Run.ROUTE_FILE_CONTAINS_PROCESSING_INSTRUCTION)
                         }
                         if (declarationSeen || roots > 0 || stack.isNotEmpty()) malformed()
                         declarationSeen = true
@@ -202,7 +204,7 @@ object RunRouteParser {
         }
         private fun whitespace() { while (position < input.length && input[position].isWhitespace()) position++ }
         private fun expect(char: Char) { if (position >= input.length || input[position++] != char) malformed() }
-        private fun malformed(): Nothing = fail(RouteParseError.MALFORMED_XML, "路线 XML 结构异常")
+        private fun malformed(): Nothing = fail(RouteParseError.MALFORMED_XML, AppText.Run.INVALID_ROUTE_XML_STRUCTURE)
 
         private fun decode(value: String): String {
             if ('&' !in value) return value
@@ -216,7 +218,7 @@ object RunRouteParser {
                 val code = when (entity) {
                     "amp" -> 38; "lt" -> 60; "gt" -> 62; "quot" -> 34; "apos" -> 39
                     else -> if (entity.startsWith("#x")) entity.substring(2).toIntOrNull(16) else if (entity.startsWith('#')) entity.substring(1).toIntOrNull() else null
-                } ?: fail(RouteParseError.XML_DECLARATION, "路线文件含自定义实体")
+                } ?: fail(RouteParseError.XML_DECLARATION, AppText.Run.ROUTE_FILE_CONTAINS_CUSTOM_ENTITY)
                 if (code !in 1..0x10ffff || code in 0xd800..0xdfff || (code < 32 && code !in listOf(9, 10, 13))) malformed()
                 if (code <= 0xffff) output.append(code.toChar()) else {
                     output.append(((code - 0x10000) / 1024 + 0xd800).toChar())

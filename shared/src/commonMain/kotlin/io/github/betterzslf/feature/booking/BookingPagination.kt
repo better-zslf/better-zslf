@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.booking
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.net.queryParameters
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
@@ -59,7 +60,7 @@ class BookingPagedQuery(private val container: String, private val loader: suspe
 
 /** Resolve a route id across real pages; never silently limit eligibility to the first 100 records. */
 suspend fun FitnessRepository.findBookingTest(userId: String, physicalId: String): ApiResult<JsonElement> {
-    if (userId.isBlank() || physicalId.isBlank()) return ApiResult.Failure(ApiError.Validation(listOf("physicalId"), "缺少体测场次或用户标识"))
+    if (userId.isBlank() || physicalId.isBlank()) return ApiResult.Failure(ApiError.Validation(listOf("physicalId"), AppText.Booking.FITNESS_SESSION_OR_USER_ID_MISSING))
     var offset = 0
     val seen = mutableSetOf<String>()
     while (true) {
@@ -69,7 +70,7 @@ suspend fun FitnessRepository.findBookingTest(userId: String, physicalId: String
                 val rows = bookingRows(result.data, "physicalTestList")
                 rows.firstOrNull { it.bookingId() == physicalId }?.let { return ApiResult.Success(it, result.message) }
                 val newIds = rows.map { it.bookingId() }.filter(String::isNotBlank).filter { seen.add(it) }
-                if (rows.size < 10 || newIds.isEmpty()) return ApiResult.Failure(ApiError.Validation(listOf("physicalId"), "当前场次未在最新列表中返回，请重新选择"))
+                if (rows.size < 10 || newIds.isEmpty()) return ApiResult.Failure(ApiError.Validation(listOf("physicalId"), AppText.Booking.CURRENT_SESSION_MISSING_FROM_LATEST_LIST_RESELECT))
                 offset += rows.size
             }
         }

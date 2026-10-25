@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.content
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.data.AppRepositories
@@ -26,7 +27,7 @@ interface ContentSource {
     suspend fun dictionary(code: String): ApiResult<JsonElement> = unsupported()
 }
 
-private fun unsupported() = ApiResult.Failure(ApiError.Decode("内容数据源未配置"))
+private fun unsupported() = ApiResult.Failure(ApiError.Decode(AppText.Content.DATA_SOURCE_NOT_CONFIGURED))
 enum class NoticeReadKind { SYSTEM, MUTUAL }
 
 class RepositoryContentSource(private val repositories: AppRepositories) : ContentSource {

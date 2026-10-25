@@ -1,5 +1,6 @@
 package io.github.betterzslf.data
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.net.ApiClient
 import io.github.betterzslf.core.net.ApiEndpoint
 import io.github.betterzslf.core.net.queryParameters
@@ -26,7 +27,7 @@ class ContentRepository(private val api: ApiClient) {
             null -> Unit
         }
         // Reserve before suspension: cancellation must not automatically replay an uncertain increment.
-        hitAttempts[key] = ApiResult.Failure(ApiError.Network("阅读计数结果待确认，本次进程内不重复提交"))
+        hitAttempts[key] = ApiResult.Failure(ApiError.Network(AppText.Content.READ_COUNT_UNCONFIRMED_NO_REPEAT_THIS_PROCESS))
         val result = when (val response = increaseHits(id)) {
             is ApiResult.Success -> ApiResult.Success(true, response.message)
             is ApiResult.Failure -> response
@@ -39,7 +40,7 @@ class ContentRepository(private val api: ApiClient) {
     suspend fun columns(name: String) = api.execute(ApiEndpoint.CMS_COLUMNS, queryParameters("name" to name))
 
     suspend fun articles(columnId: String, offset: Int = 0, limit: Int = 20): ApiResult<JsonElement> {
-        if (offset < 0 || limit <= 0) return ApiResult.Failure(ApiError.Validation(listOf("offset", "limit"), "分页参数应为非负偏移和正数条数"))
+        if (offset < 0 || limit <= 0) return ApiResult.Failure(ApiError.Validation(listOf("offset", "limit"), AppText.Common.PAGINATION_REQUIRES_NONNEGATIVE_OFFSET_AND_POSITIVE_LIMIT))
         return api.execute(ApiEndpoint.CMS_ARTICLES, buildJsonObject {
             // This misspelling is part of the server contract.
             put("cmsCloumnId", columnId)

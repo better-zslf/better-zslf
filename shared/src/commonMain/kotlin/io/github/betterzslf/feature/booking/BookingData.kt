@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.booking
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import kotlinx.coroutines.CancellationException
@@ -74,13 +75,13 @@ private fun isCredentialField(key: String): Boolean {
 
 /** Flatten for LazyColumn: a long server list is never emitted as one giant Column/Text. */
 fun bookingFields(data: JsonElement, prefix: String = "", depth: Int = 0): List<BookingField> {
-    if (depth > 10) return listOf(BookingField(prefix, "嵌套内容过深，暂不展开"))
+    if (depth > 10) return listOf(BookingField(prefix, AppText.Booking.NESTED_CONTENT_TOO_DEEP_NOT_EXPANDED))
     return when (data) {
         JsonNull -> emptyList()
         is JsonPrimitive -> data.contentOrNull?.takeIf(String::isNotBlank)?.let {
             val key = prefix.substringAfterLast('.').lowercase()
             val display = if (key in setOf("idcard", "studentid", "studentnum", "account", "phone", "uphone")) bookingMasked(it) else it
-            listOf(BookingField(prefix.ifBlank { "内容" }, display))
+            listOf(BookingField(prefix.ifBlank { AppText.Content.CONTENT_TITLE }, display))
         }.orEmpty()
         is JsonArray -> data.flatMapIndexed { index, item -> bookingFields(item, "$prefix[${index + 1}]", depth + 1) }
         is JsonObject -> data.entries.filterNot { isCredentialField(it.key) }.flatMap { (key, value) ->
@@ -90,7 +91,7 @@ fun bookingFields(data: JsonElement, prefix: String = "", depth: Int = 0): List<
 }
 
 /** Raw numeric states stay raw: docs/13 does not define a 0/1 availability mapping. */
-enum class SlotAvailability(val label: String) { AVAILABLE("服务端标注可预约"), FULL("服务端标注已满/关闭"), UNKNOWN("可用性未确认") }
+enum class SlotAvailability(val label: String) { AVAILABLE(AppText.Booking.SERVER_MARKED_BOOKABLE_LABEL), FULL(AppText.Booking.SERVER_MARKED_FULL_OR_CLOSED_LABEL), UNKNOWN(AppText.Booking.AVAILABILITY_UNCONFIRMED_LABEL) }
 
 fun bookingAvailability(row: JsonElement): SlotAvailability {
     // Shipped reservationTime callsite explicitly disables isUse===1.

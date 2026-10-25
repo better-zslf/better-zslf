@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.content
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,7 +45,7 @@ class DiscoveryController(private val source: ContentSource, private val module:
             is ApiResult.Success -> {
                 val info = (result.data as? JsonObject)?.get("info") as? JsonArray
                 val entry = info?.filterIsInstance<JsonObject>()?.firstOrNull { it.text("name") == name }
-                entry?.text("code")?.toIntOrNull() ?: run { error = ApiError.Decode("字典结构异常"); null }
+                entry?.text("code")?.toIntOrNull() ?: run { error = ApiError.Decode(AppText.Content.INVALID_DICTIONARY_STRUCTURE); null }
             }
         }
         val open = value(runConfig, "isOpen")?.let { it != 0 }

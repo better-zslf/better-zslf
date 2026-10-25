@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.run
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.storage.KeyValueStore
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -16,17 +17,17 @@ internal class RunSessionJournal(private val storage: KeyValueStore) {
             RunBatcher.json.decodeFromString<Document>(encoded).also(::validate)
         }
     } catch (error: Exception) {
-        throw RunSessionStorageException("本地跑步会话读取失败，原记录已保留", error)
+        throw RunSessionStorageException(AppText.Run.LOCAL_SESSION_READ_FAILED_ORIGINAL_RETAINED, error)
     }
 
     fun save(record: StoredRunSession) {
         val document = load()
         val old = document.sessions.firstOrNull { it.trid == record.trid }
-        require(old == null || old.request == record.request) { "同一会话标识对应不同任务内容" }
+        require(old == null || old.request == record.request) { AppText.Run.SESSION_ID_TASK_CONTENT_MISMATCH }
         val sessions = if (old == null) document.sessions + record else document.sessions.map { if (it.trid == record.trid) record else it }
         val active = when (record.phase) {
             StoredRunSessionPhase.RECORDING, StoredRunSessionPhase.PAUSED, StoredRunSessionPhase.FINISHING -> {
-                require(document.activeTrid == null || document.activeTrid == record.trid) { "已有其它未结束的本地会话" }
+                require(document.activeTrid == null || document.activeTrid == record.trid) { AppText.Run.ANOTHER_UNFINISHED_LOCAL_SESSION_EXISTS }
                 record.trid
             }
             StoredRunSessionPhase.FINISHED, StoredRunSessionPhase.CANCELLED -> if (document.activeTrid == record.trid) null else document.activeTrid
@@ -35,10 +36,10 @@ internal class RunSessionJournal(private val storage: KeyValueStore) {
         try {
             validate(updated)
             val encoded = RunBatcher.json.encodeToString(updated)
-            require(encoded.length <= MAX_DOCUMENT_CHARS) { "本地跑步记录超过存储上限" }
+            require(encoded.length <= MAX_DOCUMENT_CHARS) { AppText.Run.LOCAL_RECORD_STORAGE_LIMIT_EXCEEDED }
             storage.put(STORAGE_KEY, encoded)
         } catch (error: Exception) {
-            throw RunSessionStorageException("本地跑步会话保存失败，已保留先前记录", error)
+            throw RunSessionStorageException(AppText.Run.LOCAL_SESSION_SAVE_FAILED_PREVIOUS_RETAINED, error)
         }
     }
 

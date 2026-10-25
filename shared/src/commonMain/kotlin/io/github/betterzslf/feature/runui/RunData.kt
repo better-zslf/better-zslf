@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.runui
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.feature.run.GeoPoint
 import io.github.betterzslf.feature.run.RunCheckpoint
 import kotlinx.serialization.json.*
@@ -106,13 +107,13 @@ object RunDataDecoder {
         }
         val array = value as? JsonArray
         if (array == null) {
-            warnings += "$container：未识别到数组响应，保留已有数据后重试"
+            warnings += AppText.Run.responseArrayUnrecognized((container))
             return RunRows(emptyList(), false, warnings.distinct(), 0)
         }
         val items = array.mapIndexedNotNull { index, element ->
             val path = "$container[$index]"
             val row = materialize(element, path, warnings) as? JsonObject
-            if (row == null) { warnings += "$path：任务/记录应为对象，已跳过"; null }
+            if (row == null) { warnings += AppText.Run.rowObjectRequired((path)); null }
             else decode(row, path, warnings)
         }
         return RunRows(items, true, warnings.distinct(), array.size)
@@ -128,13 +129,13 @@ object RunDataDecoder {
         val planKeys = listOf("errandScheduleId", "errandSchedule", "scheduleId") + if (path.startsWith("errandList[")) listOf("id") else emptyList()
         val scheduleValues = planKeys.mapNotNull { identifier(raw, it, path, warnings) }.distinct()
         val schedule = scheduleValues.singleOrNull()
-        if (scheduleValues.size > 1) warnings += "$path.errandScheduleId：真实计划字段相互冲突，开始功能保持停用"
-        val title = firstText(raw, listOf("eName", "errandName", "title", "name"), path, warnings) ?: "校园跑任务"
+        if (scheduleValues.size > 1) warnings += AppText.Run.taskScheduleConflict((path))
+        val title = firstText(raw, listOf("eName", "errandName", "title", "name"), path, warnings) ?: AppText.Run.RUN_TASK_FALLBACK_TITLE
         val start = text(raw, "startTime", path, warnings)
         val end = text(raw, "endTime", path, warnings)
         val finish = firstText(raw, listOf("isFinish", "isExecute"), path, warnings)
-        if (errandId == null) warnings += "$path.errandId：服务端未提供真实任务标识，开始功能保持停用"
-        if (schedule == null) warnings += "$path.errandScheduleId：服务端未提供计划标识，开始功能保持停用"
+        if (errandId == null) warnings += AppText.Run.taskIdentifierMissing((path))
+        if (schedule == null) warnings += AppText.Run.taskScheduleMissing((path))
         val stableId = errandId ?: identifier(raw, "id", path, warnings)
         val identity = when {
             trid != null -> "trid:" + keyParts(trid, schedule, start, end)
@@ -157,15 +158,15 @@ object RunDataDecoder {
             else -> null
         }
         if (detail == null) {
-            warnings += "errandDetail：未识别到任务详情对象"
+            warnings += AppText.Run.ERRAND_DETAIL_OBJECT_UNRECOGNIZED
             return Decoded(null, warnings.distinct())
         }
         val item = task(detail, "errandDetail", warnings)
         val checkpointField = detail["geoCoorList"]?.let { materialize(it, "errandDetail.geoCoorList", warnings) }
         val checkpointRows = checkpointField as? JsonArray
         val names = linkedMapOf<String, String>()
-        if (checkpointRows == null) warnings += "errandDetail.geoCoorList：缺少有效打卡点数组，仅展示任务信息"
-        else if (checkpointRows.isEmpty()) warnings += "errandDetail.geoCoorList：打卡点为空，开始功能保持停用"
+        if (checkpointRows == null) warnings += AppText.Run.CHECKPOINT_ARRAY_MISSING_TASK_DISPLAY_ONLY
+        else if (checkpointRows.isEmpty()) warnings += AppText.Run.CHECKPOINT_ARRAY_EMPTY_START_DISABLED
         val checkpoints = checkpointRows?.mapIndexedNotNull { index, value ->
             val path = "errandDetail.geoCoorList[$index]"
             val decoded = materialize(value, path, warnings)
@@ -179,10 +180,10 @@ object RunDataDecoder {
             }
         }.orEmpty()
         if (checkpointRows != null && checkpoints.size != checkpointRows.size) {
-            warnings += "errandDetail.geoCoorList：部分坐标无效；保留原始顺序展示有效点，完整点序列恢复前停用开始"
+            warnings += AppText.Run.PARTIAL_CHECKPOINT_COORDINATES_INVALID_START_DISABLED
         }
         val paths = if ("walkPaths" in detail) walkPaths(detail.getValue("walkPaths"), warnings) else {
-            warnings += "errandDetail.walkPaths：服务端未提供推荐路线，降级为打卡点展示"
+            warnings += AppText.Run.RECOMMENDED_ROUTE_MISSING_CHECKPOINT_DISPLAY_FALLBACK
             emptyList()
         }
         val minimum = minimumDistance(detail, warnings)
@@ -208,7 +209,7 @@ object RunDataDecoder {
         }
         val raw = value as? JsonObject
         if (raw == null) {
-            warnings += "recordMap：未识别到记录对象"
+            warnings += AppText.Run.RECORD_MAP_OBJECT_UNRECOGNIZED
             return Decoded(null, warnings.distinct())
         }
         return Decoded(recordItem(raw, "recordMap", warnings), warnings.distinct())
@@ -217,16 +218,16 @@ object RunDataDecoder {
     private fun recordItem(raw: JsonObject, path: String, output: MutableList<String>): RunRecordItem {
         val warnings = mutableListOf<String>()
         val trid = identifier(raw, "trid", path, warnings)
-        if (trid == null) warnings += "$path.trid：缺少真实标识，轨迹查询保持停用"
-        val title = firstText(raw, listOf("eName", "errandName", "title", "name"), path, warnings) ?: "跑步记录"
+        if (trid == null) warnings += AppText.Run.recordTridMissing((path))
+        val title = firstText(raw, listOf("eName", "errandName", "title", "name"), path, warnings) ?: AppText.Run.RUN_RECORD_FALLBACK_TITLE
         // runLength is documented in metres and runTime in milliseconds. No magnitude heuristics.
         val distance = firstNumber(raw, listOf("runLength", "distanceMeters"), path, warnings)
         val elapsed = firstMillis(raw, listOf("runTime", "elapsedMillis"), path, warnings)
         if (distance == null && listOf("distance", "length", "runDistance").any { it in raw }) {
-            warnings += "$path.distance：未知距离字段或单位，未换算为米"
+            warnings += AppText.Run.recordDistanceUnitUnknown((path))
         }
         if (elapsed == null && listOf("time", "duration", "elapsed", "runTimeSeconds").any { it in raw }) {
-            warnings += "$path.duration：未知用时字段或单位，未换算为毫秒"
+            warnings += AppText.Run.recordDurationUnitUnknown((path))
         }
         val status = text(raw, "status", path, warnings)
         val trackFields = listOf("trackPointList", "coordinate", "location").filter { it in raw }
@@ -234,8 +235,8 @@ object RunDataDecoder {
             if (key == "trackPointList") trackValue(buildJsonObject { put(key, raw.getValue(key)) }, path, warnings, 0).points
             else trackValue(raw.getValue(key), "$path.$key", warnings, 0).points
         }
-        if (trackFields.size > 1) warnings += "$path.track：同时返回多个轨迹字段，逐项校验后仅展示 ${trackFields.first()}，未猜测拼接顺序"
-        if (listOf("points", "track", "coordinates").any { it in raw }) warnings += "$path.track：附加轨迹字段结构未确认，未猜测坐标"
+        if (trackFields.size > 1) warnings += AppText.Run.multipleTrackFields((path), (trackFields.first()))
+        if (listOf("points", "track", "coordinates").any { it in raw }) warnings += AppText.Run.additionalTrackUnknown((path))
         val points = decodedTracks.firstOrNull().orEmpty()
         output += warnings
         return RunRecordItem(trid, title, distance, elapsed, status, points, raw, warnings.distinct())
@@ -252,20 +253,20 @@ object RunDataDecoder {
             "m", "metre", "metres", "meter", "meters", "米" -> 1.0
             "km", "kilometre", "kilometres", "kilometer", "kilometers", "千米", "公里" -> 1000.0
             else -> {
-                warnings += "$path.$key：缺少已确认的距离单位，未猜测最低距离"
+                warnings += AppText.Run.minimumDistanceUnitMissing((path), (key))
                 return null
             }
         }
         val meters = number * factor
-        if (!meters.isFinite()) { warnings += "$path.$key：距离换算超出有限数值范围"; return null }
+        if (!meters.isFinite()) { warnings += AppText.Run.distanceConversionNonFinite((path), (key)); return null }
         return meters
     }
 
     private fun walkPaths(value: JsonElement, warnings: MutableList<String>): List<List<GeoPoint>> {
         val path = "errandDetail.walkPaths"
         val array = materialize(value, path, warnings) as? JsonArray
-        if (array == null) { warnings += "$path：推荐路线应为坐标数组或分段数组，已降级"; return emptyList() }
-        if (array.isEmpty()) { warnings += "$path：推荐路线为空，降级为打卡点展示"; return emptyList() }
+        if (array == null) { warnings += AppText.Run.recommendedPathArrayRequired((path)); return emptyList() }
+        if (array.isEmpty()) { warnings += AppText.Run.recommendedPathEmpty((path)); return emptyList() }
         val elements = array.mapIndexed { index, element -> materialize(element, "$path[$index]", warnings) }
         val segments = mutableListOf<List<GeoPoint>>()
         // A damaged flat path still has useful points on either side of the hole. Only positive
@@ -282,7 +283,7 @@ object RunDataDecoder {
                     val decoded = element.mapIndexed { pointIndex, p -> materialize(p, "$path[$index][$pointIndex]", warnings) }
                     walkSegment(decoded, "$path[$index]", warnings, segments)
                 } else {
-                    warnings += "$path[$index]：未知/混合路线分段结构，已跳过该段"
+                    warnings += AppText.Run.recommendedSegmentUnknown((path), (index))
                 }
             }
         }
@@ -297,14 +298,14 @@ object RunDataDecoder {
     ) {
         var segment = mutableListOf<GeoPoint>()
         fun flush() { if (segment.isNotEmpty()) { output += segment.toList(); segment = mutableListOf() } }
-        if (values.isEmpty()) warnings += "$path：推荐路线包含空分段"
+        if (values.isEmpty()) warnings += AppText.Run.recommendedSegmentEmpty((path))
         values.forEachIndexed { index, value ->
             val p = value?.let { point(it, "$path[$index]", warnings, 0) }
             when {
-                p == null -> { flush(); warnings += "$path[$index]：坐标缺损处断开路线，未连接两侧道路" }
+                p == null -> { flush(); warnings += AppText.Run.recommendedCoordinateGap((path), (index)) }
                 // Only walkPaths has a documented (0,0) separator. Other data keeps real (0,0).
                 p.longitude == 0.0 && p.latitude == 0.0 -> {
-                    flush(); warnings += "$path[$index]：按已记载的 walkPaths (0,0) 分隔符断段"
+                    flush(); warnings += AppText.Run.recommendedZeroSeparator((path), (index))
                 }
                 else -> segment += p
             }
@@ -313,7 +314,7 @@ object RunDataDecoder {
     }
 
     private fun trackValue(value: JsonElement, path: String, warnings: MutableList<String>, depth: Int): TrackPoints {
-        if (depth > MAX_DEPTH) { warnings += "$path：轨迹嵌套过深，已停止解析"; return TrackPoints(emptyList(), false) }
+        if (depth > MAX_DEPTH) { warnings += AppText.Run.trackNestingTooDeep((path)); return TrackPoints(emptyList(), false) }
         val decoded = materialize(value, path, warnings) ?: return TrackPoints(emptyList(), false)
         if (decoded is JsonObject) {
             val primary = when { "trackPointList" in decoded -> "trackPointList"; "coordinate" in decoded -> "coordinate"; else -> null }
@@ -322,7 +323,7 @@ object RunDataDecoder {
                 additional.forEach { key -> trackValue(decoded.getValue(key), "$path.$key", warnings, depth + 1) }
                 val named = JsonObject(decoded.filterKeys { it in setOf("lon", "lng", "longitude", "lat", "latitude") })
                 if (named.isNotEmpty()) point(named, "$path.namedCoordinates", warnings, depth + 1)
-                if (additional.isNotEmpty() || named.isNotEmpty()) warnings += "$path：附加坐标字段已校验，按 $primary 展示，未猜测多字段拼接顺序"
+                if (additional.isNotEmpty() || named.isNotEmpty()) warnings += AppText.Run.trackPrimaryFieldSelected((path), (primary))
             }
         }
         return when (decoded) {
@@ -334,34 +335,34 @@ object RunDataDecoder {
                 "trackPointList" in decoded -> {
                     val points = materialize(decoded.getValue("trackPointList"), "$path.trackPointList", warnings)
                     if (points !is JsonArray) {
-                        warnings += "$path.trackPointList：轨迹列表应为数组"
+                        warnings += AppText.Run.trackPointListArrayRequired((path))
                         TrackPoints(emptyList(), false)
                     } else TrackPoints(points.flatMapIndexed { index, element -> trackValue(element, "$path.trackPointList[$index]", warnings, depth + 1).points }, true)
                 }
                 "coordinate" in decoded -> trackValue(decoded.getValue("coordinate"), "$path.coordinate", warnings, depth + 1)
                 decoded.keys.any { it in coordinateKeys } -> TrackPoints(listOfNotNull(point(decoded, path, warnings, depth + 1)), true)
-                else -> { warnings += "$path：未知轨迹对象结构，未猜测坐标"; TrackPoints(emptyList(), false) }
+                else -> { warnings += AppText.Run.trackObjectUnknown((path)); TrackPoints(emptyList(), false) }
             }
             is JsonPrimitive -> {
                 if (decoded.isString && ',' in decoded.content) TrackPoints(listOfNotNull(point(decoded, path, warnings, depth + 1)), true)
-                else { warnings += "$path：未知或损坏的轨迹字段"; TrackPoints(emptyList(), false) }
+                else { warnings += AppText.Run.trackFieldMalformed((path)); TrackPoints(emptyList(), false) }
             }
         }
     }
 
     /** A pair is always [longitude, latitude]; invalid coordinates are never swapped or clamped. */
     private fun point(value: JsonElement, path: String, warnings: MutableList<String>, depth: Int): GeoPoint? {
-        if (depth > MAX_DEPTH) { warnings += "$path：坐标嵌套过深"; return null }
+        if (depth > MAX_DEPTH) { warnings += AppText.Run.coordinateNestingTooDeep((path)); return null }
         val decoded = materialize(value, path, warnings) ?: return null
         val pair: Pair<JsonElement, JsonElement> = when (decoded) {
             is JsonArray -> {
-                if (decoded.size != 2) { warnings += "$path：坐标数组须恰有经度、纬度两项"; return null }
+                if (decoded.size != 2) { warnings += AppText.Run.coordinatePairSizeInvalid((path)); return null }
                 decoded[0] to decoded[1]
             }
             is JsonPrimitive -> {
-                if (!decoded.isString) { warnings += "$path：坐标须为经纬度字符串、对象或二项数组"; return null }
+                if (!decoded.isString) { warnings += AppText.Run.coordinateTypeInvalid((path)); return null }
                 val parts = decoded.content.split(',')
-                if (parts.size != 2) { warnings += "$path：坐标字符串须为 经度,纬度"; return null }
+                if (parts.size != 2) { warnings += AppText.Run.coordinateStringPairRequired((path)); return null }
                 JsonPrimitive(parts[0].trim()) to JsonPrimitive(parts[1].trim())
             }
             is JsonObject -> {
@@ -369,17 +370,17 @@ object RunDataDecoder {
                 val latitudeKeys = listOf("lat", "latitude").filter { it in decoded }
                 if (longitudeKeys.isNotEmpty() || latitudeKeys.isNotEmpty()) {
                     if (longitudeKeys.isEmpty() || latitudeKeys.isEmpty()) {
-                        warnings += "$path：经纬度字段不完整"; return null
+                        warnings += AppText.Run.coordinateFieldsIncomplete((path)); return null
                     }
                     val lonValues = longitudeKeys.map { coordinateNumber(decoded.getValue(it)) }
                     val latValues = latitudeKeys.map { coordinateNumber(decoded.getValue(it)) }
                     if (lonValues.any { it == null } || latValues.any { it == null } || lonValues.distinct().size != 1 || latValues.distinct().size != 1) {
-                        warnings += "$path：经纬度字段无效或别名值冲突"; return null
+                        warnings += AppText.Run.coordinateAliasesConflict((path)); return null
                     }
                     decoded.getValue(longitudeKeys.first()) to decoded.getValue(latitudeKeys.first())
                 } else {
                     val nested = listOf("location", "coordinate").filter { it in decoded }
-                    if (nested.size != 1) { warnings += "$path：未知或有歧义的坐标对象结构"; return null }
+                    if (nested.size != 1) { warnings += AppText.Run.coordinateObjectAmbiguous((path)); return null }
                     return point(decoded.getValue(nested.single()), "$path.${nested.single()}", warnings, depth + 1)
                 }
             }
@@ -387,7 +388,7 @@ object RunDataDecoder {
         val longitude = coordinateNumber(pair.first)
         val latitude = coordinateNumber(pair.second)
         if (longitude == null || latitude == null || longitude !in -180.0..180.0 || latitude !in -90.0..90.0) {
-            warnings += "$path：经纬度须为有限数值且分别位于 [-180,180]、[-90,90]"
+            warnings += AppText.Run.coordinateRangesInvalid((path))
             return null
         }
         return GeoPoint(longitude, latitude)
@@ -418,7 +419,7 @@ object RunDataDecoder {
             if ("data" !in obj || obj.keys.any { it in containers } || !obj.keys.all { it in envelopeKeys }) return current
             current = materialize(obj.getValue("data"), "data", warnings) ?: return null
         }
-        warnings += "data：响应封装嵌套过深"
+        warnings += AppText.Run.RESPONSE_DATA_WRAPPER_NESTING_TOO_DEEP
         return null
     }
 
@@ -430,11 +431,11 @@ object RunDataDecoder {
             val text = primitive.content.trim()
             if (!(text.startsWith("[") || text.startsWith("{") || text.startsWith("\""))) return current
             current = try { Json.parseToJsonElement(text) } catch (_: Exception) {
-                warnings += "$path：嵌套 JSON 损坏，已跳过"
+                warnings += AppText.Run.nestedJsonMalformed((path))
                 return null
             }
         }
-        warnings += "$path：嵌套 JSON 超过解析深度"
+        warnings += AppText.Run.nestedJsonDepthExceeded((path))
         return null
     }
 
@@ -442,7 +443,7 @@ object RunDataDecoder {
         val value = raw[key] ?: return null
         if (value == JsonNull) return null
         val primitive = value as? JsonPrimitive
-        if (primitive == null) { warnings += "$path.$key：应为标量字段"; return null }
+        if (primitive == null) { warnings += AppText.Run.scalarFieldRequired((path), (key)); return null }
         return primitive.contentOrNull?.takeIf { it.isNotBlank() }
     }
 
@@ -450,7 +451,7 @@ object RunDataDecoder {
         val primitive = raw[key] as? JsonPrimitive
         val value = text(raw, key, path, warnings)?.trim() ?: return null
         if (primitive == null || (!primitive.isString && primitive.longOrNull == null) || value in setOf("null", "undefined")) {
-            warnings += "$path.$key：标识须为非空字符串或整数"
+            warnings += AppText.Run.identifierTypeInvalid((path), (key))
             return null
         }
         return value
@@ -461,13 +462,13 @@ object RunDataDecoder {
 
     private fun number(value: JsonElement, path: String, warnings: MutableList<String>): Double? {
         val parsed = coordinateNumber(value)
-        if (parsed == null || parsed < 0) { warnings += "$path：应为非负有限数值，未猜测或修正单位"; return null }
+        if (parsed == null || parsed < 0) { warnings += AppText.Run.nonnegativeNumberRequired((path)); return null }
         return parsed
     }
 
     private fun firstNumber(raw: JsonObject, keys: List<String>, path: String, warnings: MutableList<String>): Double? {
         val values = keys.mapNotNull { key -> raw[key]?.takeUnless { it == JsonNull }?.let { number(it, "$path.$key", warnings) } }.distinct()
-        if (values.size > 1) warnings += "$path.${keys.first()}：同单位数值字段冲突，未选择其中一项"
+        if (values.size > 1) warnings += AppText.Run.sameUnitNumbersConflict((path), (keys.first()))
         return values.singleOrNull()
     }
 
@@ -476,11 +477,11 @@ object RunDataDecoder {
             val value = raw[key]
             if (value == null || value == JsonNull) null else {
                 val parsed = (value as? JsonPrimitive)?.content?.trim()?.toLongOrNull()?.takeIf { it >= 0 }
-                if (parsed == null) warnings += "$path.$key：已知单位为毫秒，但值不是非负整数或超出 Long 范围"
+                if (parsed == null) warnings += AppText.Run.millisIntegerRequired((path), (key))
                 parsed
             }
         }.distinct()
-        if (values.size > 1) warnings += "$path.${keys.first()}：毫秒字段冲突，未选择其中一项"
+        if (values.size > 1) warnings += AppText.Run.millisAliasesConflict((path), (keys.first()))
         return values.singleOrNull()
     }
 

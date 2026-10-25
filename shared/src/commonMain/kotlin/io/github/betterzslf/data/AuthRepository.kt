@@ -1,5 +1,6 @@
 package io.github.betterzslf.data
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.model.Session
 import io.github.betterzslf.core.net.ApiClient
 import io.github.betterzslf.core.net.ApiEndpoint
@@ -47,7 +48,7 @@ class AuthRepository private constructor(
                 val userInfo = data?.get("userInfo") as? JsonObject
                 val deptInfo = data?.get("deptInfo") as? JsonObject
                 if (token.isNullOrBlank() || userInfo == null || deptInfo == null) {
-                    ApiResult.Failure(ApiError.Decode("登录响应缺少会话信息"))
+                    ApiResult.Failure(ApiError.Decode(AppText.Auth.LOGIN_RESPONSE_SESSION_INFORMATION_MISSING))
                 } else {
                     val session = Session(
                         token = token,
@@ -134,7 +135,7 @@ class AuthRepository private constructor(
     private fun passwordError(password: String): ApiResult.Failure? =
         if (isValidNewPassword(password)) null else ApiResult.Failure(ApiError.Validation(
             fields = listOf("newPassWord"),
-            message = "新密码至少 8 位，须同时包含字母、数字和符号，且不含空白字符",
+            message = AppText.Auth.NEW_PASSWORD_LENGTH_AND_COMPLEXITY_REQUIRED,
         ))
 
     companion object {

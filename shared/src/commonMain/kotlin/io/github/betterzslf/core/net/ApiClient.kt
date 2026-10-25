@@ -1,5 +1,6 @@
 package io.github.betterzslf.core.net
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.core.storage.SessionStore
@@ -73,13 +74,13 @@ class ApiClient(
         expectedSession: ApiSessionBinding? = null,
     ): ApiResult<JsonElement> {
         if (endpoint.location == ParameterLocation.MULTIPART) {
-            return invalid(listOf("file"), "上传接口请使用 multipart 方法")
+            return invalid(listOf("file"), AppText.Common.UPLOAD_ENDPOINT_REQUIRES_MULTIPART_METHOD)
         }
         if (endpoint.location == ParameterLocation.QUERY && body != null) {
-            return invalid(listOf("body"), "此接口的参数应放在 query 中")
+            return invalid(listOf("body"), AppText.Common.ENDPOINT_PARAMETERS_REQUIRE_QUERY)
         }
         if (endpoint.location == ParameterLocation.JSON && (body == null || query.isNotEmpty())) {
-            return invalid(listOf("body"), "此接口仅接收 JSON body 参数")
+            return invalid(listOf("body"), AppText.Common.ENDPOINT_ACCEPTS_JSON_BODY_ONLY)
         }
         val parameters = if (endpoint.location == ParameterLocation.JSON) body!! else query
         val missing = endpoint.required.filter { parameters[it].isMissingParameter() }
@@ -179,7 +180,7 @@ class ApiClient(
         val snapshot = sessionStore.session.value
         if (expectedSession != null && !expectedSession.matches(bindingAuthority, snapshot)) {
             // This is a local stale-operation result, not a server 401; leave the current login alone.
-            return ApiResult.Failure(ApiError.Authentication("本次操作的登录会话已变化，请重新确认后继续"))
+            return ApiResult.Failure(ApiError.Authentication(AppText.Auth.OPERATION_SESSION_CHANGED_RECONFIRM_BEFORE_CONTINUING))
         }
         val token = when {
             endpoint.authentication == Authentication.NONE -> null
@@ -248,7 +249,7 @@ class ApiClient(
         return when (code) {
             200 -> ApiResult.Success(envelope["data"] ?: JsonNull, message)
             401 -> authenticationFailure(token, expectedSession)
-            else -> ApiResult.Failure(ApiError.Business(code, message.ifBlank { "操作未成功，请稍后重试" }))
+            else -> ApiResult.Failure(ApiError.Business(code, message.ifBlank { AppText.Common.OPERATION_UNSUCCESSFUL_TRY_AGAIN_LATER }))
         }
     }
 
@@ -264,6 +265,6 @@ class ApiClient(
         return ApiResult.Failure(ApiError.Authentication())
     }
 
-    private fun invalid(fields: List<String>, message: String = "请检查必填参数"): ApiResult.Failure =
+    private fun invalid(fields: List<String>, message: String = AppText.Common.CHECK_REQUIRED_PARAMETERS): ApiResult.Failure =
         ApiResult.Failure(ApiError.Validation(fields, message))
 }

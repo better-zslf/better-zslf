@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.runui
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import kotlinx.coroutines.CancellationException
@@ -41,7 +42,7 @@ class RunTaskController(
     private val ownerId: String,
     private val pageSize: Int = 20,
 ) {
-    init { require(pageSize > 0) { "分页条数须为正数" } }
+    init { require(pageSize > 0) { AppText.Common.PAGE_SIZE_MUST_BE_POSITIVE } }
 
     private data class Branch(
         val offset: Int = 0,
@@ -85,7 +86,7 @@ class RunTaskController(
         }
         initialized = true
         if (ownerId.isBlank()) {
-            mutable.value = mutable.value.copy(loading = false, error = "缺少用户标识，请登录后刷新")
+            mutable.value = mutable.value.copy(loading = false, error = AppText.Auth.USER_ID_MISSING_LOG_IN_AND_REFRESH)
             return@withLock null
         }
         val ready = flags.filter { branches.getValue(it).let { branch -> branch.refreshPending || !branch.end } }
@@ -104,7 +105,7 @@ class RunTaskController(
                 val offset = if (branch.refreshPending) 0 else branch.offset
                 val result = try { source.load(ownerId, offset, pageSize, flag) }
                 catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { ApiResult.Failure(ApiError.Network("校园跑任务加载失败，请重试")) }
+                catch (_: Exception) { ApiResult.Failure(ApiError.Network(AppText.Run.RUN_TASK_LOAD_FAILED_RETRY)) }
                 updated[flag] = when (result) {
                     is ApiResult.Failure -> failed(branch, result.error.message)
                     is ApiResult.Success -> consume(branch, flag, offset, RunDataDecoder.tasks(result.data))
@@ -131,17 +132,17 @@ class RunTaskController(
         branch.copy(problem = problem, refreshProblem = branch.refreshPending, warnings = (branch.warnings + warnings).distinct())
 
     private fun consume(branch: Branch, flag: String, offset: Int, rows: RunRows<RunTaskItem>): Branch {
-        if (!rows.recognized) return failed(branch, "任务响应格式未识别，请刷新重试", rows.warnings)
+        if (!rows.recognized) return failed(branch, AppText.Run.UNRECOGNIZED_TASK_RESPONSE_REFRESH_AND_RETRY, rows.warnings)
         val base = if (branch.refreshPending) Branch(refreshPending = false) else branch
         val warnings = (base.warnings + rows.warnings).toMutableList()
         val keys = rows.items.map { it.identityKey }
         val signature = JsonArray(keys.map(::JsonPrimitive)).toString()
         val noProgress = rows.rawSize > 0 && (rows.items.isEmpty() ||
             (base.loaded && (signature in base.pages || keys.none { it !in base.seen })))
-        if (noProgress) warnings += "isFinish=$flag offset=$offset：响应重复或没有可识别的新任务，服务端可能忽略 offset；已停止该分支翻页"
-        if (rows.rawSize > pageSize) warnings += "isFinish=$flag offset=$offset：服务端返回条数超过 limit，按原始条数推进 offset"
+        if (noProgress) warnings += AppText.Run.taskPaginationRepeated((flag), (offset))
+        if (rows.rawSize > pageSize) warnings += AppText.Run.taskPaginationOversized((flag), (offset))
         val next = offset.toLong() + rows.rawSize.toLong()
-        if (next > Int.MAX_VALUE) warnings += "isFinish=$flag：offset 超出整数范围，已停止该分支翻页"
+        if (next > Int.MAX_VALUE) warnings += AppText.Run.taskPaginationOverflow((flag))
         return Branch(
             offset = next.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
             end = rows.rawSize < pageSize || noProgress || next > Int.MAX_VALUE,

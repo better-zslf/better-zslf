@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.booking
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.net.queryParameters
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
@@ -23,15 +24,15 @@ class VenueApplicationForm(
     val teacherName: String = "",
 ) {
     fun validation(): List<String> = buildList {
-        if (siteId.isBlank()) add("缺少场馆标识")
-        if (timeIds.isEmpty() || timeIds.any(String::isBlank)) add("请重新选择有效时段")
-        if (venueName.isBlank() || venueStatus is JsonNull) add("场馆名称或 venueStatus 未返回，请刷新场馆详情")
-        if (userId.isBlank() || userName.isBlank()) add("当前会话缺少用户标识或姓名，请重新登录后查询")
-        if (groupName.isBlank()) add("请填写申请团体")
-        if (content.isBlank()) add("请填写活动内容")
-        if (contactName.isBlank()) add("请填写联系人")
-        if (phone.isBlank() || phone.length !in 6..30 || phone.any { !it.isDigit() && it !in "+- ()" }) add("请核对联系电话")
-        if (listOf(groupName, content, contactName, phone).any { it.length > 2000 || it.any(Char::isISOControl) }) add("表单含过长内容或控制字符")
+        if (siteId.isBlank()) add(AppText.Booking.VENUE_ID_MISSING)
+        if (timeIds.isEmpty() || timeIds.any(String::isBlank)) add(AppText.Booking.RESELECT_VALID_TIME_SLOT)
+        if (venueName.isBlank() || venueStatus is JsonNull) add(AppText.Booking.VENUE_NAME_OR_STATUS_MISSING_REFRESH_DETAILS)
+        if (userId.isBlank() || userName.isBlank()) add(AppText.Booking.SESSION_USER_ID_OR_NAME_MISSING_RELOGIN_REQUIRED)
+        if (groupName.isBlank()) add(AppText.Booking.APPLICANT_GROUP_REQUIRED)
+        if (content.isBlank()) add(AppText.Booking.ACTIVITY_DESCRIPTION_REQUIRED)
+        if (contactName.isBlank()) add(AppText.Booking.CONTACT_PERSON_REQUIRED)
+        if (phone.isBlank() || phone.length !in 6..30 || phone.any { !it.isDigit() && it !in "+- ()" }) add(AppText.Booking.REVIEW_CONTACT_PHONE)
+        if (listOf(groupName, content, contactName, phone).any { it.length > 2000 || it.any(Char::isISOControl) }) add(AppText.Booking.FORM_CONTAINS_EXCESS_LENGTH_OR_CONTROL_CHARACTERS)
     }
     fun parameters(): JsonObject = buildJsonObject {
         put("id", "")
@@ -67,12 +68,12 @@ class FitnessEnrolmentForm(
     val period: String,
 ) {
     fun validation(): List<String> = buildList {
-        if (physicalId.isBlank()) add("缺少体测场次标识")
-        if (userId.isBlank() || userName.isBlank() || studentId.isBlank()) add("当前会话缺少报名所需身份字段，请重新登录")
-        if (!identityCard.matches(Regex("(?:[0-9]{15}|[0-9]{17}[0-9Xx])"))) add("请核对身份证号格式")
-        if (sex !in listOf("男", "女")) add("请选择性别")
-        if (!validBookingDate(date)) add("请选择有效日期（YYYY-MM-DD）")
-        if (period !in listOf("上午", "下午")) add("请选择上午或下午")
+        if (physicalId.isBlank()) add(AppText.Booking.FITNESS_SESSION_ID_REQUIRED)
+        if (userId.isBlank() || userName.isBlank() || studentId.isBlank()) add(AppText.Booking.REGISTRATION_IDENTITY_FIELDS_MISSING_RELOGIN_REQUIRED)
+        if (!identityCard.matches(Regex("(?:[0-9]{15}|[0-9]{17}[0-9Xx])"))) add(AppText.Booking.REVIEW_IDENTITY_CARD_FORMAT)
+        if (sex !in listOf("男", "女")) add(AppText.Booking.SEX_SELECTION_REQUIRED)
+        if (!validBookingDate(date)) add(AppText.Booking.VALID_BOOKING_DATE_REQUIRED)
+        if (period !in listOf("上午", "下午")) add(AppText.Booking.MORNING_OR_AFTERNOON_SELECTION_REQUIRED)
     }
     fun parameters(): JsonObject = queryParameters(
         "physicalId" to physicalId, "userId" to userId, "idcard" to identityCard,
@@ -84,8 +85,8 @@ class FitnessEnrolmentForm(
 
 class FitnessCancellation(val physicalUserId: String, val reason: String) {
     fun validation(): List<String> = buildList {
-        if (physicalUserId.isBlank()) add("服务端未返回 rId，暂不构造取消请求")
-        if (reason.isBlank() || reason.length > 1000 || reason.any(Char::isISOControl)) add("请填写 1–1000 字取消原因")
+        if (physicalUserId.isBlank()) add(AppText.Booking.REGISTRATION_ID_MISSING_CANCELLATION_NOT_PREPARED)
+        if (reason.isBlank() || reason.length > 1000 || reason.any(Char::isISOControl)) add(AppText.Booking.CANCELLATION_REASON_LENGTH_AND_CONTENT_REQUIRED)
     }
     fun parameters() = queryParameters("id" to physicalUserId, "cancelText" to reason, "status" to "4")
     override fun toString(): String = "FitnessCancellation(redacted)"
@@ -102,7 +103,7 @@ fun validBookingDate(value: String): Boolean {
 }
 
 /** Never put full account/card/contact details into a route, log, exception, or automatic debug output. */
-fun bookingMasked(value: String): String = when { value.isBlank() -> "未填写"; value.length <= 4 -> "••••"; else -> "••••${value.takeLast(4)}" }
+fun bookingMasked(value: String): String = when { value.isBlank() -> AppText.Common.NOT_FILLED_IN; value.length <= 4 -> "••••"; else -> "••••${value.takeLast(4)}" }
 
 interface BookingWriteTransport {
     suspend fun createVenue(parameters: JsonObject): ApiResult<JsonElement>
@@ -131,30 +132,30 @@ private fun ApiResult<JsonElement>.step(): BookingStepResult = when (this) {
 /** Calls are deliberately sequential instead of the original Promise.all: a failure keeps prior receipts and stops. */
 fun venueConfirmation(transport: BookingWriteTransport, form: VenueApplicationForm): BookingConfirmation =
     BookingConfirmation.staticContract(listOf(
-        BookingWriteStep("创建申请") {
-            if (form.validation().isNotEmpty()) BookingStepResult.Failed("表单校验未通过；未发送申请。")
+        BookingWriteStep(AppText.Booking.CREATE_APPLICATION_STEP) {
+            if (form.validation().isNotEmpty()) BookingStepResult.Failed(AppText.Booking.APPLICATION_FORM_INVALID_NOT_SENT)
             else when (val result = transport.createVenue(form.parameters())) {
                 is ApiResult.Failure -> result.step()
                 is ApiResult.Success -> {
                     val id = ((result.data as? JsonObject)?.get("sportsVenueApply") as? JsonObject)?.bookingId().orEmpty()
-                    if (id.isBlank()) BookingStepResult.Failed("服务端未返回 sportsVenueApply.id；结果待核对，后续步骤已停止。", uncertain = true)
+                    if (id.isBlank()) BookingStepResult.Failed(AppText.Booking.CREATED_APPLICATION_ID_MISSING_FOLLOWING_STEPS_STOPPED, uncertain = true)
                     else BookingStepResult.Completed(mapOf("applyId" to id))
                 }
             }
         },
-        BookingWriteStep("关联场馆") { refs -> transport.relateVenue(form.siteId, refs.getValue("applyId")).step() },
-        BookingWriteStep("关联所选时段") { refs -> transport.selectVenueTime(form.timeIds.distinct().joinToString(","), refs.getValue("applyId")).step() },
-        BookingWriteStep("关联申请人与教师") { refs -> transport.defineVenue(form.userId, refs.getValue("applyId"), form.teacherId, form.teacherName).step() },
+        BookingWriteStep(AppText.Booking.LINK_VENUE_STEP) { refs -> transport.relateVenue(form.siteId, refs.getValue("applyId")).step() },
+        BookingWriteStep(AppText.Booking.LINK_SELECTED_TIME_SLOTS_STEP) { refs -> transport.selectVenueTime(form.timeIds.distinct().joinToString(","), refs.getValue("applyId")).step() },
+        BookingWriteStep(AppText.Booking.LINK_APPLICANT_AND_TEACHER_STEP) { refs -> transport.defineVenue(form.userId, refs.getValue("applyId"), form.teacherId, form.teacherName).step() },
     ))
 
 fun fitnessEnrolmentConfirmation(transport: BookingWriteTransport, form: FitnessEnrolmentForm): BookingConfirmation =
-    BookingConfirmation.staticContract(listOf(BookingWriteStep("提交体测报名") {
-        if (form.validation().isNotEmpty()) BookingStepResult.Failed("报名表单校验未通过；未发送报名。")
+    BookingConfirmation.staticContract(listOf(BookingWriteStep(AppText.Booking.SUBMIT_FITNESS_REGISTRATION_STEP) {
+        if (form.validation().isNotEmpty()) BookingStepResult.Failed(AppText.Booking.FITNESS_REGISTRATION_FORM_INVALID_NOT_SENT)
         else transport.enrolFitness(form.parameters()).step()
     }))
 
 fun fitnessCancellationConfirmation(transport: BookingWriteTransport, form: FitnessCancellation): BookingConfirmation =
-    BookingConfirmation.staticContract(listOf(BookingWriteStep("取消体测报名") {
-        if (form.validation().isNotEmpty()) BookingStepResult.Failed("取消参数校验未通过；未发送取消。")
+    BookingConfirmation.staticContract(listOf(BookingWriteStep(AppText.Booking.CANCEL_FITNESS_REGISTRATION_TITLE) {
+        if (form.validation().isNotEmpty()) BookingStepResult.Failed(AppText.Booking.CANCELLATION_PARAMETERS_INVALID_NOT_SENT)
         else transport.cancelFitness(form.parameters()).step()
     }))

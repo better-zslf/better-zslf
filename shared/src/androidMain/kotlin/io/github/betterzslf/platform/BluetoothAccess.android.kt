@@ -1,5 +1,6 @@
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
@@ -24,12 +25,12 @@ import kotlin.random.Random
 
 private fun bluetoothState(context: Context): BluetoothAccessState {
     val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
-        ?: return BluetoothAccessState(available = false, message = "设备未提供蓝牙适配器。")
+        ?: return BluetoothAccessState(available = false, message = AppText.Water.BLUETOOTH_ADAPTER_UNAVAILABLE)
     val granted = listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
         .all { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
-    if (!granted) return BluetoothAccessState(message = "请先授予附近设备权限。")
+    if (!granted) return BluetoothAccessState(message = AppText.Water.NEARBY_DEVICES_PERMISSION_REQUIRED)
     val enabled = runCatching { adapter.isEnabled }.getOrDefault(false)
-    return BluetoothAccessState(granted = true, enabled = enabled, message = if (enabled) null else "请打开蓝牙。")
+    return BluetoothAccessState(granted = true, enabled = enabled, message = if (enabled) null else AppText.Water.ENABLE_BLUETOOTH_REQUIRED)
 }
 
 @Composable
@@ -54,7 +55,7 @@ actual fun rememberBluetoothAccess(): BluetoothAccess {
             override val state = status.asStateFlow()
             override fun requestPermissions() {
                 runCatching { permissions.launch(arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)) }
-                    .onFailure { status.value = status.value.copy(message = "附近设备权限请求失败，请在设置中检查。") }
+                    .onFailure { status.value = status.value.copy(message = AppText.Water.NEARBY_DEVICES_PERMISSION_REQUEST_FAILED_CHECK_SETTINGS) }
             }
             override fun requestEnable() {
                 if (!bluetoothState(context).granted) {
@@ -62,7 +63,7 @@ actual fun rememberBluetoothAccess(): BluetoothAccess {
                     return
                 }
                 runCatching { enable.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)) }
-                    .onFailure { status.value = status.value.copy(message = "请在系统设置中打开蓝牙。") }
+                    .onFailure { status.value = status.value.copy(message = AppText.Water.ENABLE_BLUETOOTH_IN_SYSTEM_SETTINGS) }
             }
         }
     }

@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.run
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.storage.KeyValueStore
 import io.github.betterzslf.platform.LocationPhase
 import io.github.betterzslf.platform.LocationTrackingState
@@ -59,7 +60,7 @@ class RunSessionCoordinator(
                 mutex.withLock {
                     nativeState = native
                     if (accepting && native.phase in listOf(LocationPhase.PermissionRequired, LocationPhase.LocationDisabled, LocationPhase.Failed, LocationPhase.Unavailable)) {
-                        halt(RunSessionProblem(RunSessionProblemCode.LOCATION, native.message ?: "定位已停止，请检查定位权限与服务"))
+                        halt(RunSessionProblem(RunSessionProblemCode.LOCATION, native.message ?: AppText.Run.LOCATION_STOPPED_CHECK_PERMISSION_AND_SERVICE))
                     } else publish()
                 }
             }
@@ -69,14 +70,14 @@ class RunSessionCoordinator(
     suspend fun start(request: RunSessionStart, ownerId: String, uploadConfirmed: Boolean): RunSessionAction = action {
         current?.takeIf { it.phase in listOf(StoredRunSessionPhase.RECORDING, StoredRunSessionPhase.PAUSED, StoredRunSessionPhase.FINISHING) }?.let { checkOwner(it.ownerId, ownerId) }
         checkOwner(request.metadata.userId, ownerId)
-        ensure(uploadConfirmed, RunSessionProblemCode.CONFIRMATION_REQUIRED, "请先明确勾选本次真实轨迹的上传确认")
+        ensure(uploadConfirmed, RunSessionProblemCode.CONFIRMATION_REQUIRED, AppText.Run.EXPLICIT_REAL_TRACK_UPLOAD_ACKNOWLEDGEMENT_REQUIRED)
         val document = journal.load()
         document.activeTrid?.let { activeId -> document.sessions.firstOrNull { it.trid == activeId }?.let { checkOwner(it.ownerId, ownerId) } }
-        ensure(document.activeTrid == null, RunSessionProblemCode.ACTIVE_SESSION_EXISTS, "已有未结束的本地会话，请先恢复处理")
-        ensure(document.sessions.none { it.trid == request.metadata.trid || it.request.batchIdPrefix == request.batchIdPrefix }, RunSessionProblemCode.INVALID_INPUT, "此会话或批次标识已使用，请使用新的稳定标识")
-        ensure(document.sessions.size < MAX_SESSIONS && document.sessions.sumOf { it.samples.size } < MAX_TOTAL_SAMPLES, RunSessionProblemCode.SAMPLE_LIMIT, "本地会话记录已达上限，请先管理已保存记录")
+        ensure(document.activeTrid == null, RunSessionProblemCode.ACTIVE_SESSION_EXISTS, AppText.Run.UNFINISHED_LOCAL_SESSION_REQUIRES_RECOVERY_FIRST)
+        ensure(document.sessions.none { it.trid == request.metadata.trid || it.request.batchIdPrefix == request.batchIdPrefix }, RunSessionProblemCode.INVALID_INPUT, AppText.Run.SESSION_OR_BATCH_ID_ALREADY_USED_NEW_STABLE_ID_REQUIRED)
+        ensure(document.sessions.size < MAX_SESSIONS && document.sessions.sumOf { it.samples.size } < MAX_TOTAL_SAMPLES, RunSessionProblemCode.SAMPLE_LIMIT, AppText.Run.LOCAL_SESSION_LIMIT_REACHED_MANAGE_SAVED_RECORDS)
         val existing = queue.snapshot()
-        ensure(existing.none { it.batch.trid == request.metadata.trid || it.batch.batchId.startsWith(request.batchIdPrefix + "-") }, RunSessionProblemCode.INVALID_INPUT, "此任务或批次标识已用于本地上传队列")
+        ensure(existing.none { it.batch.trid == request.metadata.trid || it.batch.batchId.startsWith(request.batchIdPrefix + "-") }, RunSessionProblemCode.INVALID_INPUT, AppText.Run.TASK_OR_BATCH_ID_ALREADY_USED_IN_UPLOAD_QUEUE)
         val now = clock()
         val record = StoredRunSession(request.copy(checkpoints = request.checkpoints.toList()), StoredRunSessionPhase.RECORDING, now, lastConsentAtMillis = now)
         journal.save(record) // A native start never precedes a durable, owner-bound session record.
@@ -97,7 +98,7 @@ class RunSessionCoordinator(
         val record = if (trid != null) document.sessions.firstOrNull { it.trid == trid }
             else document.activeTrid?.let { id -> document.sessions.firstOrNull { it.trid == id } }
                 ?: document.sessions.lastOrNull { it.ownerId == ownerId }
-        ensure(record != null, RunSessionProblemCode.NO_SESSION, "没有可恢复的本地跑步会话")
+        ensure(record != null, RunSessionProblemCode.NO_SESSION, AppText.Run.NO_RECOVERABLE_LOCAL_SESSION)
         record!!
         checkOwner(record.ownerId, ownerId)
         stopSampling()
@@ -119,7 +120,7 @@ class RunSessionCoordinator(
 
     suspend fun pause(ownerId: String): RunSessionAction = action {
         val record = selected(ownerId)
-        ensure(!record.finishRequested && record.phase !in listOf(StoredRunSessionPhase.FINISHED, StoredRunSessionPhase.CANCELLED), RunSessionProblemCode.INVALID_STATE, "该会话已进入结束流程")
+        ensure(!record.finishRequested && record.phase !in listOf(StoredRunSessionPhase.FINISHED, StoredRunSessionPhase.CANCELLED), RunSessionProblemCode.INVALID_STATE, AppText.Run.SESSION_ALREADY_ENTERED_FINISH_FLOW)
         stopSampling()
         consentInThisProcess = false
         phase = RunSessionPhase.PAUSED
@@ -130,12 +131,12 @@ class RunSessionCoordinator(
 
     suspend fun resume(ownerId: String, uploadConfirmed: Boolean): RunSessionAction = action {
         val record = selected(ownerId)
-        ensure(!accepting && !record.finishRequested && record.phase !in listOf(StoredRunSessionPhase.FINISHED, StoredRunSessionPhase.CANCELLED), RunSessionProblemCode.INVALID_STATE, "该会话当前不支持恢复采样")
-        ensure(unpersistedSample == null, RunSessionProblemCode.STORAGE, "请先重试保存未持久化的真实采样点")
-        ensure(record.samples.size < maximumSamplesPerSession && journal.load().sessions.sumOf { it.samples.size } < MAX_TOTAL_SAMPLES, RunSessionProblemCode.SAMPLE_LIMIT, "真实采样点已达上限，请结束并保留记录")
-        ensure(uploadConfirmed, RunSessionProblemCode.CONFIRMATION_REQUIRED, "请先确认恢复后的真实轨迹上传")
+        ensure(!accepting && !record.finishRequested && record.phase !in listOf(StoredRunSessionPhase.FINISHED, StoredRunSessionPhase.CANCELLED), RunSessionProblemCode.INVALID_STATE, AppText.Run.SESSION_SAMPLING_RESUME_UNSUPPORTED_IN_CURRENT_STATE)
+        ensure(unpersistedSample == null, RunSessionProblemCode.STORAGE, AppText.Run.RETRY_PENDING_REAL_SAMPLE_PERSISTENCE_FIRST)
+        ensure(record.samples.size < maximumSamplesPerSession && journal.load().sessions.sumOf { it.samples.size } < MAX_TOTAL_SAMPLES, RunSessionProblemCode.SAMPLE_LIMIT, AppText.Run.REAL_SAMPLE_LIMIT_REACHED_END_AND_KEEP_RECORD)
+        ensure(uploadConfirmed, RunSessionProblemCode.CONFIRMATION_REQUIRED, AppText.Run.CONFIRM_RECOVERED_REAL_TRACK_UPLOAD_FIRST)
         val now = clock()
-        ensure(now >= record.startedAtMillis && (record.samples.lastOrNull()?.timestampMillis ?: now) <= now, RunSessionProblemCode.CLOCK, "系统时间早于已保存轨迹，请校正后恢复")
+        ensure(now >= record.startedAtMillis && (record.samples.lastOrNull()?.timestampMillis ?: now) <= now, RunSessionProblemCode.CLOCK, AppText.Run.CLOCK_BEHIND_SAVED_TRACK_CORRECT_BEFORE_RESUME)
         val resumed = record.copy(phase = StoredRunSessionPhase.RECORDING, lastConsentAtMillis = now)
         journal.save(resumed)
         current = resumed
@@ -152,8 +153,8 @@ class RunSessionCoordinator(
      */
     suspend fun finish(ownerId: String, uploadConfirmed: Boolean = false): RunSessionAction = action {
         var record = selected(ownerId)
-        ensure(record.phase != StoredRunSessionPhase.CANCELLED, RunSessionProblemCode.INVALID_STATE, "已取消的会话保留在本地，不生成结束块")
-        ensure(unpersistedSample == null, RunSessionProblemCode.STORAGE, "请先保存未持久化的真实采样点，再结束")
+        ensure(record.phase != StoredRunSessionPhase.CANCELLED, RunSessionProblemCode.INVALID_STATE, AppText.Run.CANCELLED_SESSION_RETAINED_NO_FINAL_BATCH)
+        ensure(unpersistedSample == null, RunSessionProblemCode.STORAGE, AppText.Run.PERSIST_PENDING_REAL_SAMPLE_BEFORE_FINISH)
         if (record.phase == StoredRunSessionPhase.FINISHED) {
             queueView = ownedQueue(record)
             if (uploadConfirmed) confirmEligible(record)
@@ -162,7 +163,7 @@ class RunSessionCoordinator(
         }
         val allowConfirmation = consentInThisProcess || uploadConfirmed
         val now = clock()
-        ensure(now >= record.startedAtMillis && now >= (record.samples.lastOrNull()?.timestampMillis ?: now), RunSessionProblemCode.CLOCK, "系统时间早于已保存轨迹，请校正后结束")
+        ensure(now >= record.startedAtMillis && now >= (record.samples.lastOrNull()?.timestampMillis ?: now), RunSessionProblemCode.CLOCK, AppText.Run.CLOCK_BEHIND_SAVED_TRACK_CORRECT_BEFORE_FINISH)
         stopSampling()
         consentInThisProcess = false
         phase = RunSessionPhase.FINISHING
@@ -182,8 +183,8 @@ class RunSessionCoordinator(
     /** Stops capture and holds unsent work. In-flight/uncertain writes remain visible, never guessed away. */
     suspend fun cancel(ownerId: String): RunSessionAction = action {
         val record = selected(ownerId)
-        ensure(record.phase != StoredRunSessionPhase.FINISHED && !record.finishRequested, RunSessionProblemCode.INVALID_STATE, "已请求完成的会话请处理结束或核对结果")
-        ensure(unpersistedSample == null, RunSessionProblemCode.STORAGE, "请先保存未持久化的真实采样点，再取消会话")
+        ensure(record.phase != StoredRunSessionPhase.FINISHED && !record.finishRequested, RunSessionProblemCode.INVALID_STATE, AppText.Run.FINISH_REQUESTED_SESSION_REQUIRES_COMPLETION_OR_REVIEW)
+        ensure(unpersistedSample == null, RunSessionProblemCode.STORAGE, AppText.Run.PERSIST_PENDING_REAL_SAMPLE_BEFORE_CANCELLATION)
         stopSampling()
         consentInThisProcess = false
         queueView = ownedQueue(record)
@@ -198,11 +199,11 @@ class RunSessionCoordinator(
     /** Explicit exact-preview confirmation; failed or uncertain blocks require their existing queue workflow. */
     suspend fun confirmPendingUpload(ownerId: String, expectedBatchIds: List<String>): RunSessionAction = action {
         val record = selected(ownerId)
-        ensure(record.phase != StoredRunSessionPhase.CANCELLED, RunSessionProblemCode.INVALID_STATE, "已取消会话的上传许可已撤回")
+        ensure(record.phase != StoredRunSessionPhase.CANCELLED, RunSessionProblemCode.INVALID_STATE, AppText.Run.CANCELLED_SESSION_UPLOAD_CONSENT_WITHDRAWN)
         queueView = ownedQueue(record)
         val pending = queueView.filter { it.status != RunBatchStatus.ACKNOWLEDGED }
-        ensure(pending.isNotEmpty() && pending.map { it.batch.batchId } == expectedBatchIds, RunSessionProblemCode.INVALID_INPUT, "待上传内容已变更，请重新预览")
-        ensure(pending.none { it.status in listOf(RunBatchStatus.IN_FLIGHT, RunBatchStatus.UNCERTAIN, RunBatchStatus.FAILED) }, RunSessionProblemCode.QUEUE, "请先处理发送中、失败或结果待核对的批次")
+        ensure(pending.isNotEmpty() && pending.map { it.batch.batchId } == expectedBatchIds, RunSessionProblemCode.INVALID_INPUT, AppText.Run.UPLOAD_CONTENT_CHANGED_PREVIEW_AGAIN)
+        ensure(pending.none { it.status in listOf(RunBatchStatus.IN_FLIGHT, RunBatchStatus.UNCERTAIN, RunBatchStatus.FAILED) }, RunSessionProblemCode.QUEUE, AppText.Run.REVIEW_IN_FLIGHT_FAILED_OR_UNCERTAIN_BATCHES_FIRST)
         queue.confirmUpload(record.trid, ownerId, expectedBatchIds)
         queueView = ownedQueue(record)
     }
@@ -212,7 +213,7 @@ class RunSessionCoordinator(
     /** Retries only the one real sample whose disk write failed; no GPS position/time is synthesized. */
     suspend fun retryPersistence(ownerId: String): RunSessionAction = action {
         val record = selected(ownerId)
-        ensure(!record.finishRequested && record.phase !in listOf(StoredRunSessionPhase.FINISHED, StoredRunSessionPhase.CANCELLED), RunSessionProblemCode.INVALID_STATE, "该会话已关闭采样集")
+        ensure(!record.finishRequested && record.phase !in listOf(StoredRunSessionPhase.FINISHED, StoredRunSessionPhase.CANCELLED), RunSessionProblemCode.INVALID_STATE, AppText.Run.SESSION_SAMPLE_SET_CLOSED)
         val sample = unpersistedSample ?: return@action
         val repaired = record.copy(phase = StoredRunSessionPhase.PAUSED, samples = record.samples + sample)
         journal.save(repaired)
@@ -256,7 +257,7 @@ class RunSessionCoordinator(
             closed = true
             accepting = false
             lifecycle.cancel()
-            try { tracker.close() } catch (_: Exception) { if (closeProblem == null) closeProblem = RunSessionProblem(RunSessionProblemCode.LOCATION, "定位资源释放失败，请检查平台状态") }
+            try { tracker.close() } catch (_: Exception) { if (closeProblem == null) closeProblem = RunSessionProblem(RunSessionProblemCode.LOCATION, AppText.Run.LOCATION_RESOURCE_RELEASE_FAILED_CHECK_PLATFORM) }
             phase = RunSessionPhase.CLOSED
             problem = closeProblem
             publish()
@@ -265,7 +266,7 @@ class RunSessionCoordinator(
     }
 
     private suspend fun action(block: suspend () -> Unit): RunSessionAction = mutex.withLock {
-        if (closed) return@withLock RunSessionAction.Rejected(RunSessionProblem(RunSessionProblemCode.CLOSED, "此会话协调器已关闭"))
+        if (closed) return@withLock RunSessionAction.Rejected(RunSessionProblem(RunSessionProblemCode.CLOSED, AppText.Run.SESSION_COORDINATOR_CLOSED))
         problem = null
         try {
             block()
@@ -284,12 +285,12 @@ class RunSessionCoordinator(
     }
 
     private fun clock(): Long = try {
-        nowMillis().also { ensure(it >= 0, RunSessionProblemCode.CLOCK, "系统时间异常") }
+        nowMillis().also { ensure(it >= 0, RunSessionProblemCode.CLOCK, AppText.Common.INVALID_SYSTEM_TIME) }
     } catch (issue: SessionIssue) { throw issue }
-    catch (_: Exception) { throw SessionIssue(RunSessionProblem(RunSessionProblemCode.CLOCK, "读取系统时间失败")) }
+    catch (_: Exception) { throw SessionIssue(RunSessionProblem(RunSessionProblemCode.CLOCK, AppText.Common.SYSTEM_TIME_READ_FAILED)) }
 
     private fun selected(ownerId: String): StoredRunSession {
-        val record = current ?: throw SessionIssue(RunSessionProblem(RunSessionProblemCode.NO_SESSION, "请先开始或恢复本地会话"))
+        val record = current ?: throw SessionIssue(RunSessionProblem(RunSessionProblemCode.NO_SESSION, AppText.Run.START_OR_RESTORE_LOCAL_SESSION_FIRST))
         checkOwner(record.ownerId, ownerId)
         return record
     }
@@ -306,7 +307,7 @@ class RunSessionCoordinator(
         consentInThisProcess = false
         try { stopSampling() } catch (_: Exception) { /* Capture gate is already closed. */ }
         phase = RunSessionPhase.OWNER_MISMATCH
-        throw SessionIssue(RunSessionProblem(RunSessionProblemCode.OWNER_MISMATCH, "当前用户与本地会话不一致，记录已隔离"))
+        throw SessionIssue(RunSessionProblem(RunSessionProblemCode.OWNER_MISMATCH, AppText.Run.CURRENT_USER_LOCAL_SESSION_MISMATCH_RECORD_ISOLATED))
     }
     private fun ensure(condition: Boolean, code: RunSessionProblemCode, message: String) {
         if (!condition) throw SessionIssue(RunSessionProblem(code, message))
@@ -321,15 +322,15 @@ class RunSessionCoordinator(
         sampleJob = appScope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 tracker.samples.collect { sample -> onSample(generation, sample) }
-                mutex.withLock { if (accepting && generation == epoch) halt(RunSessionProblem(RunSessionProblemCode.LOCATION, "定位数据流已结束，请检查后显式恢复")) }
+                mutex.withLock { if (accepting && generation == epoch) halt(RunSessionProblem(RunSessionProblemCode.LOCATION, AppText.Run.LOCATION_STREAM_ENDED_EXPLICIT_RECOVERY_REQUIRED)) }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) {
-                mutex.withLock { if (accepting && generation == epoch) halt(RunSessionProblem(RunSessionProblemCode.LOCATION, "定位数据接收失败，请检查后显式恢复")) }
+                mutex.withLock { if (accepting && generation == epoch) halt(RunSessionProblem(RunSessionProblemCode.LOCATION, AppText.Run.LOCATION_RECEPTION_FAILED_EXPLICIT_RECOVERY_REQUIRED)) }
             }
         }
         tracker.start(current!!.request.samplingSeconds)
         if (tracker.state.value.phase !in listOf(LocationPhase.Starting, LocationPhase.Tracking)) {
-            val failure = RunSessionProblem(RunSessionProblemCode.LOCATION, tracker.state.value.message ?: "定位尚未启动，请检查权限与定位服务")
+            val failure = RunSessionProblem(RunSessionProblemCode.LOCATION, tracker.state.value.message ?: AppText.Run.LOCATION_NOT_STARTED_CHECK_PERMISSION_AND_SERVICE)
             halt(failure)
             throw SessionIssue(failure)
         }
@@ -352,7 +353,7 @@ class RunSessionCoordinator(
             if (filtered is LocationFilterResult.Rejected) return@withLock rejectSample(RunSessionSampleRejection.FILTER, filtered.reason)
             val previous = record.samples.lastOrNull()
             if (previous != null && sample.timestampMillis - previous.timestampMillis < record.request.samplingSeconds * 1000L) return@withLock rejectSample(RunSessionSampleRejection.TOO_FREQUENT)
-            ensure(record.samples.size < maximumSamplesPerSession, RunSessionProblemCode.SAMPLE_LIMIT, "本次真实采样点已达上限，请结束并保留记录")
+            ensure(record.samples.size < maximumSamplesPerSession, RunSessionProblemCode.SAMPLE_LIMIT, AppText.Run.CURRENT_REAL_SAMPLE_LIMIT_REACHED_END_AND_KEEP_RECORD)
             val accepted = record.copy(samples = record.samples + sample)
             unpersistedSample = sample
             journal.save(accepted)
@@ -376,7 +377,7 @@ class RunSessionCoordinator(
 
     private suspend fun ownedQueue(record: StoredRunSession): List<RunQueuedBatch> {
         val entries = queue.snapshot().filter { it.batch.trid == record.trid }.sortedBy { it.batch.index }
-        ensure(entries.all { it.batch.payload.userId == record.ownerId }, RunSessionProblemCode.OWNER_MISMATCH, "上传队列与会话用户不一致")
+        ensure(entries.all { it.batch.payload.userId == record.ownerId }, RunSessionProblemCode.OWNER_MISMATCH, AppText.Run.UPLOAD_QUEUE_SESSION_USER_MISMATCH)
         return entries
     }
     private suspend fun syncQueue(record: StoredRunSession, finished: Boolean, confirm: Boolean) {
@@ -408,16 +409,16 @@ class RunSessionCoordinator(
                 val paused = record.copy(phase = StoredRunSessionPhase.PAUSED)
                 journal.save(paused)
                 current = paused
-            } catch (_: Exception) { problem = RunSessionProblem(RunSessionProblemCode.STORAGE, "跑步会话保存失败；先前持久化的轨迹仍保留") }
+            } catch (_: Exception) { problem = RunSessionProblem(RunSessionProblemCode.STORAGE, AppText.Run.SESSION_SAVE_FAILED_PREVIOUS_PERSISTED_TRACK_RETAINED) }
         }
         publish()
     }
     private fun classify(error: Exception): RunSessionProblem = when (error) {
         is SessionIssue -> error.problem
-        is RunSessionStorageException -> RunSessionProblem(RunSessionProblemCode.STORAGE, error.message ?: "会话存储失败")
-        is RunQueueException -> RunSessionProblem(RunSessionProblemCode.QUEUE, error.message ?: "上传队列存储失败")
-        is IllegalArgumentException -> RunSessionProblem(RunSessionProblemCode.INVALID_INPUT, "本地会话或队列内容校验未通过，请保留记录并检查")
-        else -> RunSessionProblem(RunSessionProblemCode.LOCATION, "定位操作失败，请检查后显式恢复")
+        is RunSessionStorageException -> RunSessionProblem(RunSessionProblemCode.STORAGE, error.message ?: AppText.Run.SESSION_STORAGE_FAILED)
+        is RunQueueException -> RunSessionProblem(RunSessionProblemCode.QUEUE, error.message ?: AppText.Run.UPLOAD_QUEUE_STORAGE_FAILED)
+        is IllegalArgumentException -> RunSessionProblem(RunSessionProblemCode.INVALID_INPUT, AppText.Run.LOCAL_SESSION_OR_QUEUE_VALIDATION_FAILED_KEEP_AND_INSPECT)
+        else -> RunSessionProblem(RunSessionProblemCode.LOCATION, AppText.Run.LOCATION_OPERATION_FAILED_EXPLICIT_RECOVERY_REQUIRED)
     }
 
     private fun publish() {

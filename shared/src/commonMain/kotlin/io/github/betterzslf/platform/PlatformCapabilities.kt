@@ -1,5 +1,6 @@
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.runtime.Composable
 import io.github.betterzslf.feature.run.RunLocationSample
 import kotlinx.coroutines.flow.Flow
@@ -14,7 +15,7 @@ fun interface UserRequestLauncher { fun launch() }
 class PickedFile(name: String, val mediaType: String, bytes: ByteArray) {
     val name: String = name.substringAfterLast('/').substringAfterLast('\\')
         .filterNot(Char::isISOControl).trim().take(120).ifBlank { "attachment" }
-    init { require(bytes.size <= MAX_PICKED_FILE_BYTES) { "文件超过 8 MiB 限制" } }
+    init { require(bytes.size <= MAX_PICKED_FILE_BYTES) { AppText.Common.PICKED_FILE_SIZE_LIMIT_EXCEEDED } }
     private val content = bytes.copyOf()
     val size: Int get() = content.size
     fun readBytes(): ByteArray = content.copyOf()

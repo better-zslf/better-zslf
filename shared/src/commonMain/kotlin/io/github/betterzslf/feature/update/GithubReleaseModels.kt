@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.update
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.platform.ApkUpdateSpec
 
 /** Stable SemVer only. Numeric components are compared as digit strings, never narrowed. */
@@ -32,23 +33,23 @@ enum class ReleaseIssue {
 }
 
 fun releaseIssueMessage(issue: ReleaseIssue): String = when (issue) {
-    ReleaseIssue.UNKNOWN_CURRENT_VERSION -> "当前应用版本格式未知，请前往发布页核对。"
-    ReleaseIssue.INVALID_RESPONSE -> "发布信息格式异常，请稍后重试。"
-    ReleaseIssue.INVALID_RELEASE_VERSION -> "发布版本不是受支持的稳定版本。"
-    ReleaseIssue.DRAFT -> "发布信息仍为草稿，暂不下载。"
-    ReleaseIssue.PRERELEASE -> "此版本为预发布版，暂不自动更新。"
-    ReleaseIssue.NO_APK -> "此发布尚未提供匹配的 Android APK。"
-    ReleaseIssue.AMBIGUOUS_APK -> "此发布包含多个 APK，请前往发布页核对。"
-    ReleaseIssue.NO_CHECKSUM -> "此发布尚未提供 SHA256SUMS 校验文件。"
-    ReleaseIssue.INVALID_ASSET -> "发布资产地址、名称或大小不符合更新要求。"
-    ReleaseIssue.INVALID_CHECKSUM -> "APK 的 SHA-256 校验信息缺失或异常。"
-    ReleaseIssue.RESPONSE_TOO_LARGE -> "发布信息超过读取上限。"
-    ReleaseIssue.REDIRECT_BLOCKED -> "校验文件重定向不符合更新要求。"
-    ReleaseIssue.HTTP -> "GitHub 更新服务暂时异常，请稍后重试。"
-    ReleaseIssue.NETWORK -> "更新检查网络连接失败，请稍后重试。"
-    ReleaseIssue.TIMEOUT -> "更新检查超时，请稍后重试。"
-    ReleaseIssue.CLOSED -> "更新检查已关闭。"
-    ReleaseIssue.CANCELLED -> "已取消更新检查。"
+    ReleaseIssue.UNKNOWN_CURRENT_VERSION -> AppText.Updates.INSTALLED_VERSION_FORMAT_UNKNOWN_REVIEW_RELEASE_PAGE
+    ReleaseIssue.INVALID_RESPONSE -> AppText.Updates.INVALID_RELEASE_INFORMATION_FORMAT_RETRY_LATER
+    ReleaseIssue.INVALID_RELEASE_VERSION -> AppText.Updates.RELEASE_VERSION_NOT_SUPPORTED_STABLE_VERSION
+    ReleaseIssue.DRAFT -> AppText.Updates.DRAFT_RELEASE_DOWNLOAD_DISABLED
+    ReleaseIssue.PRERELEASE -> AppText.Updates.PRERELEASE_AUTOMATIC_UPDATE_DISABLED
+    ReleaseIssue.NO_APK -> AppText.Updates.MATCHING_ANDROID_APK_MISSING
+    ReleaseIssue.AMBIGUOUS_APK -> AppText.Updates.MULTIPLE_APKS_REVIEW_RELEASE_PAGE
+    ReleaseIssue.NO_CHECKSUM -> AppText.Updates.SHA256SUMS_ASSET_MISSING
+    ReleaseIssue.INVALID_ASSET -> AppText.Updates.RELEASE_ASSET_URL_NAME_OR_SIZE_INVALID
+    ReleaseIssue.INVALID_CHECKSUM -> AppText.Updates.APK_SHA256_INFORMATION_MISSING_OR_INVALID
+    ReleaseIssue.RESPONSE_TOO_LARGE -> AppText.Updates.RELEASE_INFORMATION_READ_LIMIT_EXCEEDED
+    ReleaseIssue.REDIRECT_BLOCKED -> AppText.Updates.CHECKSUM_REDIRECT_NOT_ACCEPTED
+    ReleaseIssue.HTTP -> AppText.Updates.GITHUB_UPDATE_SERVICE_TEMPORARILY_FAILED_RETRY_LATER
+    ReleaseIssue.NETWORK -> AppText.Updates.UPDATE_CHECK_NETWORK_FAILED_RETRY_LATER
+    ReleaseIssue.TIMEOUT -> AppText.Updates.UPDATE_CHECK_TIMEOUT_RETRY_LATER
+    ReleaseIssue.CLOSED -> AppText.Updates.UPDATE_CHECK_CLOSED_NOTICE
+    ReleaseIssue.CANCELLED -> AppText.Updates.UPDATE_CHECK_CANCELLED_NOTICE
 }
 
 data class GithubReleaseCandidate(val versionName: String, val notes: String, val apk: ApkUpdateSpec) {

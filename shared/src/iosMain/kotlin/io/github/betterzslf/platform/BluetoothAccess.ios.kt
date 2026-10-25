@@ -2,6 +2,7 @@
 
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -33,7 +34,7 @@ actual fun rememberBluetoothAccess(): BluetoothAccess {
 }
 
 private class IosBluetoothAccess(private val scope: CoroutineScope) : BluetoothAccess {
-    private val mutableState = MutableStateFlow(BluetoothAccessState(message = "请明确请求蓝牙权限后再开始扫描"))
+    private val mutableState = MutableStateFlow(BluetoothAccessState(message = AppText.Water.EXPLICIT_BLUETOOTH_PERMISSION_REQUEST_REQUIRED_BEFORE_SCAN))
     override val state: StateFlow<BluetoothAccessState> = mutableState.asStateFlow()
     private var manager: CBCentralManager? = null
     private var disposed = false
@@ -43,7 +44,7 @@ private class IosBluetoothAccess(private val scope: CoroutineScope) : BluetoothA
         scope.launch(Dispatchers.Main.immediate) {
             if (disposed) return@launch
             if (UIApplication.sharedApplication.applicationState != UIApplicationState.UIApplicationStateActive) {
-                mutableState.value = mutableState.value.copy(message = "请在应用前台请求蓝牙权限")
+                mutableState.value = mutableState.value.copy(message = AppText.Water.REQUEST_BLUETOOTH_PERMISSION_IN_FOREGROUND)
                 return@launch
             }
             // This is the ONLY creation site: initialization can display the OS authorization UI.
@@ -62,7 +63,7 @@ private class IosBluetoothAccess(private val scope: CoroutineScope) : BluetoothA
             if (disposed) return@launch
             refreshIfInitialized()
             mutableState.value = mutableState.value.copy(
-                message = "请在系统设置 → 蓝牙中打开蓝牙；若权限已关闭，请在本应用设置中允许蓝牙后返回并重新检查",
+                message = AppText.Water.ENABLE_BLUETOOTH_AND_ALLOW_APP_PERMISSION_THEN_RECHECK,
             )
         }
     }
@@ -81,15 +82,15 @@ private class IosBluetoothAccess(private val scope: CoroutineScope) : BluetoothA
         val available = central.state != CBManagerStateUnsupported
         val enabled = central.state == CBManagerStatePoweredOn
         val message = when {
-            !available -> "此设备不支持所需蓝牙功能"
+            !available -> AppText.Water.REQUIRED_BLUETOOTH_FEATURES_UNSUPPORTED
             authorization == CBManagerAuthorizationDenied || authorization == CBManagerAuthorizationRestricted ->
-                "蓝牙权限已关闭或受系统限制，请检查本应用的系统设置"
-            !granted -> "等待系统蓝牙授权；选择后可再次点击检查权限"
-            central.state == CBManagerStatePoweredOff -> "蓝牙已关闭，请在系统设置 → 蓝牙中打开"
-            central.state == CBManagerStateResetting -> "系统蓝牙正在重置，请稍后明确重新检查"
-            central.state == CBManagerStateUnauthorized -> "系统尚未允许使用蓝牙，请检查权限"
+                AppText.Water.BLUETOOTH_PERMISSION_DISABLED_OR_RESTRICTED_CHECK_APP_SETTINGS
+            !granted -> AppText.Water.AWAITING_SYSTEM_BLUETOOTH_AUTHORIZATION_RECHECK_AFTER_SELECTION
+            central.state == CBManagerStatePoweredOff -> AppText.Water.BLUETOOTH_DISABLED_ENABLE_IN_SYSTEM_SETTINGS
+            central.state == CBManagerStateResetting -> AppText.Water.SYSTEM_BLUETOOTH_RESETTING_RECHECK_EXPLICITLY_LATER
+            central.state == CBManagerStateUnauthorized -> AppText.Water.SYSTEM_BLUETOOTH_ACCESS_NOT_GRANTED_CHECK_PERMISSION
             enabled -> null
-            else -> "正在等待系统蓝牙状态"
+            else -> AppText.Water.AWAITING_SYSTEM_BLUETOOTH_STATE
         }
         mutableState.value = BluetoothAccessState(available, granted, enabled, message)
     }

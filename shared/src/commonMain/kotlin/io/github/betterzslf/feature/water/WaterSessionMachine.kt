@@ -5,6 +5,8 @@
  */
 package io.github.betterzslf.feature.water
 
+import io.github.betterzslf.core.text.AppText
+
 enum class WaterSessionState {
     Idle, AwaitingPrologue, AwaitingLegacyDelay, AwaitingAuthentication,
     AwaitingStart, Active, AwaitingEnd, Closed, Failed, RetryConfirmationRequired,
@@ -110,7 +112,7 @@ class WaterSessionMachine(
         require(nowMillis >= 0)
         if (state == WaterSessionState.Idle || state == WaterSessionState.Failed ||
             state == WaterSessionState.RetryConfirmationRequired) return emptyList()
-        return fail(WaterFailure(WaterFailureKind.TransportFailure, "连接或写入中断。"), nowMillis)
+        return fail(WaterFailure(WaterFailureKind.TransportFailure, AppText.Water.CONNECTION_OR_WRITE_INTERRUPTED), nowMillis)
     }
 
     fun onNotification(input: ByteArray, nowMillis: Long): List<WaterEffect> {
@@ -162,9 +164,9 @@ class WaterSessionMachine(
                 when (result) {
                     0x55 -> startEpilogue(nowMillis, true)
                     0x01, 0x02, 0x04 -> fail(WaterFailure(WaterFailureKind.AuthenticationFailed,
-                        "水控器认证失败，已断开。", result), nowMillis)
+                        AppText.Water.AUTHENTICATION_FAILED_DISCONNECTED, result), nowMillis)
                     else -> fail(WaterFailure(WaterFailureKind.UnknownAuthenticationStatus,
-                        "收到未知认证结果，已断开。", result), nowMillis)
+                        AppText.Water.UNKNOWN_AUTHENTICATION_RESULT_DISCONNECTED, result), nowMillis)
                 }
             }
             0xb2 -> {
@@ -178,7 +180,7 @@ class WaterSessionMachine(
                 cancelTimers() + listOf(WaterEffect.Write(WaterProtocol.endEpilogue),
                     WaterEffect.Disconnect(WaterDisconnectReason.Completed))
             }
-            0xc8 -> fail(WaterFailure(WaterFailureKind.StartDenied, "水控器未接受启动指令，已断开。"), nowMillis)
+            0xc8 -> fail(WaterFailure(WaterFailureKind.StartDenied, AppText.Water.START_COMMAND_NOT_ACCEPTED_DISCONNECTED), nowMillis)
             else -> unexpected(nowMillis)
         }
     }
@@ -194,7 +196,7 @@ class WaterSessionMachine(
         if (nowMillis < timer.dueAtMillis) return listOf(WaterEffect.Schedule(timer, timer.dueAtMillis - nowMillis))
         return when (timer.kind) {
             WaterTimerKind.OperationTimeout -> fail(WaterFailure(WaterFailureKind.OperationTimedOut,
-                "水控器响应超时，已断开。"), nowMillis)
+                AppText.Water.CONTROLLER_RESPONSE_TIMEOUT_DISCONNECTED), nowMillis)
             WaterTimerKind.LegacyEpilogueDelay -> {
                 if (state != WaterSessionState.AwaitingLegacyDelay) emptyList()
                 else startEpilogue(nowMillis, false)
@@ -218,7 +220,7 @@ class WaterSessionMachine(
     }
 
     private fun unexpected(nowMillis: Long): List<WaterEffect> = fail(
-        WaterFailure(WaterFailureKind.UnexpectedNotification, "当前协议阶段收到非预期响应，已断开。"), nowMillis)
+        WaterFailure(WaterFailureKind.UnexpectedNotification, AppText.Water.UNEXPECTED_PROTOCOL_RESPONSE_DISCONNECTED), nowMillis)
 
     private fun fail(failure: WaterFailure, nowMillis: Long): List<WaterEffect> {
         if (state in handshakeStates) failureGuard.recordFailure(deviceId, nowMillis)

@@ -979,6 +979,93 @@ class DiagnosticsTests(unittest.TestCase):
         labels = [label for _, label in self.runner.calls]
         self.assertEqual(labels[labels.index("signed-seed-after-terminate-retry") + 1], "signed-seed-launch-system-log")
 
+    def test_failure_log_90s_covers_old_gap_at_dispatch_with_same_predicate_and_budget(self):
+        query = "2026-10-25T09:59:12.203845+00:00"
+        launch = "2026-10-25T09:58:38.804823+00:00"
+        now = ["2026-10-25T09:59:00+00:00"]
+        record = {"launch_started_at_utc": launch}
+        def save():
+            now[0] = query  # The old capture-start timestamp precedes persistence/dispatch.
+        with mock.patch.object(diag, "_utc_now", side_effect=lambda: now[0]):
+            diag._capture_failure(self.artifacts, self.runner, OWN, "check", record, self.container,
+                                  "seed", save, BUNDLE)
+        predicate = ('process == "BetterZslf" OR ((process == "SpringBoard" OR '
+                     'process == "runningboardd" OR process == "amfid" OR process == "installd" OR '
+                     'process == "launchd_sim") AND (eventMessage CONTAINS[c] "' + BUNDLE +
+                     '" OR eventMessage CONTAINS[c] "BetterZslf"))')
+        logs = [(args, label) for args, label in self.runner.calls if label == "check-launch-system-log"]
+        self.assertEqual(logs, [(["spawn", OWN, "log", "show", "--style", "compact", "--last", "90s",
+                                 "--predicate", predicate], "check-launch-system-log")])
+        self.assertEqual(self.runner.timeouts[logs[0][1]], 15)
+        self.assertEqual(record["failure_launch_log_window_seconds"], 90)
+        self.assertEqual(record["failure_launch_log_coverage"], {
+            "query_started_at_utc": query, "window_seconds": 90, "launch_started_at_utc": launch,
+            "launch_start_in_nominal_window": True, "nominal_only": True})
+        self.assertNotEqual(record["failure_launch_log_started_at_utc"], query)
+        self.assertEqual(self.runner.launches, [])
+        self.assertEqual(self.runner.host_calls, [])
+
+    def test_failure_log_coverage_requires_strict_aware_time_and_reversal_stays_unknown(self):
+        query = "2026-10-25T09:59:12.203845+00:00"
+        cases = [
+            (query, "2026-10-25T09:57:42.203845Z", True),
+            (query, "2026-10-25T09:57:42.203844Z", False),
+            (query, "2026-10-25T17:58:38.804823+08:00", True),
+            (query, "2026-10-25T09:59:13Z", None),  # Backward wall-clock observation.
+            (query, None, None), (query, 42, None), (None, query, None),
+            (query, "2026-10-25T09:58:38", None),
+            ("2026-10-25T09:59:12", query, None),
+            (query, "2026-02-30T09:58:38Z", None),
+            (query, "2026-10-25T09:58:38+24:00", None),
+            (query, "2026-10-25T09:58:38+00:60", None),
+            (query, "2026-10-25T09:58:38-00:00", None),
+            (query, "2026-10-25T09:58:38.1234567Z", None),
+            (query, "not-a-time", None),
+        ]
+        for started, launched, expected in cases:
+            with self.subTest(query=started, launch=launched):
+                value = diag._failure_log_coverage(started, launched)
+                self.assertIs(value["launch_start_in_nominal_window"], expected)
+                self.assertIs(value["nominal_only"], True)
+                self.assertEqual(value["window_seconds"], 90)
+        self.assertEqual(self.runner.calls, [])
+        self.assertEqual(self.runner.host_calls, [])
+
+    def test_failure_log_bad_aware_metadata_preserves_primary_identity_and_blocks_verify(self):
+        primary = smoke.subprocess.TimeoutExpired("fixture launch", 30)
+        self.runner.launch_errors["signed-seed-launch"] = primary
+        with mock.patch.object(diag, "_utc_now", return_value="2026-10-25T09:59:12"), \
+                self.assertRaises(smoke.subprocess.TimeoutExpired) as raised:
+            self.run_probe("signed-positive")
+        self.assertIs(raised.exception, primary)
+        value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+        self.assertEqual(value["result"], "keychain-diagnostics-failed")
+        self.assertEqual(value["signed"]["seed"]["result"], "failed")
+        self.assertIsNone(value["signed"]["seed"]["failure_launch_log_coverage"]["launch_start_in_nominal_window"])
+        self.assertEqual(value["signed"]["verify"], {})
+        self.assertIsNone(value["pid"])
+        self.assertEqual(self.pids, [])
+        self.assertEqual(len(self.runner.launches), 1)
+        self.assertEqual(sum(args[0] == "install" for args, _ in self.runner.calls), 1)
+        self.assertEqual(self.runner.timeouts["signed-seed-launch"], 30)
+        self.assertEqual(self.runner.timeouts["signed-seed-launch-system-log"], 15)
+        self.assertNotIn("signed-verify-launch", self.runner.timeouts)
+
+    def test_failure_log_body_deadline_stops_before_metadata_or_any_later_call(self):
+        self.runner.body_deadline_monotonic = 0.0
+        primary = smoke.subprocess.TimeoutExpired("fixture launch", 30)
+        record = {"launch_command_failed": True}
+        with mock.patch.object(diag, "_failure_log_coverage") as coverage:
+            diag._capture_failure(self.artifacts, self.runner, OWN, "check", record, self.container,
+                                  "seed", lambda: None, BUNDLE, primary=primary,
+                                  executable="BetterZslf", app_name=self.app.name, clock=lambda: 0.0)
+        coverage.assert_not_called()
+        self.assertTrue(smoke.is_smoke_deadline(primary))
+        self.assertTrue(record["failure_observations"]["body_deadline_exhausted"])
+        self.assertNotIn("failure_launch_log", record)
+        self.assertEqual(self.runner.calls, [])
+        self.assertEqual(self.runner.host_calls, [])
+
     def test_log_timeout_is_partial_and_keeps_original_denial_before_screenshot(self):
         self.runner.launch_failure_labels.add("signed-seed-launch")
         self.runner.timeout_labels.add("signed-seed-launch-system-log")
@@ -988,7 +1075,7 @@ class DiagnosticsTests(unittest.TestCase):
         seed = value["signed"]["seed"]
         self.assertFalse(seed["failure_launch_log_complete"])
         self.assertTrue(seed["failure_launch_log_partial"])
-        self.assertEqual(seed["failure_launch_log_window_seconds"], 30)
+        self.assertEqual(seed["failure_launch_log_window_seconds"], 90)
         self.assertEqual(seed["failure_launch_log_error"]["type"], "TimeoutExpired")
         for field in ("launch_started_at_utc", "launch_finished_at_utc", "failure_observed_at_utc",
                       "failure_launch_log_started_at_utc", "failure_launch_log_finished_at_utc"):
@@ -1029,7 +1116,7 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(len(logs), 1)
         args = logs[0][0]
         self.assertEqual(args[:3], ["spawn", OWN, "log"])
-        self.assertEqual(args[args.index("--last") + 1], "30s")
+        self.assertEqual(args[args.index("--last") + 1], "90s")
         predicate = args[args.index("--predicate") + 1]
         for part in ("SpringBoard", "runningboardd", "amfid", "installd", BUNDLE):
             self.assertIn(part, predicate)

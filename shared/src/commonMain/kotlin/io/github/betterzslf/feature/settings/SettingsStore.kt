@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.settings
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.storage.KeyValueStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,7 +24,7 @@ class SettingsStore(private val store: KeyValueStore) {
     private val current = MutableStateFlow(runCatching {
         json.decodeFromString<AppSettings>(store.get(KEY) ?: "{}")
     }.getOrElse {
-        mutableError.value = "设置读取失败，暂时使用默认值。"
+        mutableError.value = AppText.Settings.READ_FAILED_USING_DEFAULTS_NOTICE
         AppSettings()
     })
     val settings = current.asStateFlow()
@@ -35,7 +36,7 @@ class SettingsStore(private val store: KeyValueStore) {
             mutableError.value = null
             true
         } catch (_: Exception) {
-            mutableError.value = "设置保存失败，原设置保持不变，请重试。"
+            mutableError.value = AppText.Settings.SAVE_FAILED_PREVIOUS_SETTINGS_RETAINED_NOTICE
             false
         }
     }
@@ -44,7 +45,7 @@ class SettingsStore(private val store: KeyValueStore) {
         mutableError.value = null
         true
     } catch (_: Exception) {
-        mutableError.value = "本机设置清理失败，请重试。"
+        mutableError.value = AppText.Settings.LOCAL_SETTINGS_CLEAR_FAILED_RETRY
         false
     } finally {
         current.value = AppSettings()

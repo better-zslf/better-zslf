@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.profile
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.model.Session
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
@@ -8,9 +9,9 @@ import kotlinx.coroutines.flow.*
 
 enum class ProfileReadIssue { AUTHENTICATION, MALFORMED, FAILED }
 fun profileReadMessage(issue: ProfileReadIssue): String = when (issue) {
-    ProfileReadIssue.AUTHENTICATION -> "会话已变化，请重新登录后读取。"
-    ProfileReadIssue.MALFORMED -> "返回的个人资料格式异常。"
-    ProfileReadIssue.FAILED -> "资料读取未完成，可点按刷新重试。"
+    ProfileReadIssue.AUTHENTICATION -> AppText.Profile.SESSION_CHANGED_RELOGIN_BEFORE_PROFILE_READ
+    ProfileReadIssue.MALFORMED -> AppText.Profile.INVALID_RETURNED_PROFILE_FORMAT
+    ProfileReadIssue.FAILED -> AppText.Profile.PROFILE_READ_INCOMPLETE_REFRESH_TO_RETRY
 }
 sealed interface ProfileAvatarState {
     data object Unrequested : ProfileAvatarState

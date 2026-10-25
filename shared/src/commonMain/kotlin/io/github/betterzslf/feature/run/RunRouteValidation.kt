@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.run
 
+import io.github.betterzslf.core.text.AppText
 import kotlin.math.ceil
 import kotlin.math.max
 
@@ -40,14 +41,14 @@ object RunRouteValidator {
         val cumulative = RunGeo.cumulative(points)
         val length = cumulative.lastOrNull() ?: 0.0
         val average = length / (requirements.durationMillis / 1000.0)
-        if (points.size < 2 || length < 1e-8) issues += RouteIssue(RouteIssueCode.TOO_FEW_POINTS, "路线需要两个不同的坐标点")
-        if (length + 1e-6 < requirements.minimumDistanceMeters) issues += RouteIssue(RouteIssueCode.DISTANCE_TOO_SHORT, "路线距离不足，可沿推荐路径折返补距")
-        if (requirements.maximumDistanceMeters != null && length - 1e-6 > requirements.maximumDistanceMeters) issues += RouteIssue(RouteIssueCode.DISTANCE_TOO_LONG, "路线超过目标距离")
-        if (average > requirements.maximumSpeedMetersPerSecond + 1e-8) issues += RouteIssue(RouteIssueCode.SPEED, "目标用时对应的均速超过上限")
+        if (points.size < 2 || length < 1e-8) issues += RouteIssue(RouteIssueCode.TOO_FEW_POINTS, AppText.Run.ROUTE_REQUIRES_TWO_DISTINCT_COORDINATES)
+        if (length + 1e-6 < requirements.minimumDistanceMeters) issues += RouteIssue(RouteIssueCode.DISTANCE_TOO_SHORT, AppText.Run.ROUTE_TOO_SHORT_RECOMMENDED_PATH_EXTENSION_HINT)
+        if (requirements.maximumDistanceMeters != null && length - 1e-6 > requirements.maximumDistanceMeters) issues += RouteIssue(RouteIssueCode.DISTANCE_TOO_LONG, AppText.Run.ROUTE_EXCEEDS_TARGET_DISTANCE)
+        if (average > requirements.maximumSpeedMetersPerSecond + 1e-8) issues += RouteIssue(RouteIssueCode.SPEED, AppText.Run.TARGET_DURATION_AVERAGE_SPEED_LIMIT_EXCEEDED)
         for (i in 1 until points.size) {
             val gap = cumulative[i] - cumulative[i - 1]
-            if (gap > requirements.maximumGapMeters + 1e-6) issues += RouteIssue(RouteIssueCode.SPARSE, "路线坐标过稀，请先插值加密", i)
-            if (gap < requirements.minimumSpacingMeters) issues += RouteIssue(RouteIssueCode.DENSE, "路线坐标过密，请先抽稀", i)
+            if (gap > requirements.maximumGapMeters + 1e-6) issues += RouteIssue(RouteIssueCode.SPARSE, AppText.Run.ROUTE_COORDINATES_TOO_SPARSE_INTERPOLATE_FIRST, i)
+            if (gap < requirements.minimumSpacingMeters) issues += RouteIssue(RouteIssueCode.DENSE, AppText.Run.ROUTE_COORDINATES_TOO_DENSE_SIMPLIFY_FIRST, i)
         }
         val hits = mutableListOf<CheckpointHit>()
         var cursor = 0.0
@@ -58,8 +59,8 @@ object RunRouteValidator {
                 hits += CheckpointHit(checkpoint.id, hit.first, hit.second)
             } else {
                 val unorderedHit = firstHit(points, cumulative, checkpoint.point, requirements.checkpointRadiusMeters, 0.0)
-                issues += if (unorderedHit != null) RouteIssue(RouteIssueCode.CHECKPOINT_ORDER, "打卡点顺序与路线经过顺序不符，可自动绕行修正", index)
-                    else RouteIssue(RouteIssueCode.MISSING_CHECKPOINT, "路线未覆盖打卡点，可自动绕行修正", index)
+                issues += if (unorderedHit != null) RouteIssue(RouteIssueCode.CHECKPOINT_ORDER, AppText.Run.CHECKPOINT_ORDER_MISMATCH_REROUTING_AVAILABLE, index)
+                    else RouteIssue(RouteIssueCode.MISSING_CHECKPOINT, AppText.Run.CHECKPOINT_NOT_COVERED_REROUTING_AVAILABLE, index)
             }
         }
         return RouteValidationReport(length, average, hits, issues)
@@ -97,7 +98,7 @@ object RunRouteNormalizer {
     fun normalize(points: List<GeoPoint>, minimumSpacingMeters: Double = 1.0, maximumSpacingMeters: Double = 40.0): List<GeoPoint> {
         require(minimumSpacingMeters.isFinite() && minimumSpacingMeters >= 0)
         require(maximumSpacingMeters.isFinite() && maximumSpacingMeters > minimumSpacingMeters)
-        require(points.size <= RunRouteParser.MAX_POINTS) { "路线点数超过本地处理上限" }
+        require(points.size <= RunRouteParser.MAX_POINTS) { AppText.Run.ROUTE_POINT_PROCESSING_LIMIT_EXCEEDED }
         if (points.size < 2) return points.toList()
         val thinned = mutableListOf(points.first())
         for (i in 1 until points.lastIndex) {
@@ -109,7 +110,7 @@ object RunRouteNormalizer {
         for (i in 1 until thinned.size) {
             val length = RunGeo.distanceMeters(thinned[i - 1], thinned[i])
             val piecesDouble = ceil(length / maximumSpacingMeters).coerceAtLeast(1.0)
-            require(piecesDouble <= RunRouteParser.MAX_POINTS - result.size) { "加密后的路线点数超过上限" }
+            require(piecesDouble <= RunRouteParser.MAX_POINTS - result.size) { AppText.Run.INTERPOLATED_ROUTE_POINT_LIMIT_EXCEEDED }
             val pieces = piecesDouble.toInt()
             for (step in 1..pieces) result += RunGeo.interpolate(thinned[i - 1], thinned[i], step.toDouble() / pieces)
         }
@@ -121,11 +122,11 @@ object RunRouteNormalizer {
         require(maximumJoinMeters.isFinite() && maximumJoinMeters > 0)
         val result = mutableListOf<GeoPoint>()
         for (segment in segments.filter { it.isNotEmpty() }) {
-            require(result.isEmpty() || RunGeo.distanceMeters(result.last(), segment.first()) <= maximumJoinMeters + 1e-6) { "路线分段之间存在超过 45 米的断点" }
+            require(result.isEmpty() || RunGeo.distanceMeters(result.last(), segment.first()) <= maximumJoinMeters + 1e-6) { AppText.Run.ROUTE_SEGMENT_JOIN_GAP_LIMIT_EXCEEDED }
             val normalized = normalize(segment)
             val same = result.isNotEmpty() && RunGeo.distanceMeters(result.last(), normalized.first()) < 1e-8
             result += if (same) normalized.drop(1) else normalized
-            require(result.size <= RunRouteParser.MAX_POINTS) { "路线点数超过本地处理上限" }
+            require(result.size <= RunRouteParser.MAX_POINTS) { AppText.Run.ROUTE_POINT_PROCESSING_LIMIT_EXCEEDED }
         }
         return result
     }

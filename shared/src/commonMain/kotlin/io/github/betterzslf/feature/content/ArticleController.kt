@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.content
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,7 +40,7 @@ class ArticleController(private val source: ContentSource, private val owner: St
         val data = (response as ApiResult.Success<JsonElement>).data
         val detail = (data as? JsonObject)?.get("articleDetails") as? JsonObject
         if (detail == null) {
-            mutable.value = mutable.value.copy(loading = false, error = ApiError.Decode("文章详情结构异常"))
+            mutable.value = mutable.value.copy(loading = false, error = ApiError.Decode(AppText.Content.INVALID_ARTICLE_DETAIL_STRUCTURE))
             return
         }
         mutable.value = ArticleState(detail = ContentItem.article(detail), hits = detail.number("hits"), loading = false)
@@ -65,7 +66,7 @@ class ArticleController(private val source: ContentSource, private val owner: St
         val total = when (count) {
             is ApiResult.Failure -> { error = count.error; null }
             is ApiResult.Success -> count.data.number("count")?.takeIf { it >= 0 }
-                ?: run { error = ApiError.Decode("点赞计数结构异常"); null }
+                ?: run { error = ApiError.Decode(AppText.Content.INVALID_LIKE_COUNT_STRUCTURE); null }
         }
         val mine = when (liked) {
             is ApiResult.Success -> true // Shipped page uses code=200 as its liked signal.
@@ -88,7 +89,7 @@ class ArticleController(private val source: ContentSource, private val owner: St
                 is ApiResult.Success -> if (ticket == generation) {
                     val result = response.data.flag("result")
                     val count = response.data.number("count")?.takeIf { it >= 0 }
-                    mutable.value = if (result == null || count == null) mutable.value.copy(likeError = ApiError.Decode("点赞结果需刷新确认"))
+                    mutable.value = if (result == null || count == null) mutable.value.copy(likeError = ApiError.Decode(AppText.Content.LIKE_RESULT_REQUIRES_REFRESH_CONFIRMATION))
                         else mutable.value.copy(liked = result, count = count)
                 }
             }

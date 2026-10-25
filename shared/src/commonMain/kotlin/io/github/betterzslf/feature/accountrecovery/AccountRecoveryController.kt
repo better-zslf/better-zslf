@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.accountrecovery
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.data.PasswordResetLogout
@@ -20,7 +21,7 @@ class AccountRecoveryController(
 ) {
     private val mutable = MutableStateFlow(if (source == null) AccountRecoveryState(
         phase = AccountRecoveryPhase.GUEST,
-        message = "当前三个接口保持有效登录会话前置；匿名找回支持待核实。未登录时发送、核验与重置保持禁用。",
+        message = AppText.Recovery.AUTHENTICATED_SESSION_REQUIRED_GUEST_ACTIONS_DISABLED_HINT,
     ) else AccountRecoveryState())
     val state: StateFlow<AccountRecoveryState> = mutable.asStateFlow()
     private val flight = Mutex()
@@ -49,7 +50,7 @@ class AccountRecoveryController(
     private fun invalidateSession() {
         ++generation; clearIdentity(); sentPhone = null; cooldownUntil = 0
         mutable.value = AccountRecoveryState(phase = AccountRecoveryPhase.SESSION_CHANGED,
-            message = "登录会话已变化，已清除输入和旧核验结果；请重新进入", inputRevision = mutable.value.inputRevision + 1)
+            message = AppText.Recovery.LOGIN_CHANGED_INPUT_AND_VERIFICATION_CLEARED_REENTER, inputRevision = mutable.value.inputRevision + 1)
     }
     fun close() {
         alive = false; ++generation; clearIdentity(); sentPhone = null; cooldownUntil = 0
@@ -86,7 +87,7 @@ class AccountRecoveryController(
             clearIdentity(); sentPhone = null
             val ticket = ++generation
             mutable.value = mutable.value.copy(sending = true, verified = false, maskedPhone = null, preview = null,
-                codeRequested = false, message = "正在请求发送短信，不代表已经送达")
+                codeRequested = false, message = AppText.Recovery.REQUESTING_SMS_DELIVERY_UNCONFIRMED)
             dispatched = true
             val response = call { source!!.sendCode(phone) }
             if (!current()) return false
@@ -96,20 +97,20 @@ class AccountRecoveryController(
                     sentPhone = if (sameInputs) phone else null
                     cooldownUntil = nowMillis() + 60_000L
                     mutable.value = mutable.value.copy(codeRequested = sameInputs, cooldownSeconds = 60,
-                        message = if (sameInputs) "服务已接受短信请求；本地 60 秒倒计时不保证送达，也不表示服务端验证码有效期。"
-                        else "先前输入的短信请求已被服务接受，但输入已变化，请重新核对；本地 60 秒等待不保证送达。")
+                        message = if (sameInputs) AppText.Recovery.SMS_REQUEST_ACCEPTED_LOCAL_COUNTDOWN_NOT_DELIVERY_OR_EXPIRY
+                        else AppText.Recovery.PREVIOUS_SMS_REQUEST_ACCEPTED_INPUT_CHANGED_REVIEW_AGAIN)
                     return sameInputs
                 }
                 is ApiResult.Failure -> {
                     val unknown = response.error !is ApiError.Business && response.error !is ApiError.Validation
                     mutable.value = mutable.value.copy(phase = if (unknown) AccountRecoveryPhase.UNCERTAIN else AccountRecoveryPhase.EDITING,
-                        message = recoveryError(response.error) + if (unknown) "；本页停止发送，请核对实际短信结果，不会自动重发。" else "；本次未启动成功倒计时。")
+                        message = recoveryError(response.error) + if (unknown) AppText.Recovery.SMS_SENDING_STOPPED_VERIFY_DELIVERY_NO_AUTO_RESEND_SUFFIX else AppText.Recovery.SUCCESS_COUNTDOWN_NOT_STARTED_SUFFIX)
                     return false
                 }
             }
         } catch (cancelled: CancellationException) {
             if (dispatched && alive && current()) mutable.value = mutable.value.copy(phase = AccountRecoveryPhase.UNCERTAIN,
-                message = "短信请求过程已中断，是否发送尚未确认；本页停止发送，不会重发")
+                message = AppText.Recovery.SMS_REQUEST_INTERRUPTED_DELIVERY_UNCONFIRMED_NO_RESEND)
             throw cancelled
         } finally {
             if (mutable.value.sending) mutable.value = mutable.value.copy(sending = false)
@@ -121,9 +122,9 @@ class AccountRecoveryController(
         if (!flight.tryLock()) return false
         try {
             if (mutable.value.phase != AccountRecoveryPhase.EDITING || !current()) return false
-            val invalid = recoveryPhoneValidation(phone) ?: if (code.isBlank() || code.any { it.isWhitespace() || it.isISOControl() }) "请输入短信验证码" else null
+            val invalid = recoveryPhoneValidation(phone) ?: if (code.isBlank() || code.any { it.isWhitespace() || it.isISOControl() }) AppText.Recovery.SMS_CODE_REQUIRED else null
             if (invalid != null) { mutable.value = mutable.value.copy(message = invalid); return false }
-            if (sentPhone != phone) { mutable.value = mutable.value.copy(message = "请先为当前手机号明确请求短信，再核验验证码"); return false }
+            if (sentPhone != phone) { mutable.value = mutable.value.copy(message = AppText.Recovery.EXPLICIT_SMS_REQUEST_FOR_CURRENT_PHONE_REQUIRED_BEFORE_VERIFICATION); return false }
             clearIdentity()
             val ticket = ++generation
             mutable.value = mutable.value.copy(verifying = true, verified = false, maskedPhone = null, preview = null, message = null)
@@ -132,12 +133,12 @@ class AccountRecoveryController(
             if (response is ApiResult.Failure) { mutable.value = mutable.value.copy(message = recoveryError(response.error)); return false }
             val id = recoveryVerifiedId((response as ApiResult.Success<JsonElement>).data)
             if (id == null) {
-                mutable.value = mutable.value.copy(message = "核验响应缺少已证的 user.id；保持未验证，不以当前登录账号或手机号代替")
+                mutable.value = mutable.value.copy(message = AppText.Recovery.VERIFIED_USER_ID_MISSING_NO_IDENTITY_SUBSTITUTION)
                 return false
             }
             verifiedPhone = phone; verifiedCode = code; verifiedId = id
             mutable.value = mutable.value.copy(verified = true, maskedPhone = recoveryMask(phone),
-                message = "短信核验已返回有效目标身份；仅用于本次学校登录密码重置")
+                message = AppText.Recovery.SMS_VERIFIED_TARGET_IDENTITY_FOR_CURRENT_PASSWORD_RESET_ONLY)
             return true
         } finally {
             if (mutable.value.verifying) mutable.value = mutable.value.copy(verifying = false)
@@ -149,7 +150,7 @@ class AccountRecoveryController(
         if (mutable.value.phase != AccountRecoveryPhase.EDITING || flight.isLocked || mutable.value.busy || attempted || !current()) return false
         val id = verifiedId
         if (id == null || !mutable.value.verified || phone != verifiedPhone || code != verifiedCode) {
-            mutable.value = mutable.value.copy(message = "请先核验当前手机号与验证码；编辑后原身份即作废")
+            mutable.value = mutable.value.copy(message = AppText.Recovery.VERIFY_CURRENT_PHONE_AND_CODE_EDIT_INVALIDATES_IDENTITY)
             return false
         }
         recoveryPasswordValidation(password, confirmation)?.let { mutable.value = mutable.value.copy(message = it); return false }
@@ -171,7 +172,7 @@ class AccountRecoveryController(
             attempted = true
             clearIdentity(); sentPhone = null; cooldownUntil = 0
             mutable.value = mutable.value.copy(phase = AccountRecoveryPhase.RESETTING, verified = false,
-                codeRequested = false, cooldownSeconds = 0, message = "正在重置学校登录密码；本次仅发送一次")
+                codeRequested = false, cooldownSeconds = 0, message = AppText.Recovery.RESETTING_SCHOOL_PASSWORD_SINGLE_REQUEST)
             if (!current()) return false
             dispatched = true
             val outcome = try { source!!.reset(attempt.id, attempt.password) }
@@ -188,8 +189,8 @@ class AccountRecoveryController(
                         phase = if (outcome.logout == PasswordResetLogout.CLEAR_FAILED) AccountRecoveryPhase.CLEANUP_WARNING else AccountRecoveryPhase.COMPLETED,
                         preview = null, maskedPhone = null, inputRevision = mutable.value.inputRevision + 1,
                         message = if (outcome.logout == PasswordResetLogout.CLEAR_FAILED)
-                            "服务已确认重置成功，内存会话已退出，但本机持久会话删除失败；请处理本机会话记录。不要再次重置。"
-                        else "服务已确认学校登录密码重置成功，当前会话已退出；请用新密码登录。本页不重复提交。")
+                            AppText.Recovery.RESET_CONFIRMED_SESSION_EXITED_PERSISTED_SESSION_DELETE_FAILED
+                        else AppText.Recovery.SCHOOL_PASSWORD_RESET_CONFIRMED_LOG_IN_AGAIN_NO_RESUBMIT)
                     onAccepted(outcome.logout)
                     return true
                 }
@@ -197,13 +198,13 @@ class AccountRecoveryController(
                     if (!current()) return false
                     val explicit = outcome.error is ApiError.Business || outcome.error is ApiError.Validation
                     mutable.value = mutable.value.copy(phase = if (explicit) AccountRecoveryPhase.FAILED else AccountRecoveryPhase.UNCERTAIN,
-                        message = recoveryError(outcome.error) + if (explicit) "；本次停止，不自动重置。" else "；服务可能已接收，请先核对实际结果，本页不会再次重置。")
+                        message = recoveryError(outcome.error) + if (explicit) AppText.Recovery.ATTEMPT_STOPPED_NO_AUTOMATIC_RESET_SUFFIX else AppText.Recovery.POSSIBLY_ACCEPTED_VERIFY_RESULT_NO_REPEAT_RESET_SUFFIX)
                     return false
                 }
             }
         } catch (cancelled: CancellationException) {
             if (dispatched && alive && current()) mutable.value = mutable.value.copy(phase = AccountRecoveryPhase.UNCERTAIN,
-                message = "重置过程已中断，是否接受尚未确认；请核对实际结果，本页不再发送")
+                message = AppText.Recovery.RESET_INTERRUPTED_ACCEPTANCE_UNCONFIRMED_NO_RESEND)
             throw cancelled
         } finally { flight.unlock() }
     }

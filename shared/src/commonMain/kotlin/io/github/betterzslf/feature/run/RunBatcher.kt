@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.run
 
+import io.github.betterzslf.core.text.AppText
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -9,7 +10,7 @@ import kotlinx.serialization.json.put
 
 @Serializable
 data class RunMetadata(val trid: String, val scheduleId: String, val userId: String, val userName: String = "", val imgUrl: String = "") {
-    init { require(trid.isNotBlank() && scheduleId.isNotBlank() && userId.isNotBlank()) { "跑步任务、计划与用户标识均须非空" } }
+    init { require(trid.isNotBlank() && scheduleId.isNotBlank() && userId.isNotBlank()) { AppText.Run.TASK_SCHEDULE_AND_USER_IDS_REQUIRED } }
 }
 
 @Serializable
@@ -62,8 +63,8 @@ object RunBatcher {
      * batch never has to be overwritten with finishType=1. Calling again with the same samples is idempotent.
      */
     fun create(metadata: RunMetadata, track: GeneratedRunTrack, batchIdPrefix: String, finished: Boolean = true): List<RunUploadBatch> {
-        require(batchIdPrefix.isNotBlank() && batchIdPrefix.length <= 128) { "批次前缀须为稳定且非空的本地标识" }
-        require(RunTrackValidator.validate(track).valid) { "轨迹一致性校验未通过" }
+        require(batchIdPrefix.isNotBlank() && batchIdPrefix.length <= 128) { AppText.Run.BATCH_PREFIX_REQUIRES_STABLE_NONEMPTY_LOCAL_ID }
+        require(RunTrackValidator.validate(track).valid) { AppText.Run.TRACK_CONSISTENCY_VALIDATION_FAILED }
         val count = if (finished) track.points.size else ((track.points.size - 1) / BATCH_SIZE) * BATCH_SIZE
         if (count == 0) return emptyList()
         var cumulativeDistance = 0.0
@@ -93,24 +94,24 @@ object RunBatcher {
 
     internal fun validateBatch(batch: RunUploadBatch): List<RunCoordinate> {
         val payload = batch.payload
-        require(batch.index >= 0 && batch.batchId.isNotBlank() && batch.trid.isNotBlank()) { "批次标识异常" }
-        require(payload.userId.isNotBlank() && payload.scheduleId.isNotBlank()) { "批次用户或计划标识为空" }
-        require(payload.finishType in listOf("0", "1")) { "批次完成标记异常" }
-        require(payload.startTime >= 0 && payload.endTime >= payload.startTime && payload.runTime == payload.endTime - payload.startTime) { "批次时间与累计用时不一致" }
+        require(batch.index >= 0 && batch.batchId.isNotBlank() && batch.trid.isNotBlank()) { AppText.Run.INVALID_BATCH_IDENTIFIER }
+        require(payload.userId.isNotBlank() && payload.scheduleId.isNotBlank()) { AppText.Run.BATCH_USER_OR_SCHEDULE_ID_EMPTY }
+        require(payload.finishType in listOf("0", "1")) { AppText.Run.INVALID_BATCH_COMPLETION_MARKER }
+        require(payload.startTime >= 0 && payload.endTime >= payload.startTime && payload.runTime == payload.endTime - payload.startTime) { AppText.Run.BATCH_TIME_CUMULATIVE_DURATION_MISMATCH }
         val distance = payload.runLength.toDoubleOrNull()
         val speed = payload.speed.toDoubleOrNull()
-        require(distance != null && distance.isFinite() && distance >= 0 && speed != null && speed.isFinite() && speed in 0.0..5.000001) { "批次距离或速度异常" }
-        require(kotlin.math.abs(speed - if (payload.runTime == 0L) 0.0 else distance / (payload.runTime / 1000.0)) < 1e-6) { "批次均速与距离用时不一致" }
+        require(distance != null && distance.isFinite() && distance >= 0 && speed != null && speed.isFinite() && speed in 0.0..5.000001) { AppText.Run.INVALID_BATCH_DISTANCE_OR_SPEED }
+        require(kotlin.math.abs(speed - if (payload.runTime == 0L) 0.0 else distance / (payload.runTime / 1000.0)) < 1e-6) { AppText.Run.BATCH_AVERAGE_SPEED_DISTANCE_DURATION_MISMATCH }
         val coordinates = json.decodeFromString<List<RunCoordinate>>(payload.coordinate)
-        require(coordinates.size in 1..BATCH_SIZE && (payload.finishType == "1" || coordinates.size == BATCH_SIZE)) { "非末块须为 5 个点，末块须为 1 至 5 个点" }
-        require(coordinates.last().locatetime == payload.endTime) { "末点时间与批次结束时间不一致" }
+        require(coordinates.size in 1..BATCH_SIZE && (payload.finishType == "1" || coordinates.size == BATCH_SIZE)) { AppText.Run.BATCH_POINT_COUNT_CONSTRAINT }
+        require(coordinates.last().locatetime == payload.endTime) { AppText.Run.LAST_POINT_BATCH_END_TIME_MISMATCH }
         for ((index, point) in coordinates.withIndex()) {
             val parts = point.location.split(',')
-            require(parts.size == 2) { "轨迹坐标格式异常" }
+            require(parts.size == 2) { AppText.Run.INVALID_TRACK_COORDINATE_FORMAT }
             GeoPoint(parts[0].toDouble(), parts[1].toDouble())
-            require(point.locatetime in payload.startTime..payload.endTime && point.count.isFinite() && kotlin.math.abs(point.count - (point.locatetime - payload.startTime) / 1000.0) < 1e-6) { "轨迹累计秒与时间戳不一致" }
-            require(point.dis.isFinite() && point.dis >= 0) { "轨迹距离异常" }
-            if (index > 0) require(point.locatetime > coordinates[index - 1].locatetime) { "批次时间戳应严格递增" }
+            require(point.locatetime in payload.startTime..payload.endTime && point.count.isFinite() && kotlin.math.abs(point.count - (point.locatetime - payload.startTime) / 1000.0) < 1e-6) { AppText.Run.TRACK_CUMULATIVE_SECONDS_TIMESTAMP_MISMATCH }
+            require(point.dis.isFinite() && point.dis >= 0) { AppText.Run.INVALID_TRACK_DISTANCE }
+            if (index > 0) require(point.locatetime > coordinates[index - 1].locatetime) { AppText.Run.BATCH_TIMESTAMPS_MUST_STRICTLY_INCREASE }
         }
         return coordinates
     }

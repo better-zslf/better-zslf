@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.runui
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.result.ApiResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -42,7 +43,7 @@ class RunRecordController(
     private val errandScheduleId: String,
     private val pageSize: Int = 10,
 ) {
-    init { require(pageSize > 0) { "分页条数须为正数" } }
+    init { require(pageSize > 0) { AppText.Common.PAGE_SIZE_MUST_BE_POSITIVE } }
 
     private data class PageState(
         val offset: Int = 0,
@@ -76,7 +77,7 @@ class RunRecordController(
             mutable.value = mutable.value.copy(
                 loading = false,
                 end = false,
-                error = if (ownerId.isBlank()) "缺少用户标识，请登录后刷新" else "缺少真实排期标识，请选择排期后刷新",
+                error = if (ownerId.isBlank()) AppText.Auth.USER_ID_MISSING_LOG_IN_AND_REFRESH else AppText.Run.REAL_SCHEDULE_ID_MISSING_SELECT_AND_REFRESH,
                 moreError = null,
             )
             return@withLock null
@@ -101,7 +102,7 @@ class RunRecordController(
                 throw cancelled
             } catch (_: Exception) {
                 // Never publish exception messages, URLs, raw responses or credentials.
-                failed(request.before, "跑步记录加载失败，请重试")
+                failed(request.before, AppText.Run.RUN_RECORD_LOAD_FAILED_RETRY)
             }
             currentCoroutineContext().ensureActive()
             control.withLock {
@@ -123,21 +124,21 @@ class RunRecordController(
 
     private fun failed(before: PageState, problem: String, warnings: List<String> = emptyList()): PageState =
         before.copy(
-            problem = problem.ifBlank { "跑步记录加载失败，请重试" },
+            problem = problem.ifBlank { AppText.Run.RUN_RECORD_LOAD_FAILED_RETRY },
             refreshProblem = before.refreshPending,
             warnings = (before.warnings + warnings).distinct(),
         )
 
     private fun consume(before: PageState, offset: Int, rows: RunRows<RunRecordItem>): PageState {
-        if (!rows.recognized) return failed(before, "记录响应格式未识别，请重试", rows.warnings)
+        if (!rows.recognized) return failed(before, AppText.Run.UNRECOGNIZED_RECORD_RESPONSE_RETRY, rows.warnings)
         val base = if (before.refreshPending) PageState(refreshPending = false) else before
         val keyed = rows.items.map { item -> identity(item) to item }
         val noProgress = rows.rawSize > 0 && keyed.none { (key, _) -> key !in base.rows }
         val warnings = (base.warnings + rows.warnings).toMutableList()
-        if (noProgress) warnings += "offset=$offset：响应重复或没有可识别的新记录，服务端可能忽略 offset；已停止翻页"
-        if (rows.rawSize > pageSize) warnings += "offset=$offset：服务端返回条数超过 limit，按原始条数推进 offset"
+        if (noProgress) warnings += AppText.Run.recordPaginationRepeated((offset))
+        if (rows.rawSize > pageSize) warnings += AppText.Run.recordPaginationOversized((offset))
         val next = offset.toLong() + rows.rawSize.toLong()
-        if (next > Int.MAX_VALUE) warnings += "offset 超出整数范围，已停止翻页"
+        if (next > Int.MAX_VALUE) warnings += AppText.Run.PAGINATION_OFFSET_INTEGER_RANGE_EXCEEDED_STOPPED
         val merged = linkedMapOf<String, RunRecordItem>()
         merged.putAll(base.rows)
         // Latest duplicate contents win, but existing positions and real trid are preserved.

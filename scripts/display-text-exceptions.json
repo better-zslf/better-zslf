@@ -288,6 +288,834 @@
       "category": "lookup",
       "reason": "Protocol document id retained in approved wire/display pair; visible label is catalog-owned",
       "owner": "task38/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/content/ArticleController.kt",
+      "kind": "string",
+      "source": "\"此用户没有点赞\"",
+      "context": {
+        "before": "r.code == 400 && liked.error.message.startsWith(",
+        "after": ")) false\n                else { error = liked.er"
+      },
+      "position": {
+        "start": 3569,
+        "end": 3578,
+        "line": 73,
+        "column": 135
+      },
+      "category": "protocol",
+      "reason": "Exact code400 business-message prefix check for no-like state; never a translated display decision",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/BookingContracts.kt",
+      "kind": "string",
+      "source": "\"团体\"",
+      "context": {
+        "before": "eacher\", teacherName)\n        put(\"applicants\", ",
+        "after": ")\n        put(\"objectId\", \"e872dbd2faddcb4c70d54"
+      },
+      "position": {
+        "start": 2220,
+        "end": 2224,
+        "line": 44,
+        "column": 27
+      },
+      "category": "protocol",
+      "reason": "Exact applicants request wire value",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/BookingContracts.kt",
+      "kind": "string",
+      "source": "\"男\"",
+      "context": {
+        "before": "DENTITY_CARD_FORMAT)\n        if (sex !in listOf(",
+        "after": ", \"女\")) add(AppText.Booking.SEX_SELECTION_REQUIR"
+      },
+      "position": {
+        "start": 3399,
+        "end": 3402,
+        "line": 74,
+        "column": 28
+      },
+      "category": "protocol",
+      "reason": "Exact sex validation aliases; request sex remains unchanged",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/BookingContracts.kt",
+      "kind": "string",
+      "source": "\"女\"",
+      "context": {
+        "before": "TY_CARD_FORMAT)\n        if (sex !in listOf(\"男\", ",
+        "after": ")) add(AppText.Booking.SEX_SELECTION_REQUIRED)\n "
+      },
+      "position": {
+        "start": 3404,
+        "end": 3407,
+        "line": 74,
+        "column": 33
+      },
+      "category": "protocol",
+      "reason": "Exact sex validation aliases; request sex remains unchanged",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/BookingContracts.kt",
+      "kind": "string",
+      "source": "\"上午\"",
+      "context": {
+        "before": "NG_DATE_REQUIRED)\n        if (period !in listOf(",
+        "after": ", \"下午\")) add(AppText.Booking.MORNING_OR_AFTERNOO"
+      },
+      "position": {
+        "start": 3570,
+        "end": 3574,
+        "line": 76,
+        "column": 31
+      },
+      "category": "protocol",
+      "reason": "Exact period validation aliases; request period remains unchanged",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/BookingContracts.kt",
+      "kind": "string",
+      "source": "\"下午\"",
+      "context": {
+        "before": "E_REQUIRED)\n        if (period !in listOf(\"上午\", ",
+        "after": ")) add(AppText.Booking.MORNING_OR_AFTERNOON_SELE"
+      },
+      "position": {
+        "start": 3576,
+        "end": 3580,
+        "line": 76,
+        "column": 37
+      },
+      "category": "protocol",
+      "reason": "Exact period validation aliases; request period remains unchanged",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"日\"",
+      "context": {
+        "before": "S_REQUIRES_REVIEW)\n    val weekdayText = listOf(",
+        "after": ", \"一\", \"二\", \"三\", \"四\", \"五\", \"六\").getOrNull(weekda"
+      },
+      "position": {
+        "start": 1765,
+        "end": 1768,
+        "line": 29,
+        "column": 30
+      },
+      "category": "protocol",
+      "reason": "Weekday text constructs exact server counts dictionary key, not display weekday",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"一\"",
+      "context": {
+        "before": "UIRES_REVIEW)\n    val weekdayText = listOf(\"日\", ",
+        "after": ", \"二\", \"三\", \"四\", \"五\", \"六\").getOrNull(weekday ?: "
+      },
+      "position": {
+        "start": 1770,
+        "end": 1773,
+        "line": 29,
+        "column": 35
+      },
+      "category": "protocol",
+      "reason": "Weekday text constructs exact server counts dictionary key, not display weekday",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"二\"",
+      "context": {
+        "before": "_REVIEW)\n    val weekdayText = listOf(\"日\", \"一\", ",
+        "after": ", \"三\", \"四\", \"五\", \"六\").getOrNull(weekday ?: -1).o"
+      },
+      "position": {
+        "start": 1775,
+        "end": 1778,
+        "line": 29,
+        "column": 40
+      },
+      "category": "protocol",
+      "reason": "Weekday text constructs exact server counts dictionary key, not display weekday",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"三\"",
+      "context": {
+        "before": "EW)\n    val weekdayText = listOf(\"日\", \"一\", \"二\", ",
+        "after": ", \"四\", \"五\", \"六\").getOrNull(weekday ?: -1).orEmpt"
+      },
+      "position": {
+        "start": 1780,
+        "end": 1783,
+        "line": 29,
+        "column": 45
+      },
+      "category": "protocol",
+      "reason": "Weekday text constructs exact server counts dictionary key, not display weekday",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"四\"",
+      "context": {
+        "before": "   val weekdayText = listOf(\"日\", \"一\", \"二\", \"三\", ",
+        "after": ", \"五\", \"六\").getOrNull(weekday ?: -1).orEmpty()\n "
+      },
+      "position": {
+        "start": 1785,
+        "end": 1788,
+        "line": 29,
+        "column": 50
+      },
+      "category": "protocol",
+      "reason": "Weekday text constructs exact server counts dictionary key, not display weekday",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"五\"",
+      "context": {
+        "before": "l weekdayText = listOf(\"日\", \"一\", \"二\", \"三\", \"四\", ",
+        "after": ", \"六\").getOrNull(weekday ?: -1).orEmpty()\n    va"
+      },
+      "position": {
+        "start": 1790,
+        "end": 1793,
+        "line": 29,
+        "column": 55
+      },
+      "category": "protocol",
+      "reason": "Weekday text constructs exact server counts dictionary key, not display weekday",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"六\"",
+      "context": {
+        "before": "kdayText = listOf(\"日\", \"一\", \"二\", \"三\", \"四\", \"五\", ",
+        "after": ").getOrNull(weekday ?: -1).orEmpty()\n    val day"
+      },
+      "position": {
+        "start": 1795,
+        "end": 1798,
+        "line": 29,
+        "column": 60
+      },
+      "category": "protocol",
+      "reason": "Weekday text constructs exact server counts dictionary key, not display weekday",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"男\"",
+      "context": {
+        "before": "ext)\"] }\n    val fields = when {\n        sex == ",
+        "after": " && period == \"上午\" -> \"mlbCount\" to \"mLimitBoy\"\n"
+      },
+      "position": {
+        "start": 1965,
+        "end": 1968,
+        "line": 32,
+        "column": 16
+      },
+      "category": "protocol",
+      "reason": "Sex and period exact branches select capacity and limit fields",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"上午\"",
+      "context": {
+        "before": "fields = when {\n        sex == \"男\" && period == ",
+        "after": " -> \"mlbCount\" to \"mLimitBoy\"\n        sex == \"男\""
+      },
+      "position": {
+        "start": 1982,
+        "end": 1986,
+        "line": 32,
+        "column": 33
+      },
+      "category": "protocol",
+      "reason": "Sex and period exact branches select capacity and limit fields",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"男\"",
+      "context": {
+        "before": "上午\" -> \"mlbCount\" to \"mLimitBoy\"\n        sex == ",
+        "after": " && period == \"下午\" -> \"albCount\" to \"aLimitBoy\"\n"
+      },
+      "position": {
+        "start": 2031,
+        "end": 2034,
+        "line": 33,
+        "column": 16
+      },
+      "category": "protocol",
+      "reason": "Sex and period exact branches select capacity and limit fields",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"下午\"",
+      "context": {
+        "before": " to \"mLimitBoy\"\n        sex == \"男\" && period == ",
+        "after": " -> \"albCount\" to \"aLimitBoy\"\n        sex == \"女\""
+      },
+      "position": {
+        "start": 2048,
+        "end": 2052,
+        "line": 33,
+        "column": 33
+      },
+      "category": "protocol",
+      "reason": "Sex and period exact branches select capacity and limit fields",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"女\"",
+      "context": {
+        "before": "下午\" -> \"albCount\" to \"aLimitBoy\"\n        sex == ",
+        "after": " && period == \"上午\" -> \"mlgCount\" to \"mLimitGirls"
+      },
+      "position": {
+        "start": 2097,
+        "end": 2100,
+        "line": 34,
+        "column": 16
+      },
+      "category": "protocol",
+      "reason": "Sex and period exact branches select capacity and limit fields",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"上午\"",
+      "context": {
+        "before": " to \"aLimitBoy\"\n        sex == \"女\" && period == ",
+        "after": " -> \"mlgCount\" to \"mLimitGirls\"\n        sex == \""
+      },
+      "position": {
+        "start": 2114,
+        "end": 2118,
+        "line": 34,
+        "column": 33
+      },
+      "category": "protocol",
+      "reason": "Sex and period exact branches select capacity and limit fields",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"女\"",
+      "context": {
+        "before": "\" -> \"mlgCount\" to \"mLimitGirls\"\n        sex == ",
+        "after": " && period == \"下午\" -> \"algCount\" to \"aLimitGirls"
+      },
+      "position": {
+        "start": 2165,
+        "end": 2168,
+        "line": 35,
+        "column": 16
+      },
+      "category": "protocol",
+      "reason": "Sex and period exact branches select capacity and limit fields",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/FitnessSchedule.kt",
+      "kind": "string",
+      "source": "\"下午\"",
+      "context": {
+        "before": "o \"mLimitGirls\"\n        sex == \"女\" && period == ",
+        "after": " -> \"algCount\" to \"aLimitGirls\"\n        else -> "
+      },
+      "position": {
+        "start": 2182,
+        "end": 2186,
+        "line": 35,
+        "column": 33
+      },
+      "category": "protocol",
+      "reason": "Sex and period exact branches select capacity and limit fields",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/content/ContentModels.kt",
+      "kind": "string",
+      "source": "\"校园跑\"",
+      "context": {
+        "before": "ng): Pair<String, String>? = when (label) {\n    ",
+        "after": ", \"校园运动\" -> \"runs\" to \"\"\n    \"校园体测\", \"体测报名\" -> \""
+      },
+      "position": {
+        "start": 5899,
+        "end": 5904,
+        "line": 106,
+        "column": 5
+      },
+      "category": "lookup",
+      "reason": "Exact route/service/column/document label whitelist and original query/document id forwarding",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/content/ContentModels.kt",
+      "kind": "string",
+      "source": "\"校园运动\"",
+      "context": {
+        "before": "ir<String, String>? = when (label) {\n    \"校园跑\", ",
+        "after": " -> \"runs\" to \"\"\n    \"校园体测\", \"体测报名\" -> \"fitness\""
+      },
+      "position": {
+        "start": 5906,
+        "end": 5912,
+        "line": 106,
+        "column": 12
+      },
+      "category": "lookup",
+      "reason": "Exact route/service/column/document label whitelist and original query/document id forwarding",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/content/ContentModels.kt",
+      "kind": "string",
+      "source": "\"校园体测\"",
+      "context": {
+        "before": "(label) {\n    \"校园跑\", \"校园运动\" -> \"runs\" to \"\"\n    ",
+        "after": ", \"体测报名\" -> \"fitness\" to \"\"\n    \"场馆预约\" -> \"venue"
+      },
+      "position": {
+        "start": 5933,
+        "end": 5939,
+        "line": 107,
+        "column": 5
+      },
+      "category": "lookup",
+      "reason": "Exact route/service/column/document label whitelist and original query/document id forwarding",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/content/ContentModels.kt",
+      "kind": "string",
+      "source": "\"体测报名\"",
+      "context": {
+        "before": "{\n    \"校园跑\", \"校园运动\" -> \"runs\" to \"\"\n    \"校园体测\", ",
+        "after": " -> \"fitness\" to \"\"\n    \"场馆预约\" -> \"venues\" to \"\""
+      },
+      "position": {
+        "start": 5941,
+        "end": 5947,
+        "line": 107,
+        "column": 13
+      },
+      "category": "lookup",
+      "reason": "Exact route/service/column/document label whitelist and original query/document id forwarding",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/content/ContentModels.kt",
+      "kind": "string",
+      "source": "\"场馆预约\"",
+      "context": {
+        "before": "to \"\"\n    \"校园体测\", \"体测报名\" -> \"fitness\" to \"\"\n    ",
+        "after": " -> \"venues\" to \"\"\n    \"校园网\", \"宽带更正\" -> \"campusn"
+      },
+      "position": {
+        "start": 5971,
+        "end": 5977,
+        "line": 108,
+        "column": 5
+      },
+      "category": "lookup",
+      "reason": "Exact route/service/column/document label whitelist and original query/document id forwarding",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/content/ContentModels.kt",
+      "kind": "string",
+      "source": "\"校园网\"",
+      "context": {
+        "before": "fitness\" to \"\"\n    \"场馆预约\" -> \"venues\" to \"\"\n    ",
+        "after": ", \"宽带更正\" -> \"campusnet\" to \"\"\n    \"学校动态\", \"新生攻略\""
+      },
+      "position": {
+        "start": 6000,
+        "end": 6005,
+        "line": 109,
+        "column": 5
+      },
+      "category": "lookup",
+      "reason": "Exact route/service/column/document label whitelist and original query/document id forwarding",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/content/ContentModels.kt",
+      "kind": "string",
+      "source": "\"宽带更正\"",
+      "context": {
+        "before": "\" to \"\"\n    \"场馆预约\" -> \"venues\" to \"\"\n    \"校园网\", ",
+        "after": " -> \"campusnet\" to \"\"\n    \"学校动态\", \"新生攻略\" -> \"col"
+      },
+      "position": {
+        "start": 6007,
+        "end": 6013,
+        "line": 109,
+        "column": 12
+      },
+      "category": "lookup",
+      "reason": "Exact route/service/column/document label whitelist and original query/document id forwarding",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/content/ContentModels.kt",
+      "kind": "string",
+      "source": "\"学校动态\"",
+      "context": {
+        "before": "o \"\"\n    \"校园网\", \"宽带更正\" -> \"campusnet\" to \"\"\n    ",
+        "after": ", \"新生攻略\" -> \"columns\" to label\n    \"用户协议\", \"隐私政策"
+      },
+      "position": {
+        "start": 6039,
+        "end": 6045,
+        "line": 110,
+        "column": 5
+      },
+      "category": "lookup",
+      "reason": "Exact route/service/column/document label whitelist and original query/document id forwarding",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/content/ContentModels.kt",
+      "kind": "string",
+      "source": "\"新生攻略\"",
+      "context": {
+        "before": " \"校园网\", \"宽带更正\" -> \"campusnet\" to \"\"\n    \"学校动态\", ",
+        "after": " -> \"columns\" to label\n    \"用户协议\", \"隐私政策\", \"使用帮助"
+      },
+      "position": {
+        "start": 6047,
+        "end": 6053,
+        "line": 110,
+        "column": 13
+      },
+      "category": "lookup",
+      "reason": "Exact route/service/column/document label whitelist and original query/document id forwarding",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/content/ContentModels.kt",
+      "kind": "string",
+      "source": "\"用户协议\"",
+      "context": {
+        "before": "\"\"\n    \"学校动态\", \"新生攻略\" -> \"columns\" to label\n    ",
+        "after": ", \"隐私政策\", \"使用帮助\" -> \"document\" to label\n    else"
+      },
+      "position": {
+        "start": 6080,
+        "end": 6086,
+        "line": 111,
+        "column": 5
+      },
+      "category": "lookup",
+      "reason": "Exact route/service/column/document label whitelist and original query/document id forwarding",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/content/ContentModels.kt",
+      "kind": "string",
+      "source": "\"隐私政策\"",
+      "context": {
+        "before": "学校动态\", \"新生攻略\" -> \"columns\" to label\n    \"用户协议\", ",
+        "after": ", \"使用帮助\" -> \"document\" to label\n    else -> null"
+      },
+      "position": {
+        "start": 6088,
+        "end": 6094,
+        "line": 111,
+        "column": 13
+      },
+      "category": "lookup",
+      "reason": "Exact route/service/column/document label whitelist and original query/document id forwarding",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/content/ContentModels.kt",
+      "kind": "string",
+      "source": "\"使用帮助\"",
+      "context": {
+        "before": "新生攻略\" -> \"columns\" to label\n    \"用户协议\", \"隐私政策\", ",
+        "after": " -> \"document\" to label\n    else -> null\n}\n"
+      },
+      "position": {
+        "start": 6096,
+        "end": 6102,
+        "line": 111,
+        "column": 21
+      },
+      "category": "lookup",
+      "reason": "Exact route/service/column/document label whitelist and original query/document id forwarding",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/BookingData.kt",
+      "kind": "string",
+      "source": "\"已满\"",
+      "context": {
+        "before": "   return when {\n        text.any { it in setOf(",
+        "after": ", \"已约满\", \"约满\", \"关闭\", \"已关闭\", \"不可预约\", \"full\", \"clo"
+      },
+      "position": {
+        "start": 5249,
+        "end": 5253,
+        "line": 102,
+        "column": 32
+      },
+      "category": "protocol",
+      "reason": "Exact server availability status aliases parsed as FULL/AVAILABLE",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/BookingData.kt",
+      "kind": "string",
+      "source": "\"已约满\"",
+      "context": {
+        "before": "urn when {\n        text.any { it in setOf(\"已满\", ",
+        "after": ", \"约满\", \"关闭\", \"已关闭\", \"不可预约\", \"full\", \"closed\", \""
+      },
+      "position": {
+        "start": 5255,
+        "end": 5260,
+        "line": 102,
+        "column": 38
+      },
+      "category": "protocol",
+      "reason": "Exact server availability status aliases parsed as FULL/AVAILABLE",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/BookingData.kt",
+      "kind": "string",
+      "source": "\"约满\"",
+      "context": {
+        "before": "n {\n        text.any { it in setOf(\"已满\", \"已约满\", ",
+        "after": ", \"关闭\", \"已关闭\", \"不可预约\", \"full\", \"closed\", \"unavai"
+      },
+      "position": {
+        "start": 5262,
+        "end": 5266,
+        "line": 102,
+        "column": 45
+      },
+      "category": "protocol",
+      "reason": "Exact server availability status aliases parsed as FULL/AVAILABLE",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/BookingData.kt",
+      "kind": "string",
+      "source": "\"关闭\"",
+      "context": {
+        "before": "      text.any { it in setOf(\"已满\", \"已约满\", \"约满\", ",
+        "after": ", \"已关闭\", \"不可预约\", \"full\", \"closed\", \"unavailable\""
+      },
+      "position": {
+        "start": 5268,
+        "end": 5272,
+        "line": 102,
+        "column": 51
+      },
+      "category": "protocol",
+      "reason": "Exact server availability status aliases parsed as FULL/AVAILABLE",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/BookingData.kt",
+      "kind": "string",
+      "source": "\"已关闭\"",
+      "context": {
+        "before": "text.any { it in setOf(\"已满\", \"已约满\", \"约满\", \"关闭\", ",
+        "after": ", \"不可预约\", \"full\", \"closed\", \"unavailable\") } -> "
+      },
+      "position": {
+        "start": 5274,
+        "end": 5279,
+        "line": 102,
+        "column": 57
+      },
+      "category": "protocol",
+      "reason": "Exact server availability status aliases parsed as FULL/AVAILABLE",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/BookingData.kt",
+      "kind": "string",
+      "source": "\"不可预约\"",
+      "context": {
+        "before": "y { it in setOf(\"已满\", \"已约满\", \"约满\", \"关闭\", \"已关闭\", ",
+        "after": ", \"full\", \"closed\", \"unavailable\") } -> SlotAvai"
+      },
+      "position": {
+        "start": 5281,
+        "end": 5287,
+        "line": 102,
+        "column": 64
+      },
+      "category": "protocol",
+      "reason": "Exact server availability status aliases parsed as FULL/AVAILABLE",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/BookingData.kt",
+      "kind": "string",
+      "source": "\"可预约\"",
+      "context": {
+        "before": "vailability.FULL\n        text.any { it in setOf(",
+        "after": ", \"空闲\", \"available\") } -> SlotAvailability.AVAIL"
+      },
+      "position": {
+        "start": 5380,
+        "end": 5385,
+        "line": 103,
+        "column": 32
+      },
+      "category": "protocol",
+      "reason": "Exact server availability status aliases parsed as FULL/AVAILABLE",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/booking/BookingData.kt",
+      "kind": "string",
+      "source": "\"空闲\"",
+      "context": {
+        "before": "lity.FULL\n        text.any { it in setOf(\"可预约\", ",
+        "after": ", \"available\") } -> SlotAvailability.AVAILABLE\n "
+      },
+      "position": {
+        "start": 5387,
+        "end": 5391,
+        "line": 103,
+        "column": 39
+      },
+      "category": "protocol",
+      "reason": "Exact server availability status aliases parsed as FULL/AVAILABLE",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/runui/RunData.kt",
+      "kind": "string",
+      "source": "\"米\"",
+      "context": {
+        "before": "     \"m\", \"metre\", \"metres\", \"meter\", \"meters\", ",
+        "after": " -> 1.0\n            \"km\", \"kilometre\", \"kilometr"
+      },
+      "position": {
+        "start": 13734,
+        "end": 13737,
+        "line": 253,
+        "column": 56
+      },
+      "category": "protocol",
+      "reason": "Exact distanceUnit aliases select metres/kilometres scale; display uses are independent",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/runui/RunData.kt",
+      "kind": "string",
+      "source": "\"千米\"",
+      "context": {
+        "before": "etre\", \"kilometres\", \"kilometer\", \"kilometers\", ",
+        "after": ", \"公里\" -> 1000.0\n            else -> {\n         "
+      },
+      "position": {
+        "start": 13817,
+        "end": 13821,
+        "line": 254,
+        "column": 73
+      },
+      "category": "protocol",
+      "reason": "Exact distanceUnit aliases select metres/kilometres scale; display uses are independent",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/runui/RunData.kt",
+      "kind": "string",
+      "source": "\"公里\"",
+      "context": {
+        "before": " \"kilometres\", \"kilometer\", \"kilometers\", \"千米\", ",
+        "after": " -> 1000.0\n            else -> {\n               "
+      },
+      "position": {
+        "start": 13823,
+        "end": 13827,
+        "line": 254,
+        "column": 79
+      },
+      "category": "protocol",
+      "reason": "Exact distanceUnit aliases select metres/kilometres scale; display uses are independent",
+      "owner": "task39/build-ci"
+    },
+    {
+      "path": "shared/src/iosMain/kotlin/io/github/betterzslf/platform/IosStartupDiagnostics.kt",
+      "kind": "string",
+      "source": "\"synthetic-中文\"",
+      "context": {
+        "before": "mpty\") == \"\")\n                first.put(\"utf8\", ",
+        "after": ")\n                verify(\"UNICODE_VALUE\", first."
+      },
+      "position": {
+        "start": 4046,
+        "end": 4060,
+        "line": 104,
+        "column": 35
+      },
+      "category": "diagnostic_fixture",
+      "reason": "Original exact internal Unicode Keychain roundtrip fixture value, not display or wire; complete Native diagnostic source SHA is independently pinned",
+      "owner": "task44/build-ci"
+    },
+    {
+      "path": "shared/src/iosMain/kotlin/io/github/betterzslf/platform/IosStartupDiagnostics.kt",
+      "kind": "string",
+      "source": "\"synthetic-中文\"",
+      "context": {
+        "before": "   verify(\"UNICODE_VALUE\", first.get(\"utf8\") == ",
+        "after": ")\n                first.remove(\"item\")\n         "
+      },
+      "position": {
+        "start": 4123,
+        "end": 4137,
+        "line": 105,
+        "column": 62
+      },
+      "category": "diagnostic_fixture",
+      "reason": "Original exact internal Unicode Keychain roundtrip fixture value, not display or wire; complete Native diagnostic source SHA is independently pinned",
+      "owner": "task44/build-ci"
     }
   ]
 }

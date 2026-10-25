@@ -1,5 +1,6 @@
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -8,7 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 actual fun createNativeAppUpdater(): NativeAppUpdater = object : NativeAppUpdater {
     private val mutableState = MutableStateFlow(AppUpdateState(
         phase = AppUpdatePhase.UNAVAILABLE,
-        message = "此平台请在发布页面查看更新，不下载 Android 安装包。",
+        message = AppText.Updates.PLATFORM_RELEASE_PAGE_ONLY_NO_ANDROID_PACKAGE_DOWNLOAD,
     ))
     override val state: StateFlow<AppUpdateState> = mutableState.asStateFlow()
     override val supportsApkInstall: Boolean = false

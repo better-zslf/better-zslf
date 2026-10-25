@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.run
 
+import io.github.betterzslf.core.text.AppText
 import kotlinx.serialization.Serializable
 import kotlin.math.*
 import kotlin.random.Random
@@ -50,31 +51,31 @@ object RunTrackValidator {
         require(maximumSpeedMetersPerSecond.isFinite() && maximumSpeedMetersPerSecond > 0)
         val issues = mutableListOf<String>()
         val points = track.points
-        if (points.size < 2) issues += "轨迹至少需要两个点"
-        if (track.startTimeMillis < 0 || track.endTimeMillis <= track.startTimeMillis) issues += "起止时间异常"
+        if (points.size < 2) issues += AppText.Run.TRACK_REQUIRES_TWO_POINTS
+        if (track.startTimeMillis < 0 || track.endTimeMillis <= track.startTimeMillis) issues += AppText.Run.INVALID_TRACK_START_OR_END_TIME
         val elapsed = (track.endTimeMillis - track.startTimeMillis) / 1000.0
-        if (!track.runTimeSeconds.isFinite() || track.runTimeSeconds <= 0 || abs(elapsed - track.runTimeSeconds) > 1e-6) issues += "用时与起止时间不一致"
-        if (points.firstOrNull()?.locatetime != track.startTimeMillis || points.lastOrNull()?.locatetime != track.endTimeMillis) issues += "轨迹时间与起止时间不一致"
-        if (points.firstOrNull()?.let { abs(it.dis) > 1e-8 || abs(it.count) > 1e-8 } == true) issues += "首点累计值应为零"
+        if (!track.runTimeSeconds.isFinite() || track.runTimeSeconds <= 0 || abs(elapsed - track.runTimeSeconds) > 1e-6) issues += AppText.Run.DURATION_START_END_TIME_MISMATCH
+        if (points.firstOrNull()?.locatetime != track.startTimeMillis || points.lastOrNull()?.locatetime != track.endTimeMillis) issues += AppText.Run.TRACK_TIME_START_END_MISMATCH
+        if (points.firstOrNull()?.let { abs(it.dis) > 1e-8 || abs(it.count) > 1e-8 } == true) issues += AppText.Run.FIRST_POINT_CUMULATIVE_VALUES_MUST_BE_ZERO
         var sum = 0.0
         for ((i, point) in points.withIndex()) {
-            if (!point.dis.isFinite() || point.dis < 0 || !point.count.isFinite() || point.count < 0) issues += "第 $i 点距离或累计秒异常"
-            if (point.locatetime < track.startTimeMillis || point.locatetime > track.endTimeMillis) issues += "第 $i 点时间超出范围"
+            if (!point.dis.isFinite() || point.dis < 0 || !point.count.isFinite() || point.count < 0) issues += AppText.Run.trackPointDistanceOrCountInvalid((i))
+            if (point.locatetime < track.startTimeMillis || point.locatetime > track.endTimeMillis) issues += AppText.Run.trackPointTimeOutOfRange((i))
             val count = (point.locatetime - track.startTimeMillis) / 1000.0
-            if (abs(point.count - count) > 1e-6) issues += "第 $i 点累计秒与时间戳不一致"
+            if (abs(point.count - count) > 1e-6) issues += AppText.Run.trackPointElapsedMismatch((i))
             if (i > 0) {
                 val previous = points[i - 1]
                 val distance = RunGeo.distanceMeters(previous.point, point.point)
                 sum += distance
-                if (abs(distance - point.dis) > 0.01) issues += "第 $i 点距离与坐标不一致"
+                if (abs(distance - point.dis) > 0.01) issues += AppText.Run.trackPointDistanceMismatch((i))
                 val delta = point.locatetime - previous.locatetime
-                if (delta <= 0) issues += "轨迹时间戳应严格递增"
-                else if (distance / (delta / 1000.0) > maximumSpeedMetersPerSecond + 1e-6) issues += "第 $i 点速度超过上限"
+                if (delta <= 0) issues += AppText.Run.TRACK_TIMESTAMPS_MUST_STRICTLY_INCREASE
+                else if (distance / (delta / 1000.0) > maximumSpeedMetersPerSecond + 1e-6) issues += AppText.Run.trackPointSpeedExceeded((i))
             }
         }
-        if (!track.distanceMeters.isFinite() || track.distanceMeters < 0 || abs(track.distanceMeters - sum) > 0.01) issues += "总距离与逐点距离不一致"
-        if (!track.averageSpeedMetersPerSecond.isFinite() || elapsed <= 0 || abs(track.averageSpeedMetersPerSecond - sum / elapsed) > 1e-6) issues += "均速与距离用时不一致"
-        if (track.averageSpeedMetersPerSecond > maximumSpeedMetersPerSecond + 1e-6) issues += "轨迹均速超过上限"
+        if (!track.distanceMeters.isFinite() || track.distanceMeters < 0 || abs(track.distanceMeters - sum) > 0.01) issues += AppText.Run.TOTAL_DISTANCE_POINT_DISTANCE_MISMATCH
+        if (!track.averageSpeedMetersPerSecond.isFinite() || elapsed <= 0 || abs(track.averageSpeedMetersPerSecond - sum / elapsed) > 1e-6) issues += AppText.Run.AVERAGE_SPEED_DISTANCE_DURATION_MISMATCH
+        if (track.averageSpeedMetersPerSecond > maximumSpeedMetersPerSecond + 1e-6) issues += AppText.Run.TRACK_AVERAGE_SPEED_LIMIT_EXCEEDED
         return TrackConsistencyReport(issues)
     }
 }
@@ -82,13 +83,13 @@ object RunTrackValidator {
 /** Deterministic local generation. This class neither sleeps nor sends or schedules any upload. */
 object RunTrackGenerator {
     fun generate(points: List<GeoPoint>, options: TrackGenerationOptions): GeneratedRunTrack {
-        require(points.size in 2..RunRouteParser.MAX_POINTS) { "路线点数异常" }
+        require(points.size in 2..RunRouteParser.MAX_POINTS) { AppText.Run.INVALID_ROUTE_POINT_COUNT }
         val cumulative = RunGeo.cumulative(points)
         val pathLength = cumulative.last()
-        require(pathLength > 0) { "路线长度应大于零" }
+        require(pathLength > 0) { AppText.Run.ROUTE_LENGTH_MUST_BE_POSITIVE }
         val durationSeconds = options.durationMillis / 1000.0
         val average = pathLength / durationSeconds
-        require(average <= options.maximumSpeedMetersPerSecond + 1e-9) { "目标用时对应的均速超过上限" }
+        require(average <= options.maximumSpeedMetersPerSecond + 1e-9) { AppText.Run.TARGET_DURATION_AVERAGE_SPEED_LIMIT_EXCEEDED }
         val random = Random(options.seed)
         val intervals = intervals(options, random)
         val weights = DoubleArray(intervals.size) { 1 + (random.nextDouble() * 2 - 1) * options.speedVariation }
@@ -112,15 +113,15 @@ object RunTrackGenerator {
             val track = assemble(noisy, intervals, options.startTimeMillis)
             if (RunTrackValidator.validate(track, options.maximumSpeedMetersPerSecond).valid) return track
         }
-        throw IllegalArgumentException("目标用时未给 GPS 随机游走留足速度余量，请增加用时或调整抖动参数")
+        throw IllegalArgumentException(AppText.Run.GPS_RANDOM_WALK_SPEED_MARGIN_INSUFFICIENT_HINT)
     }
 
     /** Builds the identical canonical track representation from already accepted real GPS samples. */
     fun fromSamples(samples: List<RunLocationSample>, filter: RunLocationFilter = RunLocationFilter()): GeneratedRunTrack {
-        require(samples.size in 2..RunRouteParser.MAX_POINTS) { "定位轨迹至少需要两个采样点" }
+        require(samples.size in 2..RunRouteParser.MAX_POINTS) { AppText.Run.LOCATION_TRACK_REQUIRES_TWO_SAMPLES }
         var previous: RunLocationSample? = null
         for (sample in samples) {
-            require(filter.evaluate(previous, sample) is LocationFilterResult.Accepted) { "真实轨迹中存在未通过阈值过滤的采样点" }
+            require(filter.evaluate(previous, sample) is LocationFilterResult.Accepted) { AppText.Run.REAL_TRACK_CONTAINS_REJECTED_SAMPLES }
             previous = sample
         }
         val intervals = samples.zipWithNext().map { (a, b) -> b.timestampMillis - a.timestampMillis }
@@ -130,7 +131,7 @@ object RunTrackGenerator {
     private fun intervals(options: TrackGenerationOptions, random: Random): List<Long> {
         val lower = (options.intervalMillis * (1 - options.intervalVariation)).roundToLong().coerceAtLeast(1)
         val upper = (options.intervalMillis * (1 + options.intervalVariation)).roundToLong().coerceAtLeast(lower)
-        require(options.durationMillis / upper < RunRouteParser.MAX_POINTS - 1) { "目标用时产生的点数超过上限" }
+        require(options.durationMillis / upper < RunRouteParser.MAX_POINTS - 1) { AppText.Run.TARGET_DURATION_GENERATED_POINT_LIMIT_EXCEEDED }
         val result = mutableListOf<Long>()
         var remaining = options.durationMillis
         while (remaining > upper) {
@@ -139,7 +140,7 @@ object RunTrackGenerator {
             val value = if (maximum == lower) lower else random.nextLong(lower, maximum + 1)
             result += value
             remaining -= value
-            require(result.size < RunRouteParser.MAX_POINTS - 1) { "目标用时产生的点数超过上限" }
+            require(result.size < RunRouteParser.MAX_POINTS - 1) { AppText.Run.TARGET_DURATION_GENERATED_POINT_LIMIT_EXCEEDED }
         }
         if (remaining > 0) result += remaining // A run may finish before the next nominal sample.
         return result

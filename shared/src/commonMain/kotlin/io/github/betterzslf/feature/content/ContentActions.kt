@@ -1,5 +1,6 @@
 package io.github.betterzslf.feature.content
 
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.core.storage.KeyValueStore
@@ -26,7 +27,7 @@ class NoticeReadController(private val source: ContentSource, private val owner:
         when (val response = source.unread()) {
             is ApiResult.Failure -> mutable.value = mutable.value.copy(unreadError = response.error)
             is ApiResult.Success -> mutable.value = if (response.data.number("unreadNumber") == null || response.data.number("noticeMutualCount") == null)
-                mutable.value.copy(unreadError = ApiError.Decode("未读计数结构异常"))
+                mutable.value.copy(unreadError = ApiError.Decode(AppText.Content.INVALID_UNREAD_COUNT_STRUCTURE))
                 else mutable.value.copy(unread = NoticeRepository.unreadBadgeCount(response.data), unreadError = null)
         }
     }

@@ -1,5 +1,6 @@
 package io.github.betterzslf.platform
 
+import io.github.betterzslf.core.text.AppText
 import android.app.ActivityManager
 import android.app.DownloadManager
 import android.content.ClipData
@@ -53,7 +54,7 @@ private class AndroidAppUpdater : NativeAppUpdater {
     override val supportsApkInstall: Boolean = true
     private val context: Context get() = AndroidPlatform.context
     private val manager: DownloadManager get() = context.getSystemService(DownloadManager::class.java)
-        ?: throw UpdateFailure("下载服务暂不可用，请稍后重试。")
+        ?: throw UpdateFailure(AppText.Updates.DOWNLOAD_SERVICE_UNAVAILABLE_RETRY_LATER)
     private val ownerId by lazy { UUID.randomUUID().toString() }
     private var closed = false
     private var generation = 0L
@@ -76,12 +77,12 @@ private class AndroidAppUpdater : NativeAppUpdater {
             if (closed || mutableState.value.phase in setOf(AppUpdatePhase.DOWNLOADING, AppUpdatePhase.VERIFYING,
                     AppUpdatePhase.READY_TO_INSTALL, AppUpdatePhase.INSTALL_PERMISSION_REQUIRED, AppUpdatePhase.INSTALLER_OPENED)) return
             if (!AndroidUpdatePolicy.valid(spec)) {
-                mutableState.value = AppUpdateState(AppUpdatePhase.FAILED, message = "更新安装包信息无效，请重新检查发布版本。")
+                mutableState.value = AppUpdateState(AppUpdatePhase.FAILED, message = AppText.Updates.INVALID_UPDATE_PACKAGE_INFORMATION_RECHECK_RELEASE)
                 return
             }
             val transfer = Transfer(spec, ++generation, ownerId)
             active = transfer; owned += transfer
-            mutableState.value = AppUpdateState(AppUpdatePhase.DOWNLOADING, totalBytes = spec.sizeBytes, message = "正在下载公开发布的安装包。")
+            mutableState.value = AppUpdateState(AppUpdatePhase.DOWNLOADING, totalBytes = spec.sizeBytes, message = AppText.Updates.DOWNLOADING_PUBLIC_RELEASE_PACKAGE)
             scope.launch(start = CoroutineStart.LAZY) { downloadOwned(transfer) }.also { transfer.job = it }
         }
         job.start()
@@ -93,7 +94,7 @@ private class AndroidAppUpdater : NativeAppUpdater {
             generation++
             active.also {
                 active = null
-                mutableState.value = AppUpdateState(AppUpdatePhase.CANCELLED, message = "更新准备已取消；已打开的系统安装页面仍由你确认。")
+                mutableState.value = AppUpdateState(AppUpdatePhase.CANCELLED, message = AppText.Updates.UPDATE_PREPARATION_CANCELLED_SYSTEM_INSTALL_CONFIRMATION_REMAINS)
             }
         }
         transfer?.let(::disposeAsync)
@@ -103,7 +104,7 @@ private class AndroidAppUpdater : NativeAppUpdater {
         val transfers = synchronized(lock) {
             if (closed) return
             closed = true; generation++; active = null
-            mutableState.value = AppUpdateState(AppUpdatePhase.CANCELLED, message = "更新下载器已关闭。")
+            mutableState.value = AppUpdateState(AppUpdatePhase.CANCELLED, message = AppText.Updates.UPDATE_DOWNLOADER_CLOSED)
             owned.toList()
         }
         transfers.forEach(::disposeAsync)
@@ -151,8 +152,8 @@ private class AndroidAppUpdater : NativeAppUpdater {
                 .addRequestHeader("User-Agent", "better-zslf-updater")
                 .setDestinationUri(Uri.fromFile(source))
                 .setMimeType("application/vnd.android.package-archive")
-                .setTitle("better-zslf 更新")
-                .setDescription("正在下载应用公开发布的安装包")
+                .setTitle(AppText.Updates.UPDATE_DOWNLOAD_NOTIFICATION_TITLE)
+                .setDescription(AppText.Updates.UPDATE_DOWNLOAD_NOTIFICATION_DESCRIPTION)
                 .setAllowedOverRoaming(false)
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
                 .setVisibleInDownloadsUi(false)
@@ -161,7 +162,7 @@ private class AndroidAppUpdater : NativeAppUpdater {
             writeRecord(transfer)
             currentCoroutineContext().ensureActive(); ensureOwner(transfer)
             awaitDownload(transfer)
-            publish(transfer, AppUpdatePhase.VERIFYING, "正在校验安装包。", transfer.spec.sizeBytes)
+            publish(transfer, AppUpdatePhase.VERIFYING, AppText.Updates.VERIFYING_INSTALL_PACKAGE, transfer.spec.sizeBytes)
             copyVerifiedSnapshot(transfer)
             verifyArchive(transfer)
             check(transfer.verified?.setWritable(false, false) == true)
@@ -171,13 +172,13 @@ private class AndroidAppUpdater : NativeAppUpdater {
             writeRecord(transfer)
             currentCoroutineContext().ensureActive(); ensureOwner(transfer)
             keepVerified = true
-            publish(transfer, AppUpdatePhase.READY_TO_INSTALL, "安装包校验完成，点击后仍需系统安装确认。", transfer.spec.sizeBytes)
+            publish(transfer, AppUpdatePhase.READY_TO_INSTALL, AppText.Updates.PACKAGE_VERIFIED_SYSTEM_INSTALL_CONFIRMATION_REQUIRED, transfer.spec.sizeBytes)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: UpdateFailure) {
             publish(transfer, AppUpdatePhase.FAILED, failure.fixedMessage)
         } catch (_: Exception) {
-            publish(transfer, AppUpdatePhase.FAILED, "更新下载或校验失败，请重新尝试。")
+            publish(transfer, AppUpdatePhase.FAILED, AppText.Updates.UPDATE_DOWNLOAD_OR_VERIFICATION_FAILED_RETRY)
         } finally {
             if (!keepVerified) withContext(NonCancellable) { cleanup(transfer) }
         }
@@ -188,18 +189,18 @@ private class AndroidAppUpdater : NativeAppUpdater {
         val deadline = SystemClock.elapsedRealtime() + 15 * 60 * 1000L
         while (true) {
             currentCoroutineContext().ensureActive(); ensureOwner(transfer)
-            if (SystemClock.elapsedRealtime() > deadline) throw UpdateFailure("更新下载等待超时，请重新尝试。")
+            if (SystemClock.elapsedRealtime() > deadline) throw UpdateFailure(AppText.Updates.UPDATE_DOWNLOAD_WAIT_TIMEOUT_RETRY)
             val status = manager.query(DownloadManager.Query().setFilterById(id))?.use { cursor ->
-                if (!cursor.moveToFirst()) throw UpdateFailure("本次更新下载已停止，请重新尝试。")
+                if (!cursor.moveToFirst()) throw UpdateFailure(AppText.Updates.CURRENT_UPDATE_DOWNLOAD_STOPPED_RETRY)
                 val bytes = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
                 val total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
-                if (bytes > transfer.spec.sizeBytes || total > 0 && total != transfer.spec.sizeBytes) throw UpdateFailure("安装包大小与发布信息不一致。")
-                publish(transfer, AppUpdatePhase.DOWNLOADING, "正在下载公开发布的安装包。", bytes.coerceAtLeast(0))
+                if (bytes > transfer.spec.sizeBytes || total > 0 && total != transfer.spec.sizeBytes) throw UpdateFailure(AppText.Updates.PACKAGE_SIZE_RELEASE_INFORMATION_MISMATCH)
+                publish(transfer, AppUpdatePhase.DOWNLOADING, AppText.Updates.DOWNLOADING_PUBLIC_RELEASE_PACKAGE, bytes.coerceAtLeast(0))
                 cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-            } ?: throw UpdateFailure("下载服务暂不可用，请稍后重试。")
+            } ?: throw UpdateFailure(AppText.Updates.DOWNLOAD_SERVICE_UNAVAILABLE_RETRY_LATER)
             when (status) {
                 DownloadManager.STATUS_SUCCESSFUL -> return
-                DownloadManager.STATUS_FAILED -> throw UpdateFailure("更新下载失败，请重新尝试。")
+                DownloadManager.STATUS_FAILED -> throw UpdateFailure(AppText.Updates.UPDATE_DOWNLOAD_FAILED_RETRY)
             }
             delay(1000)
         }
@@ -209,7 +210,7 @@ private class AndroidAppUpdater : NativeAppUpdater {
         ensureOwner(transfer)
         val source = requireNotNull(transfer.source)
         val directory = requireNotNull(transfer.externalDirectory)
-        if (Files.isSymbolicLink(directory.toPath()) || Files.isSymbolicLink(source.toPath()) || source.canonicalFile.parentFile != directory.canonicalFile) throw UpdateFailure("本次安装包文件无效。")
+        if (Files.isSymbolicLink(directory.toPath()) || Files.isSymbolicLink(source.toPath()) || source.canonicalFile.parentFile != directory.canonicalFile) throw UpdateFailure(AppText.Updates.CURRENT_INSTALL_PACKAGE_FILE_INVALID)
         val destination = File(cacheRoot(), "verified-${transfer.requestId}.apk")
         Files.createFile(destination.toPath())
         transfer.verified = destination
@@ -224,7 +225,7 @@ private class AndroidAppUpdater : NativeAppUpdater {
     private suspend fun digestFile(file: File, transfer: Transfer, consume: ((ByteArray, Int) -> Unit)? = null) {
         val descriptor = Os.open(file.absolutePath, OsConstants.O_RDONLY or OsConstants.O_CLOEXEC or OsConstants.O_NOFOLLOW or OsConstants.O_NONBLOCK, 0)
         val ownedDescriptor = try {
-            if (!OsConstants.S_ISREG(Os.fstat(descriptor).st_mode)) throw UpdateFailure("本次安装包文件无效。")
+            if (!OsConstants.S_ISREG(Os.fstat(descriptor).st_mode)) throw UpdateFailure(AppText.Updates.CURRENT_INSTALL_PACKAGE_FILE_INVALID)
             ParcelFileDescriptor.dup(descriptor)
         } finally { Os.close(descriptor) }
         val digest = MessageDigest.getInstance("SHA-256")
@@ -236,28 +237,28 @@ private class AndroidAppUpdater : NativeAppUpdater {
                 val read = input.read(buffer)
                 if (read < 0) break
                 count += read
-                if (count > transfer.spec.sizeBytes || count > AndroidUpdatePolicy.MAX_BYTES) throw UpdateFailure("安装包大小超过本次发布信息。")
+                if (count > transfer.spec.sizeBytes || count > AndroidUpdatePolicy.MAX_BYTES) throw UpdateFailure(AppText.Updates.PACKAGE_SIZE_EXCEEDS_RELEASE_INFORMATION)
                 digest.update(buffer, 0, read)
                 consume?.invoke(buffer, read)
             }
         }
         val actual = digest.digest().joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
-        if (count != transfer.spec.sizeBytes || !actual.equals(transfer.spec.sha256, ignoreCase = true)) throw UpdateFailure("安装包校验值与发布信息不一致，请重新下载。")
+        if (count != transfer.spec.sizeBytes || !actual.equals(transfer.spec.sha256, ignoreCase = true)) throw UpdateFailure(AppText.Updates.PACKAGE_CHECKSUM_RELEASE_INFORMATION_MISMATCH_REDOWNLOAD)
     }
 
     private fun verifyArchive(transfer: Transfer) {
         ensureOwner(transfer)
         val file = requireNotNull(transfer.verified)
-        if (Files.isSymbolicLink(file.toPath()) || file.canonicalFile.parentFile != cacheRoot().canonicalFile || file.name != "verified-${transfer.requestId}.apk") throw UpdateFailure("本次安装包文件无效。")
+        if (Files.isSymbolicLink(file.toPath()) || file.canonicalFile.parentFile != cacheRoot().canonicalFile || file.name != "verified-${transfer.requestId}.apk") throw UpdateFailure(AppText.Updates.CURRENT_INSTALL_PACKAGE_FILE_INVALID)
         val flags = PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong())
-        val incoming = context.packageManager.getPackageArchiveInfo(file.absolutePath, flags) ?: throw UpdateFailure("安装包格式无效。")
+        val incoming = context.packageManager.getPackageArchiveInfo(file.absolutePath, flags) ?: throw UpdateFailure(AppText.Updates.INVALID_INSTALL_PACKAGE_FORMAT)
         val installed = context.packageManager.getPackageInfo(context.packageName, flags)
-        if (incoming.packageName != context.packageName || incoming.versionName != transfer.spec.versionName || incoming.longVersionCode <= installed.longVersionCode) throw UpdateFailure("安装包的应用或版本与本次更新不符。")
+        if (incoming.packageName != context.packageName || incoming.versionName != transfer.spec.versionName || incoming.longVersionCode <= installed.longVersionCode) throw UpdateFailure(AppText.Updates.PACKAGE_APP_OR_VERSION_UPDATE_MISMATCH)
         fun certificates(info: PackageInfo): Set<String> = info.signingInfo?.apkContentsSigners?.map { certificate ->
             MessageDigest.getInstance("SHA-256").digest(certificate.toByteArray()).joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
         }?.toSet().orEmpty()
         val current = certificates(installed)
-        if (current.isEmpty() || current != certificates(incoming)) throw UpdateFailure("安装包签名与当前应用不一致，请停止安装。")
+        if (current.isEmpty() || current != certificates(incoming)) throw UpdateFailure(AppText.Updates.PACKAGE_SIGNATURE_CURRENT_APP_MISMATCH_STOP_INSTALLATION)
         // This is a certificate identity precheck. Android's installer also verifies the APK signature.
     }
 
@@ -266,7 +267,7 @@ private class AndroidAppUpdater : NativeAppUpdater {
             if (closed || mutableState.value.phase !in setOf(AppUpdatePhase.READY_TO_INSTALL, AppUpdatePhase.INSTALL_PERMISSION_REQUIRED, AppUpdatePhase.INSTALLER_OPENED)) return
             val transfer = active ?: return
             if (transfer.job?.isActive == true) return
-            mutableState.value = AppUpdateState(AppUpdatePhase.VERIFYING, transfer.spec.sizeBytes, transfer.spec.sizeBytes, "正在重新校验安装包。")
+            mutableState.value = AppUpdateState(AppUpdatePhase.VERIFYING, transfer.spec.sizeBytes, transfer.spec.sizeBytes, AppText.Updates.REVERIFYING_INSTALL_PACKAGE)
             scope.launch(start = CoroutineStart.LAZY) { installOwned(transfer) }.also { transfer.job = it }
         }
         job.start()
@@ -277,7 +278,7 @@ private class AndroidAppUpdater : NativeAppUpdater {
         try {
             ensureOwner(transfer)
             val file = requireNotNull(transfer.verified)
-            if (file.canonicalFile.parentFile != cacheRoot().canonicalFile || Files.isSymbolicLink(file.toPath())) throw UpdateFailure("本次安装包文件无效。")
+            if (file.canonicalFile.parentFile != cacheRoot().canonicalFile || Files.isSymbolicLink(file.toPath())) throw UpdateFailure(AppText.Updates.CURRENT_INSTALL_PACKAGE_FILE_INVALID)
             digestFile(file, transfer)
             verifyArchive(transfer) // Read installed package/version/current certificate again, not cached READY state.
             withContext(Dispatchers.Main.immediate) {
@@ -287,10 +288,10 @@ private class AndroidAppUpdater : NativeAppUpdater {
                     val process = ActivityManager.RunningAppProcessInfo()
                     ActivityManager.getMyMemoryState(process)
                     if (process.importance != ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) {
-                        publish(transfer, AppUpdatePhase.READY_TO_INSTALL, "请回到应用前台后重新确认安装。", transfer.spec.sizeBytes)
+                        publish(transfer, AppUpdatePhase.READY_TO_INSTALL, AppText.Updates.RETURN_TO_FOREGROUND_AND_RECONFIRM_INSTALLATION, transfer.spec.sizeBytes)
                     } else if (!context.packageManager.canRequestPackageInstalls()) {
                         context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                        publish(transfer, AppUpdatePhase.INSTALL_PERMISSION_REQUIRED, "已请求本应用的安装来源设置；返回后请再次明确点击安装。", transfer.spec.sizeBytes)
+                        publish(transfer, AppUpdatePhase.INSTALL_PERMISSION_REQUIRED, AppText.Updates.INSTALL_SOURCE_SETTINGS_REQUESTED_EXPLICIT_INSTALL_RECONFIRMATION_REQUIRED, transfer.spec.sizeBytes)
                     } else {
                         val uri = FileProvider.getUriForFile(context, "${context.packageName}.updates", file)
                         transfer.granted = uri
@@ -298,7 +299,7 @@ private class AndroidAppUpdater : NativeAppUpdater {
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         intent.clipData = ClipData.newRawUri("better-zslf update", uri)
                         context.startActivity(intent)
-                        publish(transfer, AppUpdatePhase.INSTALLER_OPENED, "已向系统请求打开安装确认；尚未确认安装。", transfer.spec.sizeBytes)
+                        publish(transfer, AppUpdatePhase.INSTALLER_OPENED, AppText.Updates.SYSTEM_INSTALL_CONFIRMATION_REQUESTED_INSTALL_UNCONFIRMED, transfer.spec.sizeBytes)
                     }
                     keep = true
                 }
@@ -308,22 +309,22 @@ private class AndroidAppUpdater : NativeAppUpdater {
         } catch (failure: UpdateFailure) {
             publish(transfer, AppUpdatePhase.FAILED, failure.fixedMessage)
         } catch (_: Exception) {
-            publish(transfer, AppUpdatePhase.FAILED, "系统安装页面暂不可用，请重新尝试。")
+            publish(transfer, AppUpdatePhase.FAILED, AppText.Updates.SYSTEM_INSTALLER_UNAVAILABLE_RETRY)
         } finally {
             if (!keep) withContext(NonCancellable) { cleanup(transfer) }
         }
     }
 
     private fun externalRoot(): File {
-        val root = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: throw UpdateFailure("应用下载目录暂不可用。")
-        if (!root.isDirectory || Files.isSymbolicLink(root.toPath())) throw UpdateFailure("应用下载目录暂不可用。")
+        val root = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: throw UpdateFailure(AppText.Updates.APP_DOWNLOAD_DIRECTORY_UNAVAILABLE)
+        if (!root.isDirectory || Files.isSymbolicLink(root.toPath())) throw UpdateFailure(AppText.Updates.APP_DOWNLOAD_DIRECTORY_UNAVAILABLE)
         return root.canonicalFile
     }
 
     private fun cacheRoot(): File {
         val root = File(context.cacheDir, "updates")
-        if (!root.exists() && !root.mkdir()) throw UpdateFailure("应用更新缓存暂不可用。")
-        if (!root.isDirectory || Files.isSymbolicLink(root.toPath()) || root.canonicalFile.parentFile != context.cacheDir.canonicalFile) throw UpdateFailure("应用更新缓存暂不可用。")
+        if (!root.exists() && !root.mkdir()) throw UpdateFailure(AppText.Updates.APP_UPDATE_CACHE_UNAVAILABLE)
+        if (!root.isDirectory || Files.isSymbolicLink(root.toPath()) || root.canonicalFile.parentFile != context.cacheDir.canonicalFile) throw UpdateFailure(AppText.Updates.APP_UPDATE_CACHE_UNAVAILABLE)
         return root.canonicalFile
     }
 
@@ -338,11 +339,11 @@ private class AndroidAppUpdater : NativeAppUpdater {
         val directory = transfer.externalDirectory ?: return
         val root = externalRoot()
         if (directory.name != "incoming-${transfer.requestId}" || Files.isSymbolicLink(directory.toPath()) ||
-            directory.canonicalFile != File(root, "incoming-${transfer.requestId}").absoluteFile) throw UpdateFailure("本次更新临时目录无效。")
+            directory.canonicalFile != File(root, "incoming-${transfer.requestId}").absoluteFile) throw UpdateFailure(AppText.Updates.CURRENT_UPDATE_TEMPORARY_DIRECTORY_INVALID)
         // No recursive deletion, enumeration, or filenames obtained from the HTTP response.
         val source = File(directory, "download.apk.part")
-        if (source.exists() && !source.delete()) throw UpdateFailure("本次更新临时文件清理尚未完成。")
-        if (directory.exists() && !directory.delete()) throw UpdateFailure("本次更新临时目录清理尚未完成。")
+        if (source.exists() && !source.delete()) throw UpdateFailure(AppText.Updates.CURRENT_UPDATE_TEMPORARY_FILE_CLEANUP_INCOMPLETE)
+        if (directory.exists() && !directory.delete()) throw UpdateFailure(AppText.Updates.CURRENT_UPDATE_TEMPORARY_DIRECTORY_CLEANUP_INCOMPLETE)
     }
 
     private fun cleanup(transfer: Transfer) = synchronized(transfer.cleanupLock) {
@@ -367,7 +368,7 @@ private class AndroidAppUpdater : NativeAppUpdater {
     private fun writeRecord(transfer: Transfer) {
         val value = listOf(UpdateProcess.token, Process.myPid().toString(), transfer.ownerId,
             (transfer.downloadId ?: 0).toString(), "incoming-${transfer.requestId}", transfer.verified?.name.orEmpty()).joinToString("|")
-        if (!preferences().edit().putString("request.${transfer.requestId}", value).commit()) throw UpdateFailure("本次下载状态保存失败，请重新尝试。")
+        if (!preferences().edit().putString("request.${transfer.requestId}", value).commit()) throw UpdateFailure(AppText.Updates.CURRENT_DOWNLOAD_STATE_SAVE_FAILED_RETRY)
     }
 
     /** Only on an explicit new download. No restored READY, no installer, no query of all DM records. */

@@ -6,6 +6,7 @@ import android.net.Uri
 import android.net.http.SslError
 import android.os.Handler
 import android.os.Looper
+import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.webkit.*
 import androidx.annotation.Keep
@@ -53,6 +54,8 @@ private class AndroidRunMapRenderer(
 
     @SuppressLint("SetJavaScriptEnabled")
     fun create(context: Context): WebView = WebView(context).also { view ->
+        // Fixed layout mode, not a pixel size: Compose still constrains the map viewport.
+        view.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         owned?.let(::release)
         owned = view
         ownerId = UUID.randomUUID().toString()

@@ -120,6 +120,8 @@ class DiagnosticsTests(unittest.TestCase):
                                     clock=lambda: 0.0, mode=mode)
 
     def test_signed_positive_uses_one_install_no_a_and_keeps_ui_pending(self):
+        # Exercise a noncanonical alias on every OS without symlink privileges.
+        self.artifacts = self.artifacts / ".." / self.artifacts.name
         before = (self.app / "BetterZslf").read_bytes()
         value = self.run_probe("signed-positive")
         self.assertEqual(value["experiment_mode"], "signed-positive")
@@ -133,7 +135,7 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(self.runner.launches[0]["SIMCTL_CHILD_BETTER_ZSLF_PROBE_NAMESPACE"],
                          self.runner.launches[1]["SIMCTL_CHILD_BETTER_ZSLF_PROBE_NAMESPACE"])
         installs = [args for args, _ in self.runner.calls if args[0] == "install"]
-        self.assertEqual(installs, [["install", OWN, str(self.artifacts / "signed" / self.app.name)]])
+        self.assertEqual(installs, [["install", OWN, str((self.artifacts / "signed" / self.app.name).resolve())]])
         self.assertFalse(any(args[0] == "uninstall" or label.startswith("unsigned") for args, label in self.runner.calls))
         self.assertEqual((self.app / "BetterZslf").read_bytes(), before)
         self.assertTrue(value["signed"]["seed"]["termination"]["confirmed_absent"])
@@ -648,8 +650,8 @@ class DiagnosticsTests(unittest.TestCase):
         with mock.patch.object(diag.sys, "platform", "darwin"):
             target = diag.sign_simulator_copy(self.artifacts, self.app, BUNDLE, run=run)
         self.assertEqual((self.app / "BetterZslf").read_bytes(), original)
-        self.assertNotEqual(target, self.app)
-        self.assertTrue(all(str(self.app) not in c for c in calls))
+        self.assertNotEqual(target, self.app.resolve())
+        self.assertTrue(all(str(self.app.resolve()) not in c for c in calls))
         self.assertIn("-", next(c for c in calls if "--sign" in c))
         with (target.parent / "CI-simulator-entitlements.plist").open("rb") as stream:
             entitlements = plistlib.load(stream)

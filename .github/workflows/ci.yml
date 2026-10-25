@@ -98,6 +98,8 @@ jobs:
         env:
           # Independent B positive; original AB remains the helper's default mode.
           BETTER_ZSLF_CI_DIAGNOSTIC_MODE: signed-positive
+          # Installed SDK 26.4 line; Host observations plus runtime pin is a multi-condition experiment.
+          BETTER_ZSLF_CI_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-4
         timeout-minutes: 12
         run: bash scripts/ci-ios-smoke.sh
       - name: Upload simulator app and build diagnostics

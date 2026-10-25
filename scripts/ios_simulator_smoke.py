@@ -8,6 +8,7 @@ spawn commands require the exact newly created UUID; never 'booted' or 'all'.
 import argparse
 from datetime import datetime, timezone
 import json
+import math
 import os
 from pathlib import Path
 import plistlib
@@ -16,6 +17,7 @@ import signal
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -59,14 +61,21 @@ def all_udids(inventory):
     return {canonical_udid(entry["udid"]) for _, entry in devices(inventory) if entry.get("udid")}
 
 
-def choose_destination(inventory):
-    """Use only installed, available iOS runtime and discovered compatible types."""
+def choose_destination(inventory, requested_runtime=None):
+    """Pure installed/available selection; an exact optional pin never falls back."""
+    if requested_runtime is not None and (type(requested_runtime) is not str or not RUNTIME_RE.fullmatch(requested_runtime)):
+        raise ValueError("Requested runtime must be a canonical iOS runtime identifier")
     types = [entry for entry in inventory.get("devicetypes", [])
              if TYPE_RE.fullmatch(entry.get("identifier", "")) and
              (entry.get("productFamily") in ("iPhone", "iPad") or
               entry.get("name", "").startswith(("iPhone", "iPad")))]
-    runtimes = [entry for entry in inventory.get("runtimes", [])
-                if entry.get("isAvailable") is True and RUNTIME_RE.fullmatch(entry.get("identifier", ""))]
+    if requested_runtime is not None:
+        runtimes = [entry for entry in inventory.get("runtimes", []) if entry.get("identifier") == requested_runtime]
+        if len(runtimes) != 1 or runtimes[0].get("isAvailable") is not True:
+            raise ValueError("Requested runtime is not uniquely installed and available; no fallback or download")
+    else:
+        runtimes = [entry for entry in inventory.get("runtimes", [])
+                    if entry.get("isAvailable") is True and RUNTIME_RE.fullmatch(entry.get("identifier", ""))]
     runtimes.sort(key=lambda entry: version(entry["version"]), reverse=True)
     for runtime in runtimes:
         runtime_id = runtime["identifier"]
@@ -93,6 +102,8 @@ def choose_destination(inventory):
                                               0 if item["identifier"] in proven else 1,
                                               item.get("name", ""), item["identifier"]))
             return runtime_id, candidates[0]["identifier"]
+    if requested_runtime is not None:
+        raise ValueError("Requested runtime has no compatible installed device type; no fallback or download")
     raise ValueError("No installed available iOS runtime/device-type pair; no runtime will be downloaded")
 
 
@@ -201,7 +212,8 @@ def finish_command_result(record, stdout, stderr):
     record["stdout_bytes"] = len(stdout or b"")
     record["stderr_bytes"] = len(stderr or b"")
     # EOF after killing a timed-out task is not a complete successful response.
-    record["partial"] = record["timed_out"] or not record["drain_complete"]
+    record["partial"] = (record["timed_out"] or not record["drain_complete"] or
+                         record.get("truncated", False) or "evidence_error_type" in record)
 
 
 class Simctl:
@@ -211,6 +223,36 @@ class Simctl:
     def output(self, label, stdout, stderr):
         (self.artifacts / (label + ".stdout.log")).write_bytes(stdout or b"")
         (self.artifacts / (label + ".stderr.log")).write_bytes(stderr or b"")
+
+    def _persist_result(self, label, record, stdout, stderr, secondary_error):
+        # Every step is best-effort independently; a late save must not mask a primary timeout.
+        for operation, action in (
+            ("write-output", lambda: self.output(label, stdout, stderr)),
+            ("finish-result", lambda: finish_command_result(record, stdout, stderr)),
+            ("save-result", lambda: save_json(self.artifacts / (label + ".result.json"), record)),
+        ):
+            try:
+                action()
+            except BaseException as error:
+                record.setdefault("evidence_error_type", type(error).__name__)
+                secondary_error(operation, error)
+
+    @staticmethod
+    def _poll_before_cleanup(record, process, secondary_error):
+        poll = {"observed_at_utc": None, "observed_monotonic": None,
+                "state": "unknown", "returncode": None}
+        record["pre_cleanup_poll"] = poll
+        try:
+            poll["observed_at_utc"] = datetime.now(timezone.utc).isoformat()
+            poll["observed_monotonic"] = time.monotonic()
+            code = process.poll()
+            if type(code) is int:
+                poll.update(state="exited", returncode=code)
+            elif code is None:
+                poll["state"] = "running"
+        except BaseException as error:
+            poll["error_type"] = type(error).__name__
+            secondary_error("pre-cleanup-poll", error)
 
     def call(self, args, label, timeout=60):
         return self._call(args, label, timeout)
@@ -226,6 +268,139 @@ class Simctl:
         ):
             raise ValueError("Invalid synthetic probe gate")
         return self._call(args, label, timeout, {**os.environ, **env})
+
+    def call_host(self, kind, label, timeout):
+        """One fixed, read-only host observation; no argv/env collection or fallback."""
+        commands = {"ps": ["/bin/ps", "-Aww", "-o", "pid=,ppid=,comm="],
+                    "vm_stat": ["/usr/bin/vm_stat"]}
+        if type(kind) is not str or kind not in commands:
+            raise ValueError("Unknown fixed host observation")
+        if type(timeout) not in (int, float) or not 0 < timeout <= 3:
+            raise ValueError("Host observation timeout must be positive and at most 3 seconds")
+        if type(label) is not str or not re.fullmatch(r"[A-Za-z0-9_.-]+", label) or label in (".", ".."):
+            raise ValueError("Invalid host observation label")
+        command = commands[kind]
+        save_json(self.artifacts / (label + ".command.json"), command)
+        record = begin_command_result(label, timeout)
+        limits = {"stdout": 256 * 1024, "stderr": 16 * 1024}
+        record.update(execution_context="host", host_kind=kind, capture_mode="file-backed-prefix",
+                      truncated=False, **{name + "_limit_bytes": limit for name, limit in limits.items()})
+        save_json(self.artifacts / (label + ".result.json"), record)
+        deadline = record["started_monotonic"] + timeout
+        reserve = min(0.25, timeout / 4)
+        process = None
+        streams = {"stdout": None, "stderr": None}
+        stdout, stderr, text = b"", b"", None
+        primary_error = cleanup_interrupt = None
+        wait_finished = False
+
+        def latch(error):
+            record["error_type"] = type(error).__name__
+            record["timed_out"] = isinstance(error, subprocess.TimeoutExpired) or is_smoke_deadline(error)
+            record["ok"] = False
+            if record["outcome"] in ("running", "success"):
+                record["outcome"] = "timeout" if record["timed_out"] else "error"
+
+        def secondary_error(operation, error):
+            nonlocal cleanup_interrupt
+            record.setdefault("cleanup_errors", []).append({"operation": operation, "error_type": type(error).__name__})
+            if is_smoke_deadline(error):
+                record["body_deadline_expired"] = True
+                if primary_error is not None:
+                    primary_error.smoke_deadline_expired = True
+                elif cleanup_interrupt is not None:
+                    cleanup_interrupt.smoke_deadline_expired = True
+            if primary_error is None and cleanup_interrupt is None:
+                cleanup_interrupt = error
+                latch(error)
+
+        def evidence_error(operation, error):
+            record.setdefault("evidence_error_type", type(error).__name__)
+            secondary_error(operation, error)
+
+        try:
+            if sys.platform != "darwin":
+                raise OSError("Fixed host observations require macOS")
+            for name in streams:
+                streams[name] = tempfile.TemporaryFile(mode="w+b")
+            if deadline - time.monotonic() <= reserve:
+                raise subprocess.TimeoutExpired(command, timeout)
+            process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=streams["stdout"],
+                                       stderr=streams["stderr"], start_new_session=True)
+            remaining = deadline - time.monotonic() - reserve
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(command, timeout)
+            process.wait(timeout=remaining)
+            wait_finished = True
+            code = process.returncode
+            if type(code) is not int:
+                raise RuntimeError("Host observation returned no exact exit status")
+            record["returncode"] = code
+            record["drain_complete"] = True
+            if code:
+                record["outcome"] = "nonzero"
+                raise RuntimeError("Fixed host observation failed; see " + label + " logs")
+        except BaseException as error:
+            primary_error = error
+            latch(error)
+            if process is not None and not wait_finished:
+                self._poll_before_cleanup(record, process, secondary_error)
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)  # Only this owned host child's session.
+                except BaseException as cleanup:
+                    secondary_error("kill-owned-host-command", cleanup)
+                try:
+                    remaining = max(0, deadline - time.monotonic())
+                    process.wait(timeout=remaining)
+                    record["drain_complete"] = True
+                except BaseException as cleanup:
+                    record["wait_error_type"] = type(cleanup).__name__
+                    secondary_error("wait-owned-host-command", cleanup)
+                try:
+                    code = process.returncode
+                    record["post_cleanup_returncode"] = code if type(code) is int else None
+                except BaseException as cleanup:
+                    record["post_cleanup_returncode"] = None
+                    secondary_error("cleanup-returncode", cleanup)
+        finally:
+            captured = {}
+            for name, stream in streams.items():
+                captured[name] = b""
+                record[name + "_total_bytes"] = None
+                record[name + "_truncated"] = False
+                if stream is not None:
+                    try:
+                        size = stream.seek(0, os.SEEK_END)
+                        stream.seek(0)
+                        captured[name] = stream.read(limits[name])
+                        record[name + "_total_bytes"] = size
+                        record[name + "_truncated"] = size > limits[name]
+                        record["truncated"] |= record[name + "_truncated"]
+                    except BaseException as error:
+                        evidence_error("read-" + name, error)
+                    finally:
+                        try:
+                            stream.close()
+                        except BaseException as error:
+                            evidence_error("close-" + name, error)
+            stdout, stderr = captured["stdout"], captured["stderr"]
+            if primary_error is None and cleanup_interrupt is None:
+                if record["truncated"]:
+                    record["outcome"] = "truncated"
+                    secondary_error("bounded-capture", ValueError("Host observation exceeded bounded output coverage"))
+                else:
+                    try:
+                        text = stdout.decode("utf-8")
+                    except BaseException as error:
+                        secondary_error("decode-output", error)
+                    else:
+                        record.update(outcome="success", ok=True)
+            self._persist_result(label, record, stdout, stderr, evidence_error)
+            if primary_error is None and cleanup_interrupt is not None:
+                raise cleanup_interrupt
+        if primary_error is not None:
+            raise primary_error
+        return text
 
     def _call(self, args, label, timeout, environment=None):
         command = ["xcrun", "simctl", *map(str, args)]
@@ -252,9 +427,11 @@ class Simctl:
                 record["body_deadline_expired"] = True
                 if primary_error is not None:
                     primary_error.smoke_deadline_expired = True
-                else:
-                    cleanup_interrupt = error
-                    latch(error)
+                elif cleanup_interrupt is not None:
+                    cleanup_interrupt.smoke_deadline_expired = True
+            if primary_error is None and cleanup_interrupt is None:
+                cleanup_interrupt = error
+                latch(error)
 
         def close_pipes():
             if process is not None:
@@ -275,6 +452,7 @@ class Simctl:
                 primary_error = error
                 latch(error)  # Latch before any cleanup can itself fail.
                 stdout, stderr = getattr(error, "output", None), getattr(error, "stderr", None)
+                self._poll_before_cleanup(record, process, cleanup_error)
                 try:
                     os.killpg(process.pid, signal.SIGKILL)  # Only this command's owned process group.
                 except BaseException as error:
@@ -298,8 +476,12 @@ class Simctl:
                             process.poll()
                         except BaseException as poll_error:
                             cleanup_error("poll", poll_error)
-                    code = process.returncode
-                    record["post_cleanup_returncode"] = code if type(code) is int else None
+                    try:
+                        code = process.returncode
+                        record["post_cleanup_returncode"] = code if type(code) is int else None
+                    except BaseException as error:
+                        record["post_cleanup_returncode"] = None
+                        cleanup_error("cleanup-returncode", error)
                 raise  # Preserve the original timeout/interrupt even if drain returned zero.
             record["returncode"] = process.returncode
             if process.returncode:
@@ -311,21 +493,20 @@ class Simctl:
             if primary_error is None:
                 primary_error = error
                 latch(error)
+            elif error is not primary_error:
+                cleanup_error("secondary-command-error", error)
+                raise primary_error
             raise
         finally:
             close_pipes()
-            try:
-                self.output(label, stdout, stderr)
-            except BaseException as error:
-                record["evidence_error_type"] = type(error).__name__
-                cleanup_error("write-output", error)
-                if primary_error is None:
+            def evidence_error(operation, error):
+                nonlocal cleanup_interrupt
+                cleanup_error(operation, error)
+                if primary_error is None and cleanup_interrupt is None:
                     cleanup_interrupt = error
                     latch(error)
-            finally:
-                finish_command_result(record, stdout, stderr)
-                save_json(self.artifacts / (label + ".result.json"), record)
-            if cleanup_interrupt is not None:
+            self._persist_result(label, record, stdout, stderr, evidence_error)
+            if primary_error is None and cleanup_interrupt is not None:
                 raise cleanup_interrupt
 
 
@@ -355,7 +536,7 @@ def exported_png_is_valid(artifacts, filename):
 
 
 def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=False, diagnostic_mode="ab",
-          signing_method="manual-ad-hoc"):
+          signing_method="manual-ad-hoc", body_deadline=None, requested_runtime=None):
     from ios_keychain_diagnostics import validate_signing_method
     validate_signing_method(signing_method, diagnostic_mode)
     if diagnostic_mode not in ("ab", "signed-positive"):
@@ -363,6 +544,10 @@ def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=Fa
     if diagnostic_mode != "ab" and not keychain_diagnostics:
         raise ValueError("signed-positive requires the explicit Keychain diagnostic gate")
     runner = runner or Simctl(artifacts)
+    if body_deadline is not None:
+        if type(body_deadline) not in (int, float) or not math.isfinite(body_deadline):
+            raise ValueError("Existing body deadline must be a finite monotonic time")
+        runner.body_deadline_monotonic = body_deadline  # Read-only observers share the original 600s cutoff.
     if (artifacts / "owner.json").exists():
         raise ValueError("Ownership directory must be fresh for this invocation")
     app_path, bundle, executable = app_metadata(app)
@@ -378,7 +563,7 @@ def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=Fa
                 raise
     inventory = json.loads(output)
     save_json(artifacts / "inventory-before.json", inventory)
-    runtime, device_type = choose_destination(inventory)
+    runtime, device_type = choose_destination(inventory, requested_runtime=requested_runtime)
     token = str(uuid.uuid4())
     state = dict(schema=1, token=token, name=NAME_PREFIX + token, runtime=runtime,
                  device_type=device_type, prior_udids=sorted(all_udids(inventory)),
@@ -548,6 +733,7 @@ def main():
     parser.add_argument("mode", choices=("smoke", "cleanup"))
     parser.add_argument("--artifacts", type=Path, required=True)
     parser.add_argument("--app", type=Path)
+    parser.add_argument("--runtime", help="Smoke only: exact installed/available iOS runtime ID; no fallback or download")
     parser.add_argument("--fast", action="store_true", help="Skip diagnostics during signal cleanup")
     parser.add_argument("--keychain-diagnostics", action="store_true", help="Explicit debug-Simulator-only Keychain diagnostics")
     parser.add_argument("--diagnostic-mode", choices=("ab", "signed-positive"),
@@ -570,11 +756,13 @@ def main():
         def deadline_expired(*_):
             raise SmokeDeadlineExceeded("Startup exceeded 600 seconds; reserve the remaining CI time for owned cleanup")
         signal.signal(signal.SIGALRM, deadline_expired)
+        body_deadline = time.monotonic() + 600
         signal.alarm(600)  # 10-minute body inside the 12-minute step; cleanup has 2 minutes.
         try:
             app, _, _ = select_app(args.app)
             print(json.dumps(smoke(args.artifacts.resolve(), app, keychain_diagnostics=args.keychain_diagnostics,
-                                   diagnostic_mode=args.diagnostic_mode, signing_method=args.signing_method), indent=2))
+                                   diagnostic_mode=args.diagnostic_mode, signing_method=args.signing_method,
+                                   body_deadline=body_deadline, requested_runtime=getattr(args, "runtime", None)), indent=2))
         except (Exception, SmokeDeadlineExceeded) as error:
             save_json(args.artifacts / "error.json", {"result": "startup-smoke-failed", "error": str(error)})
             raise

@@ -27,8 +27,13 @@ cleanup() {
 trap cleanup EXIT
 trap 'interrupted=1; exit 130' INT
 trap 'interrupted=1; exit 143' TERM
+runtime_args=()
+if [[ -n "${BETTER_ZSLF_CI_RUNTIME:-}" ]]; then
+  runtime_args=(--runtime "$BETTER_ZSLF_CI_RUNTIME")
+fi
+# Guarded array expansion also preserves an empty default under macOS Bash 3.2 nounset.
 if [[ $# == 1 ]]; then
-  python3 scripts/ios_simulator_smoke.py smoke --keychain-diagnostics --artifacts "$artifacts" --app "$1"
+  python3 scripts/ios_simulator_smoke.py smoke ${runtime_args[@]+"${runtime_args[@]}"} --keychain-diagnostics --artifacts "$artifacts" --app "$1"
 else
-  python3 scripts/ios_simulator_smoke.py smoke --keychain-diagnostics --artifacts "$artifacts"
+  python3 scripts/ios_simulator_smoke.py smoke ${runtime_args[@]+"${runtime_args[@]}"} --keychain-diagnostics --artifacts "$artifacts"
 fi

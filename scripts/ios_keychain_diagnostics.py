@@ -13,6 +13,7 @@ import hashlib
 import struct
 from datetime import datetime, timezone
 import json
+import math
 import os
 from pathlib import Path
 import plistlib
@@ -747,53 +748,194 @@ def _utc_now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def _capture_failure(artifacts, runner, udid, label, record, container, phase, save, bundle):
-    from ios_simulator_smoke import is_smoke_deadline
-    # Collect the failing operation first: CI7's ascending 3m output timed out in old A logs.
-    record["failure_observed_at_utc"] = _utc_now()
-    record["failure_launch_log"] = label + "-launch-system-log.stdout.log"
-    record["failure_launch_log_window_seconds"] = 30
-    record["failure_launch_log_complete"] = False
-    record["failure_launch_log_started_at_utc"] = _utc_now()
-    save()
-    try:
-        # Only this owned Simulator and fixed launch/security processes; never host/global logs.
-        predicate = ('process == "BetterZslf" OR ((process == "SpringBoard" OR '
-                     'process == "runningboardd" OR process == "amfid" OR process == "installd" OR '
-                     'process == "launchd_sim") AND (eventMessage CONTAINS[c] "' + bundle +
-                     '" OR eventMessage CONTAINS[c] "BetterZslf"))')
-        runner.call(["spawn", udid, "log", "show", "--style", "compact", "--last", "30s",
-                     "--predicate", predicate], label + "-launch-system-log", 15)
-        record["failure_launch_log_complete"] = True
-    except Exception as error:
-        record["failure_launch_log_error"] = _error(error)
-        if is_smoke_deadline(error):
-            raise  # Finally persists the original timeout/partial capture before exiting.
-    finally:
-        record["failure_launch_log_finished_at_utc"] = _utc_now()
-        record["failure_launch_log_partial"] = not record["failure_launch_log_complete"]
-        save()
-    if container is not None:
-        try:
-            report = read_native_report(container, phase)
-            if report is not None:
-                record["report"] = report
-                _save_json(artifacts / (label + "-startup-report.json"), report)
-        except Exception as error:
-            record["failure_report_error"] = _error(error)
-            if is_smoke_deadline(error):
-                save()
-                raise
-    try:
-        record["failure_screenshot"] = _screenshot(artifacts, runner, udid, label + "-failure.png",
-                                                  label + "-failure-screenshot",
-                                                  attempts=record.setdefault("failure_screenshot_attempts", []), save=save)
-    except Exception as error:
-        record["failure_screenshot_error"] = _error(error)
-        if is_smoke_deadline(error):
+def parse_host_ps_candidates(output, udid, executable, app_name):
+    """Strict fixed ps(comm), never argv; only an exact owned Simulator app path is a candidate."""
+    if (type(output) is not str or not output.endswith("\n") or not output.strip()
+            or len(output.encode("utf-8")) > 256 * 1024 or "\0" in output
+            or type(executable) is not str or not EXECUTABLE_RE.fullmatch(executable)
+            or type(app_name) is not str or "/" in app_name or not app_name.endswith(".app")):
+        raise ValueError("Host ps snapshot is incomplete or has invalid identity")
+    seen, candidates = set(), []
+    target = re.compile(r"^/(?:[^/\r\n]+/)*Library/Developer/CoreSimulator/Devices/" + re.escape(udid)
+                        + r"/data/Containers/Bundle/Application/[A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}/"
+                        + re.escape(app_name) + "/" + re.escape(executable) + r"$")
+    for line in output.splitlines():
+        fields = line.split(None, 2)
+        if (len(fields) != 3 or not re.fullmatch(r"[0-9]+", fields[0])
+                or not re.fullmatch(r"[0-9]+", fields[1]) or int(fields[0]) in seen
+                or any(ord(char) < 32 for char in fields[2])):
+            raise ValueError("Host ps snapshot has a malformed or duplicate row")
+        pid, ppid, comm = int(fields[0]), int(fields[1]), fields[2]
+        seen.add(pid)
+        if pid > 0 and target.fullmatch(comm) and not any(part in (".", "..") for part in comm.split("/")):
+            candidates.append({"pid": pid, "ppid": ppid, "comm": comm})
+    return {"valid_full": True, "row_count": len(seen), "observed_candidates": candidates,
+            "interpretation": "Path-scoped observation only; never a verified launch PID or PASS"}
+
+
+def _observe_failed_launch(artifacts, runner, udid, label, record, container, phase, save, bundle,
+                           executable, app_name, clock):
+    """One early report + three readonly calls share 15s and the existing body deadline."""
+    from ios_simulator_smoke import parse_launchctl_table, is_smoke_deadline
+    started = clock()
+    body_deadline = getattr(runner, "body_deadline_monotonic", None)
+    if body_deadline is not None and (type(body_deadline) not in (int, float) or not math.isfinite(body_deadline)):
+        raise ValueError("Invalid existing body deadline; observation skipped")
+    deadline = min(started + 15, body_deadline) if body_deadline is not None else started + 15
+    evidence = {"schema": 1, "budget_seconds": 15, "started_at_utc": _utc_now(),
+                "started_monotonic": started, "deadline_monotonic": deadline,
+                "body_deadline_monotonic": body_deadline, "steps": [], "result": "observation_only"}
+    record["failure_observations"] = evidence
+
+    def step(kind, operation, *, command=False):
+        entry = {"kind": kind, "source_time_utc": _utc_now(), "started_monotonic": clock(),
+                 "outcome": "unknown"}
+        evidence["steps"].append(entry)
+        remaining = deadline - clock()
+        if remaining <= (0.5 if command else 0):
+            entry["outcome"] = "skipped_budget"
             save()
+            return
+        timeout = min(3.0, remaining - 0.5) if command else None
+        if command:
+            entry["budget_seconds"] = timeout
+        try:
+            value = operation(timeout)
+            if clock() > deadline:
+                entry["outcome"] = "late_unknown"
+            else:
+                entry.update(value)
+        except BaseException as error:
+            entry.update(outcome="unknown", error=_error(error))
+            if is_smoke_deadline(error) or not isinstance(error, Exception):
+                raise
+        finally:
+            entry["finished_at_utc"] = _utc_now()
+            entry["finished_monotonic"] = clock()
+            save()
+
+    def native(_):
+        if container is None:
+            return {"outcome": "unknown", "reason": "No previously known data container"}
+        value = read_native_report(container, phase)
+        if value is None:
+            return {"outcome": "unknown", "reason": "No report at the fixed owned path"}
+        if clock() <= deadline:
+            record["report"] = value
+            _save_json(artifacts / (label + "-startup-report.json"), value)
+        return {"outcome": "observed_report", "report_file": label + "-startup-report.json",
+                "interpretation": "Native observation does not complete the failed launch contract"}
+
+    def processes(timeout):
+        query = label + "-failure-processes"
+        rows = parse_launchctl_table(runner.call(["spawn", udid, "launchctl", "list"], query, timeout))
+        pattern = re.compile(r"(?:UIKitApplication:|application\.)" + re.escape(bundle) + r"(?:\[|\.|$)")
+        return {"outcome": "observed", "valid_full": True, "stdout_file": query + ".stdout.log",
+                "observed_bundle_pids": [int(row[0]) for row in rows if row[0] != "-" and pattern.match(row[2])],
+                "interpretation": "Not assigned to owner/verified PID and not an absence gate"}
+
+    def host(kind, timeout):
+        query = label + "-failure-host-" + kind
+        output = runner.call_host(kind, query, timeout)
+        value = parse_host_ps_candidates(output, udid, executable, app_name) if kind == "ps" else {}
+        outcome = ("captured" if output.strip() else "unknown") if kind == "vm_stat" else (
+            "observed" if value.get("observed_candidates") else "unknown")
+        return {"outcome": outcome, "stdout_file": query + ".stdout.log",
+                "stderr_file": query + ".stderr.log", **value}
+
+    try:
+        step("early_native_report", native)
+        step("launchctl", processes, command=True)
+        step("host_ps_comm", lambda timeout: host("ps", timeout), command=True)
+        step("host_vm_stat", lambda timeout: host("vm_stat", timeout), command=True)
+    finally:
+        evidence["finished_at_utc"] = _utc_now()
+        evidence["elapsed_seconds"] = clock() - started
+        evidence["budget_exhausted"] = clock() >= deadline
+        evidence["body_deadline_exhausted"] = type(body_deadline) in (int, float) and clock() >= body_deadline
+        save()
+
+
+def _capture_failure(artifacts, runner, udid, label, record, container, phase, save, bundle,
+                     *, primary=None, executable=None, app_name=None, clock=time.monotonic):
+    from ios_simulator_smoke import is_smoke_deadline
+    record["failure_capture_started_at_utc"] = _utc_now()
+
+    def persist():
+        try:
+            save()
+        except BaseException as error:
+            record.setdefault("failure_evidence_errors", []).append(_error(error))
+            if primary is None or is_smoke_deadline(error) or not isinstance(error, Exception):
+                raise
+
+    try:
+        if record.get("launch_command_failed") is True:
+            _observe_failed_launch(artifacts, runner, udid, label, record, container, phase, persist,
+                                   bundle, executable, app_name, clock)
+            if record["failure_observations"].get("body_deadline_exhausted"):
+                if primary is not None:
+                    primary.smoke_deadline_expired = True
+                return
+        record["failure_observed_at_utc"] = _utc_now()
+        record["failure_launch_log"] = label + "-launch-system-log.stdout.log"
+        record["failure_launch_log_window_seconds"] = 30
+        record["failure_launch_log_complete"] = False
+        record["failure_launch_log_started_at_utc"] = _utc_now()
+        persist()
+        try:
+            predicate = ('process == "BetterZslf" OR ((process == "SpringBoard" OR '
+                         'process == "runningboardd" OR process == "amfid" OR process == "installd" OR '
+                         'process == "launchd_sim") AND (eventMessage CONTAINS[c] "' + bundle +
+                         '" OR eventMessage CONTAINS[c] "BetterZslf"))')
+            runner.call(["spawn", udid, "log", "show", "--style", "compact", "--last", "30s",
+                         "--predicate", predicate], label + "-launch-system-log", 15)
+            record["failure_launch_log_complete"] = True
+        except Exception as error:
+            record["failure_launch_log_error"] = _error(error)
+            if is_smoke_deadline(error):
+                raise
+        finally:
+            record["failure_launch_log_finished_at_utc"] = _utc_now()
+            record["failure_launch_log_partial"] = not record["failure_launch_log_complete"]
+            persist()
+        if container is not None and "failure_observations" not in record:
+            try:
+                report = read_native_report(container, phase)
+                if report is not None:
+                    record["report"] = report
+                    _save_json(artifacts / (label + "-startup-report.json"), report)
+            except Exception as error:
+                record["failure_report_error"] = _error(error)
+                if is_smoke_deadline(error):
+                    raise
+        try:
+            record["failure_screenshot"] = _screenshot(artifacts, runner, udid, label + "-failure.png",
+                                                      label + "-failure-screenshot",
+                                                      attempts=record.setdefault("failure_screenshot_attempts", []), save=persist)
+        except Exception as error:
+            record["failure_screenshot_error"] = _error(error)
+            if is_smoke_deadline(error):
+                raise
+    except BaseException as error:
+        if primary is None:
             raise
-    save()
+        record["failure_capture_error"] = _error(error)
+        if is_smoke_deadline(error):
+            primary.smoke_deadline_expired = True
+        elif not isinstance(error, Exception):
+            primary.failure_capture_interrupted = True
+    finally:
+        record["failure_capture_finished_at_utc"] = _utc_now()
+        try:
+            persist()
+        except BaseException as error:
+            if primary is None:
+                raise
+            if is_smoke_deadline(error):
+                primary.smoke_deadline_expired = True
+            elif not isinstance(error, Exception):
+                primary.failure_capture_interrupted = True
 
 
 def _terminate_and_confirm(runner, udid, bundle, pid, label, *, record=None, save=None,
@@ -905,7 +1047,7 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
     udid = canonical_udid(udid)
     if type(bundle) is not str or not BUNDLE_RE.fullmatch(bundle):
         raise ValueError("Invalid diagnostic bundle identity")
-    source, _, _ = _source_app(app_path, bundle)
+    source, _, executable = _source_app(app_path, bundle)
     if not callable(update_pid) or not callable(getattr(runner, "call_env", None)):
         raise ValueError("Diagnostics require a PID ownership callback and runner.call_env")
     if mode not in ("ab", "signed-positive"):
@@ -933,15 +1075,26 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
     def save():
         _save_json(summary, result)
 
+    def save_failure(primary, record):
+        try:
+            save()
+        except BaseException as secondary:
+            record.setdefault("failure_evidence_errors", []).append(_error(secondary))
+            from ios_simulator_smoke import is_smoke_deadline
+            if is_smoke_deadline(secondary):
+                primary.smoke_deadline_expired = True
+            elif not isinstance(secondary, Exception):
+                primary.failure_capture_interrupted = True
+
     def abort_ab_deadline(error):
         from ios_simulator_smoke import is_smoke_deadline
-        if not is_smoke_deadline(error):
+        if not is_smoke_deadline(error) and not getattr(error, "failure_capture_interrupted", False):
             return False
         result.update(result="keychain-diagnostics-failed", error=_error(error))
         result["unsigned"]["evidence_errors"] = unsigned_errors
         result["signed"]["result"] = "blocked"
         result["between_phases"]["result"] = "blocked"
-        save()
+        save_failure(error, result["unsigned"])
         return True
 
     def transition_call(action, args, label, timeout):
@@ -992,11 +1145,19 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
                    "SIMCTL_CHILD_BETTER_ZSLF_PROBE_NAMESPACE": result["namespaces"][kind]}
             record["launch_started_at_utc"] = _utc_now()
             save()
+            launch_error = None
             try:
                 output = runner.call_env(["launch", udid, bundle], label + "-launch", env, timeout=30)
+            except BaseException as error:
+                launch_error = error
+                record["launch_command_failed"] = True
+                raise
             finally:
                 record["launch_finished_at_utc"] = _utc_now()
-                save()
+                if launch_error is None:
+                    save()
+                else:
+                    save_failure(launch_error, record)
             pid = parse_launch_pid(output, bundle)
             record["pid"] = pid
             result["pid"] = pid
@@ -1013,11 +1174,13 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
             record["result"] = "failed"
             record["error"] = _error(error)
             from ios_simulator_smoke import is_smoke_deadline
-            if is_smoke_deadline(error) or not isinstance(error, Exception):
+            if (is_smoke_deadline(error) or not isinstance(error, Exception)
+                    or getattr(error, "failure_capture_interrupted", False)):
                 result.update(result="keychain-diagnostics-failed", error=_error(error))
-                save()
+                save_failure(error, record)
                 raise
-            _capture_failure(artifacts, runner, udid, label, record, container, phase, save, bundle)
+            _capture_failure(artifacts, runner, udid, label, record, container, phase, save, bundle,
+                             primary=error, executable=executable, app_name=source.name, clock=clock)
             raise
 
     save()
@@ -1034,7 +1197,10 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
                 raise
             if not result["unsigned"]:
                 result["unsigned"].update({"phase": "seed", "result": "failed", "report": None, "error": _error(error)})
-                _capture_failure(artifacts, runner, udid, "unsigned", result["unsigned"], None, "seed", save, bundle)
+                _capture_failure(artifacts, runner, udid, "unsigned", result["unsigned"], None, "seed", save, bundle,
+                                 primary=error, executable=executable, app_name=source.name, clock=clock)
+                if abort_ab_deadline(error):
+                    raise
         try:
             result["unsigned"]["screenshot"] = _screenshot(artifacts, runner, udid, "unsigned-startup.png", "unsigned-screenshot",
                                                         attempts=result["unsigned"].setdefault("screenshot_attempts", []), save=save)
@@ -1117,9 +1283,10 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
         result["result"] = "keychain-diagnostics-failed"
         result["error"] = _error(error)
         from ios_simulator_smoke import is_smoke_deadline
-        if is_smoke_deadline(error) or not isinstance(error, Exception):
+        if (is_smoke_deadline(error) or not isinstance(error, Exception)
+                or getattr(error, "failure_capture_interrupted", False)):
             result["signed"]["result"] = "failed"
-            save()
+            save_failure(error, result["signed"])
             raise
         if result["signed"].get("result") not in ("passed", "blocked"):
             result["signed"]["result"] = "failed"
@@ -1128,12 +1295,12 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
             record.setdefault("error", _error(error))
             # launch_phase already captured its failure. Also cover signing,
             # install, seed screenshot, terminate and cross-PID checks here.
-            if "failure_screenshot" not in record and "failure_screenshot_error" not in record:
-                # launch_phase already exported any native report. Do not put another
-                # potentially slow container lookup ahead of the short failure log window.
+            if "failure_capture_started_at_utc" not in record:
+                # No repeated capture/container query, including when secondary evidence IO failed.
                 _capture_failure(artifacts, runner, udid, "signed-" + active_phase, record, None,
-                                 active_phase if active_phase in ("seed", "verify") else "seed", save, bundle)
-        save()
+                                 active_phase if active_phase in ("seed", "verify") else "seed", save, bundle,
+                                 primary=error, executable=executable, app_name=source.name, clock=clock)
+        save_failure(error, result["signed"])
         raise
 
 

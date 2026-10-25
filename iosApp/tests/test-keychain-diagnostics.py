@@ -105,6 +105,13 @@ class FakeRunner:
         self.screenshot_payloads = {}
         self.report_overrides = {}
         self.launch_pids = {}
+        self.launch_errors = {}
+        self.host_calls = []
+        self.host_outputs = {"ps": "1 0 /sbin/launchd\n", "vm_stat": "Mach Virtual Memory Statistics: fixture\n"}
+
+    def call_host(self, kind, label, timeout):
+        self.host_calls.append((kind, label, timeout))
+        return self.host_outputs[kind]
 
     def call(self, args, label, timeout=60):
         self.calls.append((list(args), label))
@@ -135,6 +142,8 @@ class FakeRunner:
         self.calls.append((list(args), label))
         self.timeouts[label] = timeout
         self.launches.append(copy.deepcopy(env))
+        if label in self.launch_errors:
+            raise self.launch_errors[label]
         if label in self.launch_failure_labels:
             raise RuntimeError("Synthetic launch denied before PID")
         self.next_pid += 1
@@ -189,6 +198,178 @@ class DiagnosticsTests(unittest.TestCase):
             return diag.run_diagnostics(self.artifacts, self.app, BUNDLE, OWN, self.runner,
                                         self.pids.append, sleep=lambda _: None, clock=lambda: 0,
                                         mode="signed-positive", signing_method="xcode-simulator")
+
+    def observe_failure(self, record=None, clock=lambda: 0.0):
+        record = {} if record is None else record
+        diag._observe_failed_launch(self.artifacts, self.runner, OWN, "check", record, self.container,
+                                    "seed", lambda: None, BUNDLE, "BetterZslf", self.app.name, clock)
+        return record
+
+    def test_launch_timeout_observes_report_and_pid_without_upgrading_or_verify(self):
+        primary = smoke.subprocess.TimeoutExpired("fixture launch", 30)
+        original = self.runner.call_env
+        def launched_but_cli_timed_out(*args, **kwargs):
+            original(*args, **kwargs)
+            raise primary
+        path = f"/Users/runner/Library/Developer/CoreSimulator/Devices/{OWN}/data/Containers/Bundle/Application/{OWN}/BetterZslf.app/BetterZslf"
+        self.runner.host_outputs["ps"] = f"1001 1 {path}\n1 0 /sbin/launchd\n"
+        events = []
+        reader, call = diag.read_native_report, self.runner.call
+        def read(*args):
+            events.append("native")
+            return reader(*args)
+        def invoked(args, label, timeout):
+            events.append(label)
+            return call(args, label, timeout)
+        with mock.patch.object(self.runner, "call_env", side_effect=launched_but_cli_timed_out), \
+                mock.patch.object(self.runner, "call", side_effect=invoked), \
+                mock.patch.object(diag, "read_native_report", side_effect=read):
+            with self.assertRaises(smoke.subprocess.TimeoutExpired) as raised:
+                self.run_probe("signed-positive")
+        self.assertIs(raised.exception, primary)
+        value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+        seed = value["signed"]["seed"]
+        self.assertEqual(seed["result"], "failed")
+        self.assertTrue(seed["report"]["probeOk"])
+        self.assertIsNone(value["pid"])
+        self.assertNotIn("pid", seed)
+        self.assertEqual(value["signed"]["verify"], {})
+        self.assertEqual(self.pids, [])
+        self.assertEqual(len(self.runner.launches), 1)
+        self.assertEqual(sum(args[0] == "install" for args, _ in self.runner.calls), 1)
+        steps = seed["failure_observations"]["steps"]
+        self.assertEqual([s["kind"] for s in steps], ["early_native_report", "launchctl", "host_ps_comm", "host_vm_stat"])
+        self.assertEqual(steps[1]["observed_bundle_pids"], [1001])
+        self.assertEqual(steps[2]["observed_candidates"][0]["pid"], 1001)
+        self.assertLess(events.index("native"), events.index("signed-seed-failure-processes"))
+        self.assertLess(events.index("signed-seed-failure-processes"), events.index("signed-seed-launch-system-log"))
+        self.assertTrue(all(0 < seconds <= 3 for _, _, seconds in self.runner.host_calls))
+
+    def test_early_report_valid_invalid_missing_never_requeries_container(self):
+        for state in ("valid", "invalid", "missing"):
+            with self.subTest(state=state):
+                self.setUp()
+                path = self.container / diag.REPORT_RELATIVE
+                if state != "missing":
+                    path.parent.mkdir(parents=True)
+                    path.write_text(json.dumps(report("seed", True) if state == "valid" else {"schema": 1}), encoding="utf8")
+                record = self.observe_failure()
+                entry = record["failure_observations"]["steps"][0]
+                self.assertEqual(entry["outcome"], "observed_report" if state == "valid" else "unknown")
+                self.assertEqual("report" in record, state == "valid")
+                self.assertFalse(any(args[0] == "get_app_container" for args, _ in self.runner.calls))
+                if state == "invalid":
+                    self.assertEqual(entry["error"]["type"], "ReportError")
+
+    def test_failure_process_snapshot_is_single_strict_and_never_verified_pid(self):
+        for state in ("valid", "bad", "timeout"):
+            with self.subTest(state=state):
+                self.setUp()
+                if state == "valid":
+                    self.runner.pid = 1234
+                elif state == "bad":
+                    self.runner.process_outputs["check-failure-processes"] = "PID Status Label\ntruncated"
+                else:
+                    self.runner.timeout_labels.add("check-failure-processes")
+                record = self.observe_failure()
+                item = record["failure_observations"]["steps"][1]
+                self.assertEqual(item["outcome"], "observed" if state == "valid" else "unknown")
+                self.assertNotIn("pid", record)
+                calls = [(args, label) for args, label in self.runner.calls if label == "check-failure-processes"]
+                self.assertEqual(len(calls), 1)
+                self.assertLessEqual(self.runner.timeouts[calls[0][1]], 3)
+                if state == "valid":
+                    self.assertEqual(item["observed_bundle_pids"], [1234])
+                else:
+                    self.assertNotIn("observed_bundle_pids", item)
+
+    def test_failure_observation_shared_15s_and_existing_600s_deadline(self):
+        for source in ("local15", "body600", "body_short"):
+            with self.subTest(source=source):
+                self.setUp()
+                now = [0.0]
+                if source == "body600":
+                    self.runner.body_deadline_monotonic = 0.0
+                elif source == "body_short":
+                    self.runner.body_deadline_monotonic = 1.0
+                original = self.runner.call
+                def late(args, label, timeout):
+                    value = original(args, label, timeout)
+                    now[0] = 1.1 if source == "body_short" else 15.1
+                    return value
+                with mock.patch.object(self.runner, "call", side_effect=late), \
+                        mock.patch.object(diag, "read_native_report", wraps=diag.read_native_report) as reader:
+                    record = self.observe_failure(clock=lambda: now[0])
+                data = record["failure_observations"]
+                self.assertTrue(data["budget_exhausted"])
+                self.assertEqual(self.runner.host_calls, [])
+                if source == "body600":
+                    self.assertTrue(data["body_deadline_exhausted"])
+                    reader.assert_not_called()
+                    self.assertEqual(self.runner.calls, [])
+                    self.assertTrue(all(item["outcome"] == "skipped_budget" for item in data["steps"]))
+                else:
+                    self.assertEqual(data["steps"][1]["outcome"], "late_unknown")
+                    self.assertNotIn("valid_full", data["steps"][1])
+                    self.assertEqual(len(self.runner.calls), 1)
+                    if source == "body_short":
+                        self.assertEqual(self.runner.timeouts["check-failure-processes"], 0.5)
+                        self.assertTrue(data["body_deadline_exhausted"])
+
+    def test_host_ps_requires_full_rows_exact_udid_container_and_executable(self):
+        path = f"/Users/runner/Library/Developer/CoreSimulator/Devices/{OWN}/data/Containers/Bundle/Application/{OWN}/BetterZslf.app/BetterZslf"
+        parsed = diag.parse_host_ps_candidates(f"12 1 {path}\n", OWN, "BetterZslf", self.app.name)
+        self.assertEqual(parsed["observed_candidates"][0]["pid"], 12)
+        for comm in ("BetterZslf", "/usr/libexec/xpcproxy", path + " --argv", path + ".debug.dylib",
+                     path.replace("Devices/" + OWN, "Devices/AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"),
+                     path.replace("Application/" + OWN, "Application/" + "-" * 36),
+                     path.replace("/BetterZslf.app/", "/../BetterZslf.app/")):
+            with self.subTest(comm=comm):
+                self.assertEqual(diag.parse_host_ps_candidates(f"12 1 {comm}\n", OWN, "BetterZslf", self.app.name)["observed_candidates"], [])
+        for raw in ("12 1 BetterZslf", "12 noPID BetterZslf\n", "12 1 x\n12 1 y\n", "12 1 x\ntruncated\n"):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                diag.parse_host_ps_candidates(raw, OWN, "BetterZslf", self.app.name)
+
+    def test_launch_primary_identity_survives_host_and_summary_io_errors(self):
+        primary = smoke.subprocess.TimeoutExpired("fixture launch", 30)
+        self.runner.launch_errors["signed-seed-launch"] = primary
+        original = diag._save_json
+        def failing_final_save(path, value):
+            if value.get("signed", {}).get("seed", {}).get("launch_command_failed"):
+                raise OSError("fixture summary write failure")
+            return original(path, value)
+        with mock.patch.object(diag, "_save_json", side_effect=failing_final_save), \
+                mock.patch.object(self.runner, "call_host", side_effect=OSError("fixture host IO")):
+            with self.assertRaises(smoke.subprocess.TimeoutExpired) as raised:
+                self.run_probe("signed-positive")
+        self.assertIs(raised.exception, primary)
+        self.assertEqual(len(self.runner.launches), 1)
+        self.assertFalse(any(label == "signed-verify-launch" for _, label in self.runner.calls))
+
+    def test_secondary_watchdog_marks_original_launch_exception_and_stops_capture(self):
+        primary = smoke.subprocess.TimeoutExpired("fixture launch", 30)
+        self.runner.launch_errors["signed-seed-launch"] = primary
+        original = self.runner.call
+        def expired(args, label, timeout):
+            if label == "signed-seed-failure-processes":
+                self.runner.calls.append((list(args), label))
+                raise smoke.SmokeDeadlineExceeded("fixture remaining body expired")
+            return original(args, label, timeout)
+        with mock.patch.object(self.runner, "call", side_effect=expired):
+            with self.assertRaises(smoke.subprocess.TimeoutExpired) as raised:
+                self.run_probe("signed-positive")
+        self.assertIs(raised.exception, primary)
+        self.assertTrue(smoke.is_smoke_deadline(primary))
+        self.assertEqual(self.runner.host_calls, [])
+        self.assertEqual(self.runner.calls[-1][1], "signed-seed-failure-processes")
+        value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
+        self.assertEqual(value["result"], "keychain-diagnostics-failed")
+        self.assertEqual(value["signed"]["verify"], {})
+
+    def test_success_path_has_no_new_host_observation(self):
+        self.assertEqual(self.run_probe("signed-positive")["result"], "keychain-diagnostics-passed")
+        self.assertEqual(self.runner.host_calls, [])
+        self.assertFalse(any("failure-processes" in label for _, label in self.runner.calls))
 
     def test_xcode_packaged_copy_audits_sections_and_never_resigns(self):
         self.packaged_app(real={"get-task-allow": True})
@@ -531,7 +712,8 @@ class DiagnosticsTests(unittest.TestCase):
         primary = smoke.subprocess.TimeoutExpired("scoped log", 15, output=b"partial-log")
         process = mock.Mock(pid=12345, returncode=0)
         process.communicate.side_effect = [primary, smoke.SmokeDeadlineExceeded("body expired during drain")]
-        self.runner.launch_failure_labels.add("signed-seed-launch")
+        launch_primary = RuntimeError("Synthetic launch denied before PID")
+        self.runner.launch_errors["signed-seed-launch"] = launch_primary
         original = self.runner.call
         def call(args, label, timeout):
             if label == "signed-seed-launch-system-log":
@@ -542,9 +724,10 @@ class DiagnosticsTests(unittest.TestCase):
                 mock.patch.object(smoke.subprocess, "Popen", return_value=process), \
                 mock.patch.object(smoke.os, "killpg", create=True), \
                 mock.patch.object(smoke.signal, "SIGKILL", 9, create=True):
-            with self.assertRaises(smoke.subprocess.TimeoutExpired) as raised:
+            with self.assertRaises(RuntimeError) as raised:
                 self.run_probe("signed-positive")
-        self.assertIs(raised.exception, primary)
+        self.assertIs(raised.exception, launch_primary)
+        self.assertTrue(smoke.is_smoke_deadline(launch_primary))
         self.assertTrue(smoke.is_smoke_deadline(primary))
         self.assertEqual(self.runner.calls[-1][1], "signed-seed-launch-system-log")
         self.assertEqual(len(self.runner.launches), 1)
@@ -564,8 +747,10 @@ class DiagnosticsTests(unittest.TestCase):
                 primary = smoke.subprocess.TimeoutExpired(target, 15, output=b"partial")
                 process = mock.Mock(pid=12345, returncode=0)
                 process.communicate.side_effect = [primary, smoke.SmokeDeadlineExceeded("body expired during drain")]
+                expected_primary = primary
                 if target == "unsigned-launch-system-log":
-                    self.runner.launch_failure_labels.add("unsigned-launch")
+                    expected_primary = RuntimeError("Synthetic launch denied before PID")
+                    self.runner.launch_errors["unsigned-launch"] = expected_primary
                 original = self.runner.call
                 def call(args, label, timeout):
                     if label == target:
@@ -576,9 +761,10 @@ class DiagnosticsTests(unittest.TestCase):
                         mock.patch.object(smoke.subprocess, "Popen", return_value=process), \
                         mock.patch.object(smoke.os, "killpg", create=True), \
                         mock.patch.object(smoke.signal, "SIGKILL", 9, create=True):
-                    with self.assertRaises(smoke.subprocess.TimeoutExpired) as raised:
+                    with self.assertRaises(type(expected_primary)) as raised:
                         self.run_probe()
-                self.assertIs(raised.exception, primary)
+                self.assertIs(raised.exception, expected_primary)
+                self.assertTrue(smoke.is_smoke_deadline(expected_primary))
                 self.assertEqual(self.runner.calls[-1][1], target)
                 value = json.loads((self.artifacts / "keychain-diagnostics.json").read_text())
                 self.assertEqual(value["result"], "keychain-diagnostics-failed")

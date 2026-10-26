@@ -11,10 +11,11 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${ANDROID_EXPECTED_CERT_SHA256:?Missing validated signing certificate}"
 [[ -s "$ANDROID_KEYSTORE_PATH" ]] || { echo 'Prepared release keystore is missing or empty.' >&2; exit 1; }
 python3 scripts/verify-wrapper.py
+# The aggregate covers all enabled app unit-test variants, including minified-build setups.
 bash ./gradlew --no-daemon --stacktrace \
   "-PversionName=$RELEASE_VERSION_NAME" "-PversionCode=$RELEASE_VERSION_CODE" \
   :shared:jvmTest \
-  :androidApp:testReleaseUnitTest \
+  :androidApp:test \
   :androidApp:lintRelease \
   :androidApp:assembleRelease \
   :androidApp:bundleRelease

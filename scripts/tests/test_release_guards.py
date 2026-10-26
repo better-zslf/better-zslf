@@ -2,6 +2,7 @@
 import base64
 import contextlib
 import io
+import re
 import sys
 import tempfile
 import unittest
@@ -85,6 +86,19 @@ class SigningInputTests(unittest.TestCase):
             decode_keystore(values)
         self.assertNotIn("PRIVATE_SECRET", str(raised.exception))
         self.assertEqual(output.getvalue(), "")
+
+
+class ReleaseTaskTests(unittest.TestCase):
+    def test_release_runner_uses_supported_variant_aggregate(self):
+        script = (Path(__file__).resolve().parents[1] / "ci-android-release.sh").read_text(encoding="utf-8")
+        tasks = []
+        for line in script.splitlines():
+            token = line.strip().rstrip("\\").strip()
+            if re.fullmatch(r":[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)+", token):
+                tasks.append(token)
+        self.assertEqual(tasks, [":shared:jvmTest", ":androidApp:test", ":androidApp:lintRelease",
+                                 ":androidApp:assembleRelease", ":androidApp:bundleRelease"])
+        self.assertNotIn(":androidApp:testReleaseUnitTest", script)
 
 
 if __name__ == "__main__":

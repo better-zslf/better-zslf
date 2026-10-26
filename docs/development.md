@@ -46,7 +46,7 @@ Pro开发、操作与专项验收见[Pro文档](https://github.com/better-zslf/p
 
 Source只维护标准版build/release；完整测试统一在Pro CI的canonical [tests.yml](https://github.com/better-zslf/pro-ci/blob/main/.github/workflows/tests.yml)。应用源码固定为S，Pro控制器固定为C；Pro tag指向C，Pro产物metadata中的Source SHA仍绑定S，已有tag/release不覆盖。Source手工`publish=false`用40位`source_ref`测试，不伪造正式tag/release。[App配置与权限](https://github.com/better-zslf/pro-ci/blob/main/docs/ci.md)说明每job范围与签名检查职责。
 
-维护者已确认App JWT身份及installation元数据，两仓App Variable/Secret已真配置；两个singleRepo token分别只见唯一Pro CI（Actions写/Metadata读）与唯一Source（Contents读/Metadata读），读源main ref和Pro活跃workflow通过，测试token已revoke。未枚举App全installation仓库名单；新App完整CI及Native/自动发行仍需实际run，本轮文档不代执行或外推产品验收。
+维护者已确认App JWT身份及installation元数据，两仓App Variable/Secret已真配置；两个singleRepo token分别只见唯一Pro CI（Actions写/Metadata读）与唯一Source（Contents读/Metadata读），读源main ref和Pro活跃workflow通过，测试token已revoke。未枚举App全installation仓库名单。[实际App跨仓双版CI](<https://github.com/better-zslf/pro-ci/actions/runs/40312777553>)已通过Android检查及macOS上的iOS构建/owned Simulator smoke；正式发行与真实学校/硬件验收另记。
 
 ## 正常跑步保留的流程
 

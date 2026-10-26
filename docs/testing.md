@@ -2,16 +2,17 @@
 
 ## 文档拆分说明（2026-10-26）
 
-本页保留普通功能、真实GPS人工流程和通用平台的历史事实。下文数字来自当时单版本/指定提交，包含现已归Pro的子集，不是Standard/Pro拆分后的数量；本次只整理文档，未重新执行测试、构建、CI、学校请求或设备验收。
+本页保留普通功能、真实GPS人工流程和通用平台的历史事实。历史章节数字来自当时单版本/指定提交，包含现已归Pro的子集，不是Standard/Pro拆分后的数量；本次实际CI结果单列固定S/C与运行链接，不与学校或设备验收混用。
 
 热水器及路线导入/手绘/补里程/自动规划的专项开发、操作和验收历史迁至[Pro验证记录](https://github.com/better-zslf/pro-ci/blob/main/docs/testing.md)、[热水器](https://github.com/better-zslf/pro-ci/blob/main/docs/water.md)、[路线工具](https://github.com/better-zslf/pro-ci/blob/main/docs/routes.md)。Pro CI为私有仓，链接需相应访问权限。默认standard保留任务/成绩/历史/服务器地图/真实GPS记录与显式人工流程；Pro也保留生产`runFactory=null`等既有门。双仓与edition验收另记，不把627等旧报告当作本轮已跑。
 
-## 2026-10-26：GitHub App迁移，非Native验收
+## 2026-10-26：GitHub App跨仓与双版CI验收
 
 - 当前跨仓认证改为GitHub App；维护者已确认JWT身份、installation `175411436`的`better-zslf`/selected及Actions写/Contents读/Metadata读元数据。另已实证Pro CI token仅列唯一Pro CI仓（Actions写/Metadata读），Source token仅列唯一Source仓（Contents读/Metadata读）；读源main ref与Pro活跃workflow通过，测试token已revoke。未枚举App全installation仓库名单，不把这些API结果外推为新App完整CI、Native或自动发行通过。
 - 两仓`CI_APP_CLIENT_ID`（Repository Variable）和`CI_APP_PRIVATE_KEY`（加密Repository Secret，App PEM）已配置成功，不再要求两枚个人PAT。每job单仓token约1小时、job末默认revoke，不跨job复用；五项Android签名secret不变。[配置与状态](https://github.com/better-zslf/pro-ci/blob/main/docs/ci.md)。
 - 完整测试workflow统一在Pro canonical tests入口；源码S、控制器C、source gate/签名/aggregate职责分别记录。Pro tag为C而产物Source SHA为S，既有tag/release不覆盖；Source `publish=false`以40位`source_ref`dry-run，不创建正式tag/release。
-- 本文档任务未执行CLI、网络或测试，不读取用户私有文件；历史测试数量及后续维护者的真实CI结果分别登记。
+- [实际App触发的完整验收40312777553](<https://github.com/better-zslf/pro-ci/actions/runs/40312777553>)成功，actor为`pro-ci[bot]`，固定Source S=`82ce360ac09ac574cfd73f27437b2230f9f17d1d`、controller C=`2ed9e9f1dcc8df096deb56533107cdb96af92b2e`。Android两版检查、iOS两版framework/Xcode构建及owned Simulator smoke通过，各Job独立签发/私有源检出/post撤销通过；本机Source248、controller36、iOS版本脚本Bash23通过。
+- 首次Pro Xcode二次Gradle配置的版本后缀错误已窄修，Apple marketing保持数字、Gradle Pro version加-pro，原Android严格版本门和Native诊断/owner/时窗不变。原失败运行保留。本次publish=false，正式签名发行job跳过，没有制造正式Source/Pro版本；学校业务、真机及硬件结果仍分别记录。
 
 ## 2026-10-23：首次集成
 

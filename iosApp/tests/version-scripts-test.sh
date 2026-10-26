@@ -134,8 +134,15 @@ PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=
   BETTER_ZSLF_BUNDLE_ID=io.github.betterzslf.pro PRODUCT_BUNDLE_IDENTIFIER=io.github.betterzslf.pro \
   /bin/bash "$embed"
 contains_line "$GRADLE_CAPTURE" '-PbetterZslfEdition=pro' 'resolved Pro Xcode edition wins environment'
-contains_line "$GRADLE_CAPTURE" '-PversionName=6.7.8' 'Pro marketing version remains numeric'
-pass 'Xcode Pro identity propagates its resolved edition to Gradle (stub)'
+contains_line "$GRADLE_CAPTURE" '-PversionName=6.7.8-pro' 'Pro Gradle version uses the edition suffix while Apple marketing stays numeric'
+pass 'Xcode Pro identity and Gradle edition version agree (stub)'
+PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=6.7.8 \
+  CURRENT_PROJECT_VERSION=46 ORG_GRADLE_PROJECT_versionName=9.9.9-pro BETTER_ZSLF_EDITION=pro \
+  PRODUCT_BUNDLE_IDENTIFIER=io.github.betterzslf.pro /bin/bash "$embed"
+contains_line "$GRADLE_CAPTURE" '-PversionName=6.7.8-pro' 'resolved marketing version overrides ambient Gradle version'
+expect_failure env PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=6.7.8-pro \
+  CURRENT_PROJECT_VERSION=46 BETTER_ZSLF_EDITION=pro /bin/bash "$embed"
+pass 'Pro suffix is added only for Gradle and never accepted as Apple marketing version'
 expect_failure env PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=6.7.8 \
   CURRENT_PROJECT_VERSION=46 BETTER_ZSLF_EDITION=pro PRODUCT_BUNDLE_IDENTIFIER=io.github.betterzslf /bin/bash "$embed"
 expect_failure env PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=6.7.8 \

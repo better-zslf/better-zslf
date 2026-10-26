@@ -41,7 +41,12 @@ fi
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(CDPATH= cd -- "$script_dir/../.." && pwd)"
 cd "$repo_root"
-# Forward the exact resolved Xcode values so CI overrides apply to both builds identically.
+# Apple marketing versions stay numeric. Gradle configures Android too, whose Pro
+# version must include the edition suffix even when building only the iOS framework.
+gradle_version_name="$MARKETING_VERSION"
+if [[ "$edition" == pro ]]; then
+  gradle_version_name="${MARKETING_VERSION}-pro"
+fi
 # Do not enable shell tracing or print the Xcode environment (it may contain signing credentials).
 exec /bin/bash "$repo_root/gradlew" :shared:embedAndSignAppleFrameworkForXcode \
-  "-PversionName=$MARKETING_VERSION" "-PversionCode=$CURRENT_PROJECT_VERSION" "-PbetterZslfEdition=$edition"
+  "-PversionName=$gradle_version_name" "-PversionCode=$CURRENT_PROJECT_VERSION" "-PbetterZslfEdition=$edition"

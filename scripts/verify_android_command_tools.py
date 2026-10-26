@@ -99,7 +99,8 @@ def main():
         repository = ET.fromstring(payload)
     else:
         repository = ET.parse(FIXTURE).getroot()
-    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    from ci_workflow_contract import read_test_workflow
+    workflow = read_test_workflow()
     print(json.dumps(validate_ci(workflow, repository), ensure_ascii=False, indent=2))
 
 

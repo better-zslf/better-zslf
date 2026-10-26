@@ -1,6 +1,8 @@
 package io.github.betterzslf.platform
 
 import io.github.betterzslf.core.text.AppText
+import io.github.betterzslf.edition.BuildEdition
+import io.github.betterzslf.feature.update.GithubReleasePolicy
 import android.app.ActivityManager
 import android.app.DownloadManager
 import android.content.ClipData
@@ -37,11 +39,7 @@ private object UpdateProcess {
 /** Pure policy, intentionally stricter than a generic HTTPS downloader. */
 internal object AndroidUpdatePolicy {
     const val MAX_BYTES = 250L * 1024 * 1024
-    private val version = Regex("(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)")
-    private val sha = Regex("[0-9a-fA-F]{64}")
-    fun valid(spec: ApkUpdateSpec): Boolean = spec.versionName.length in 1..128 && version.matches(spec.versionName) &&
-        spec.sizeBytes in 1..MAX_BYTES && sha.matches(spec.sha256) && spec.downloadUrl ==
-        "https://github.com/better-zslf/better-zslf/releases/download/v${spec.versionName}/better-zslf-${spec.versionName}.apk"
+    fun valid(spec: ApkUpdateSpec): Boolean = GithubReleasePolicy.isInstallSpec(spec)
 }
 
 private class UpdateFailure(val fixedMessage: String) : Exception()
@@ -76,7 +74,7 @@ private class AndroidAppUpdater : NativeAppUpdater {
         val job = synchronized(lock) {
             if (closed || mutableState.value.phase in setOf(AppUpdatePhase.DOWNLOADING, AppUpdatePhase.VERIFYING,
                     AppUpdatePhase.READY_TO_INSTALL, AppUpdatePhase.INSTALL_PERMISSION_REQUIRED, AppUpdatePhase.INSTALLER_OPENED)) return
-            if (!AndroidUpdatePolicy.valid(spec)) {
+            if (!AndroidUpdatePolicy.valid(spec) || context.packageName != BuildEdition.androidApplicationId) {
                 mutableState.value = AppUpdateState(AppUpdatePhase.FAILED, message = AppText.Updates.INVALID_UPDATE_PACKAGE_INFORMATION_RECHECK_RELEASE)
                 return
             }
@@ -253,7 +251,7 @@ private class AndroidAppUpdater : NativeAppUpdater {
         val flags = PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong())
         val incoming = context.packageManager.getPackageArchiveInfo(file.absolutePath, flags) ?: throw UpdateFailure(AppText.Updates.INVALID_INSTALL_PACKAGE_FORMAT)
         val installed = context.packageManager.getPackageInfo(context.packageName, flags)
-        if (incoming.packageName != context.packageName || incoming.versionName != transfer.spec.versionName || incoming.longVersionCode <= installed.longVersionCode) throw UpdateFailure(AppText.Updates.PACKAGE_APP_OR_VERSION_UPDATE_MISMATCH)
+        if (context.packageName != BuildEdition.androidApplicationId || incoming.packageName != context.packageName || incoming.versionName != transfer.spec.versionName || incoming.longVersionCode <= installed.longVersionCode) throw UpdateFailure(AppText.Updates.PACKAGE_APP_OR_VERSION_UPDATE_MISMATCH)
         fun certificates(info: PackageInfo): Set<String> = info.signingInfo?.apkContentsSigners?.map { certificate ->
             MessageDigest.getInstance("SHA-256").digest(certificate.toByteArray()).joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
         }?.toSet().orEmpty()

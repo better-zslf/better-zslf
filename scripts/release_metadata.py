@@ -11,7 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 
 
-def load_version(path: Path, tag: str | None = None) -> dict:
+APPLICATION_IDS = {"standard": "io.github.betterzslf", "pro": "io.github.betterzslf.pro"}
+
+
+def load_version(path: Path, tag: str | None = None, edition: str = "standard") -> dict:
+    if edition not in APPLICATION_IDS:
+        raise ValueError("Edition must be standard or pro")
     values = {}
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -29,9 +34,11 @@ def load_version(path: Path, tag: str | None = None) -> dict:
         raise ValueError("VERSION_NAME must use numeric x.y.z notation shared with iOS")
     if not re.fullmatch(r"[1-9][0-9]*", code) or int(code) > 2_100_000_000:
         raise ValueError("VERSION_CODE must be an integer in 1..2100000000")
+    if edition == "pro":
+        name += "-pro"
     expected_tag = f"v{name}"
     if tag is not None and tag != expected_tag:
-        raise ValueError("Tag must exactly match v + VERSION_NAME in version.properties")
+        raise ValueError("Tag must exactly match the selected edition and version.properties")
     return {"versionName": name, "versionCode": int(code), "tag": expected_tag}
 
 
@@ -39,11 +46,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--properties", type=Path, default=ROOT / "version.properties")
     parser.add_argument("--tag")
+    parser.add_argument("--edition", choices=tuple(APPLICATION_IDS), default="standard")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--github-output", action="store_true")
     args = parser.parse_args()
     try:
-        metadata = load_version(args.properties, args.tag)
+        metadata = load_version(args.properties, args.tag, args.edition)
     except (OSError, ValueError) as error:
         raise SystemExit(str(error)) from None
     if args.output:

@@ -1,5 +1,11 @@
 # 验证记录
 
+## 文档拆分说明（2026-10-26）
+
+本页保留普通功能、真实GPS人工流程和通用平台的历史事实。下文数字来自当时单版本/指定提交，包含现已归Pro的子集，不是Standard/Pro拆分后的数量；本次只整理文档，未重新执行测试、构建、CI、学校请求或设备验收。
+
+热水器及路线导入/手绘/补里程/自动规划的专项开发、操作和验收历史迁至[Pro验证记录](https://github.com/better-zslf/pro-ci/blob/main/docs/testing.md)、[热水器](https://github.com/better-zslf/pro-ci/blob/main/docs/water.md)、[路线工具](https://github.com/better-zslf/pro-ci/blob/main/docs/routes.md)。Pro CI为私有仓，链接需相应访问权限。默认standard保留任务/成绩/历史/服务器地图/真实GPS记录与显式人工流程；Pro也保留生产`runFactory=null`等既有门。双仓与edition验收另记，不把627等旧报告当作本轮已跑。
+
 ## 2026-10-23：首次集成
 
 - Kotlin 2.4.21 / Compose Multiplatform 1.12.2 / Miuix 0.9.4。
@@ -27,20 +33,20 @@ bash ./gradlew :shared:jvmTest :androidApp:assembleDebug :androidApp:lintDebug
 
 ## 第二轮集成
 
-- 内容分页、通知已读、预约/体测表单与附件流程、热水器 UI 及真实采样会话协调已接入。
+- 内容分页、通知已读、预约/体测表单与附件流程及真实采样会话协调已接入；当时单版本的Pro专项实现历史迁至上方Pro记录。
 - 全量项目报告 238 个 JUnit 方法、零失败/错误：237 项离线测试与 1 个默认关闭的 Live 门控方法。预约/体测的 28 项离线用例包含在内。
 - Android Debug APK、lint 均通过；另在 GitHub 的测试分支成功完成 Android 检查与产物上传。
 - 首次 macOS CI 在 Android command-line tools 下载阶段返回 404，未进入 iOS 编译；不能把该次运行当作 iOS 验收。
-- 软件蓝牙在 Bumble LocalLink 的真实虚拟 HCI/L2CAP/ATT/GATT 层完成发现、通知订阅、B0/B2/BA/B3/B4 与断开。这仍不等于 Android/Kable 或实体水控器验收。
+- 同次Pro软件蓝牙的分层验证及其后续记录已迁至[Pro验证历史](https://github.com/better-zslf/pro-ci/blob/main/docs/testing.md)，不计为Standard原生/硬件验收。
 - 增加仅 Debug 构建可用的原生定位/文件选择探针；探针不创建学校 HTTP 客户端，不上传轨迹或文件，不进入 Release APK。
 
 ## 2026-10-25：测试分支集成
 
 - [CI12](https://github.com/better-zslf/better-zslf/actions/runs/40162399854) 对应 `6696138`：Android 测试、lint 与 Debug APK 构建通过。JUnit 报告为 599 个方法、零失败/错误；其中 1 个 Live 门控默认关闭，实际离线用例为 598 项。Android App 单元测试任务仍为 NO-SOURCE。
 - 诊断宿主脚本 42 项及 scripts 测试 67 项已实际通过。这些是宿主回归，不计入 Native 验收。
-- Android App/Kable 已与 AVD、Bumble 的虚拟 HCI/L2CAP/ATT/GATT 链路完成端到端联调，含操作、重建与 Back/结束释放；31/31 指一个完整场景的 31 个证据断言，不是 31 个独立场景，也不等于实体水控器兼容性。
+- 该日热水器的Pro虚拟端到端记录及证据断言口径已迁至[Pro验证历史](https://github.com/better-zslf/pro-ci/blob/main/docs/testing.md)；未改写为Standard或实体兼容性通过。
 - 本机前一集成版已验证个人资料只读页面、找回页空表单禁发及返回、横竖屏 NavigationRail 切换与四标签独立历史。找回测试未发送短信、核验验证码或重置密码。
-- Android 地图的受控主文档 403、原生裁剪与相对高度基准为零问题已修复。CI12 APK 的独立本机重签副本已在 owned AVD 复验：AMap 真实底图、SDK Ready、合成导入折线与六行原始 WGS84 坐标滚动均通过；Native 视口为 720×420px，CSS 视口为 480×280px，未注入 CSS 或伪造 Ready。这不涵盖其他 provider、真实 GPS、任务 marker 或全部触摸交互。
+- Android地图平台的受控主文档403、原生裁剪与相对高度基准为零问题曾修复；该次实际数据验证是现属Pro的合成导入场景，视口/Ready/坐标证据与未覆盖项见[Pro记录](https://github.com/better-zslf/pro-ci/blob/main/docs/testing.md)。它不是正常服务器任务地图或真实GPS已验收。
 - iOS framework 与 Xcode Simulator app 构建已通过。CI11 的 Mac 路径别名断言已修正，CI12 的 42 项 preflight 通过；随后真实 signed-positive seed 启动被系统签名校验终止，尚未获得有效 App PID 或 Native seed/verify 报告。截图为 SpringBoard，不是 Login 通过。当前正核对 Simulator 模拟 entitlements 与真实签名的构建方式。
 - 本轮账号测试仍限登录和只读查询，未执行学校密码、预约、报名、打卡、跑步上传或附件写操作；生产跑步发送入口保持关闭，导入路线仅本机预览。
 
@@ -64,13 +70,10 @@ bash ./gradlew :shared:jvmTest :androidApp:assembleDebug :androidApp:lintDebug
 - UI/App、feature/model 与 actual 层的文案目录现有 1439 个成员：1260 个常量、179 个纯格式函数。A/B/C 三组独立文案金标的 805/720/91 个断言均已随对应 JVM 方法实际执行；C 组的 4 个方法包括两种 provider 的完整 HTML 及空文档字节比对。
 - 协议与查找值继续保留原值。两个内部 Unicode 诊断数据及两条 iOS 系统权限用途文案是明确保留项；词法门禁精确约束诊断例外，并额外绑定完整 Native 源码 SHA，不作整文件豁免。因此不宣称所有中文都已迁出源码。此轮未引入统计/崩溃 SDK 或账号预填。
 
-### Android：四标签页与同文档地图更新
+### Android：四标签页与地图验收边界
 
-- 新 APK 保留既有会话，首页、校园跑、社区、我的四标签页均已实际打开并视觉核对。无真实任务时显示本机预览，不伪造任务内容。
-- 通过系统文件选择器导入合成 GPX：AMap 真实底图、SDK Ready、橙色长路径及原始 WGS84 坐标均可见。随后再次选入不同的短路径文件，核对新文件名和原始末点，旧长线消除，真实 Ready 状态保持。
-- 以长线可见时为基线，选择器打开前、替换后和短线可见时共四次被动观察，App PID、地图 target/frame/loader 均不变，支持本次数据替换沿用同一文档。初次大幅滚动可能回收地图项的过程不计入这一结论。
-- 未通过脚本执行、样式改写或注入 Ready 得到上述结果；也未记录 SDK 回调次数，因此不把状态保持表述为“实测第二次 Ready 次数为 0”。
-- 使用应用的清空草稿后，地图页面数量为 0；只清理本次拥有的模拟器与精确匹配的调试转发，未清应用数据或登出。这些结果不代替真机 GPS、实体 BLE、其他 provider、任务 marker、读屏或更新安装验收。
+- 旧APK保留既有会话，首页、校园跑、社区、我的四标签页均已实际打开并视觉核对，未伪造真实任务内容。
+- 同次GPX本机预览、长短路线的同文档替换、真实Ready状态及清空草稿记录属于现已归Pro的场景，完整观察、未注入与未覆盖边界迁至[Pro验证历史](https://github.com/better-zslf/pro-ci/blob/main/docs/testing.md)。它不证明Standard实际服务器任务地图/marker、真机GPS、其他provider或全部交互通过。
 
 ### iOS：保留失败历史，单列实际成功结果
 
@@ -87,9 +90,9 @@ bash ./gradlew :shared:jvmTest :androidApp:assembleDebug :androidApp:lintDebug
 当前仍是开发预览，上述离线与模拟器结果不代表全部需求或发布验收已完成。以下项目仍需分别记录结果：
 
 - iOS 真机/设备 archive、实际交互、学校账号登录与完整双端回归。
-- 真机 GPS 运动、实体水控器 BLE/GATT 兼容性；既有虚拟链路结果不替代实体设备。
+- 真机GPS运动、真实服务器任务地图/marker与正常人工记录的端到端流程。
 - 头像、附件实际提交与原生更新安装；离线表单及安装前校验不等于服务端或系统接受。
-- 真实跑步任务与线上发送；发送入口仍关闭，现有合成路线仅本机预览，未验证真实任务接受性。
+- 真实跑步任务与线上发送；发送入口仍关闭，生产runFactory/transportFactory门控不因Pro属性而解除，真实任务接受性尚未验证。
 - 生产预约/体测的实际写入接受性；本轮未执行预约、报名或取消写操作。匿名短信与场地取消契约仍有未确认项。
-- S7 路线手绘在本节验证提交中尚无实现；后续实现及集成验收另记，不算作本轮已完成。其他 provider、任务 marker 与其余导入增强场景也需独立验证。
+- Pro手绘、导入增强、其他provider、规划及实体水控器等专项未验事项与旧S7实现状态，见[Pro待验清单](https://github.com/better-zslf/pro-ci/blob/main/docs/testing.md)，不从旧记录倒推当前已完成。
 - 组件层级、完整 TalkBack/VoiceOver、发布签名与正式发版。

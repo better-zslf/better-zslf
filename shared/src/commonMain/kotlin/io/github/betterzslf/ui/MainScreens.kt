@@ -9,7 +9,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.Route
-import io.github.betterzslf.feature.water.WaterBlePhase
+import io.github.betterzslf.edition.EditionAccess
 import kotlinx.serialization.json.*
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -17,18 +17,6 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 @Composable
 fun HomeScreen(graph: AppGraph, open: (Route) -> Unit) {
     var refresh by remember { mutableIntStateOf(0) }
-    val water by graph.water.state.collectAsState()
-    val waterSummary = when (water.phase) {
-        WaterBlePhase.Disconnected -> AppText.Water.DISCONNECTED
-        WaterBlePhase.Connecting -> AppText.Water.CONNECTING
-        WaterBlePhase.Ready -> AppText.Water.CONNECTED_NOT_STARTED
-        WaterBlePhase.Authenticating -> AppText.Water.AUTHENTICATING
-        WaterBlePhase.Active -> AppText.Water.ACTIVE_MANUAL_STOP_REMINDER
-        WaterBlePhase.Stopping -> AppText.Water.STOPPING
-        WaterBlePhase.ManualConfirmationRequired -> AppText.Water.MANUAL_CONFIRMATION_BEFORE_RETRY
-        WaterBlePhase.Failed -> AppText.Water.CONNECTION_CLOSED_SEE_NOTICE
-        WaterBlePhase.Closed -> AppText.Common.CLOSED
-    }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { refresh++ }
     Screen(AppText.Navigation.HOME, actions = { TextButton(AppText.Content.MESSAGES_TITLE, onClick = { open(Route.Page("notices", title = AppText.Content.MESSAGES_TITLE)) }) }) { padding ->
         PageList(padding) {
@@ -46,7 +34,7 @@ fun HomeScreen(graph: AppGraph, open: (Route) -> Unit) {
                     }
                 }
             }
-            item { SectionCard(AppText.Water.DORMITORY_HEATER_TITLE, AppText.Navigation.offlineWaterSummary((waterSummary)), { open(Route.Page("water", title = AppText.Water.DORMITORY_HEATER_TITLE)) }) }
+            if (EditionAccess.waterEnabled) item { graph.editionFeatures.HomeEntry(open) }
             item {
                 AsyncContent(refresh, { graph.repositories.notices.unread() }) { data ->
                     val count = (data.text("unreadNumber").toIntOrNull() ?: 0) + (data.text("noticeMutualCount").toIntOrNull() ?: 0)

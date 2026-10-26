@@ -32,7 +32,7 @@ targets:
       Release: .generated/Version.xcconfig
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: io.github.betterzslf
+        PRODUCT_BUNDLE_IDENTIFIER: "$(BETTER_ZSLF_BUNDLE_ID)"
         PRODUCT_NAME: BetterZslf
         INFOPLIST_FILE: Info.plist
         GENERATE_INFOPLIST_FILE: NO

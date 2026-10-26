@@ -15,7 +15,7 @@ sealed interface RouteParseResult {
 /** A bounded XML reader, with no DTD, entity expansion, file access, or network access. */
 object RunRouteParser {
     const val MAX_DOCUMENT_CHARS = 4_000_000
-    const val MAX_POINTS = 100_000
+    const val MAX_POINTS = RunTrackLimits.MAX_POINTS
 
     fun parseGpx(xml: String): RouteParseResult = parse(xml, gpx = true)
     fun parseKml(xml: String): RouteParseResult = parse(xml, gpx = false)

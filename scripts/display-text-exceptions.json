@@ -136,9 +136,9 @@
         "after": ") }) { columns ->\n                    val column"
       },
       "position": {
-        "start": 4120,
-        "end": 4126,
-        "line": 58,
+        "start": 3278,
+        "end": 3284,
+        "line": 46,
         "column": 76
       },
       "category": "lookup",
@@ -154,9 +154,9 @@
         "after": ", AppText.Content.SCHOOL_NEWS_DISPLAY_LABEL)) })"
       },
       "position": {
-        "start": 5309,
-        "end": 5315,
-        "line": 79,
+        "start": 4467,
+        "end": 4473,
+        "line": 67,
         "column": 157
       },
       "category": "lookup",
@@ -172,9 +172,9 @@
         "after": ", AppText.Content.FRESHMAN_GUIDE_DISPLAY_LABEL))"
       },
       "position": {
-        "start": 5514,
-        "end": 5520,
-        "line": 80,
+        "start": 4672,
+        "end": 4678,
+        "line": 68,
         "column": 149
       },
       "category": "lookup",
@@ -190,9 +190,9 @@
         "after": ", AppText.App.USER_GUIDE_DISPLAY_LABEL)) }) }\n  "
       },
       "position": {
-        "start": 6898,
-        "end": 6904,
-        "line": 90,
+        "start": 6056,
+        "end": 6062,
+        "line": 78,
         "column": 110
       },
       "category": "lookup",
@@ -208,9 +208,9 @@
         "after": ") })\n                TextButton(AppText.App.PRIV"
       },
       "position": {
-        "start": 4269,
-        "end": 4275,
-        "line": 64,
+        "start": 4291,
+        "end": 4297,
+        "line": 65,
         "column": 93
       },
       "category": "lookup",
@@ -226,9 +226,9 @@
         "after": ") })\n            } }\n        }\n    }\n}\n"
       },
       "position": {
-        "start": 4372,
-        "end": 4378,
-        "line": 65,
+        "start": 4394,
+        "end": 4400,
+        "line": 66,
         "column": 93
       },
       "category": "lookup",

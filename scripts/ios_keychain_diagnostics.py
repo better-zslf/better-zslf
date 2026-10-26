@@ -33,6 +33,8 @@ COMMAND_TIMEOUT = 5
 POLL_INTERVAL = 0.5
 TEAM_ID = "CIKEYCHAIN"  # Synthetic ten-letter CI fixture; no developer account.
 BUNDLE_RE = re.compile(r"[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)+")
+DEFAULT_BUNDLE = "io.github.betterzslf"
+SUPPORTED_BUNDLES = (DEFAULT_BUNDLE, DEFAULT_BUNDLE + ".pro")
 EXECUTABLE_RE = re.compile(r"[A-Za-z0-9_.-]+")
 EVENT_RE = re.compile(r"[A-Z_]{1,64}")
 REPORT_FIELDS = {"schema", "phase", "probeComplete", "probeOk", "graphComplete",
@@ -44,6 +46,12 @@ MACHO_MAGICS = {b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf",
 
 class ReportError(ValueError):
     """A fixed native evidence file failed its size/path/schema contract."""
+
+
+def validate_bundle(bundle):
+    if type(bundle) is not str or bundle not in SUPPORTED_BUNDLES:
+        raise ValueError("Bundle must be io.github.betterzslf or io.github.betterzslf.pro")
+    return bundle
 
 
 def _save_json(path, value):
@@ -177,7 +185,7 @@ def _source_app(app_path, bundle=None):
         raise ValueError("DTPlatformName must be iphonesimulator when present")
     actual = info.get("CFBundleIdentifier")
     executable = info.get("CFBundleExecutable")
-    if type(actual) is not str or not BUNDLE_RE.fullmatch(actual) or (bundle is not None and bundle != actual):
+    if type(actual) is not str or actual not in SUPPORTED_BUNDLES or (bundle is not None and bundle != actual):
         raise ValueError("Source app bundle identity mismatch")
     if type(executable) is not str or not EXECUTABLE_RE.fullmatch(executable) or executable in (".", ".."):
         raise ValueError("Invalid source app executable")
@@ -616,7 +624,9 @@ def _build_capture(command, evidence, label, timeout, run):
         _save_json(evidence / (label + ".result.json"), record)
 
 
-def build_xcode_simulator(derived_data, *, run=None):
+def build_xcode_simulator(derived_data, *, bundle=DEFAULT_BUNDLE, run=None):
+    validate_bundle(bundle)
+    edition = "pro" if bundle == DEFAULT_BUNDLE + ".pro" else "standard"
     if sys.platform != "darwin":
         raise RuntimeError("Xcode packaging build requires macOS")
     run = run or subprocess.run
@@ -625,13 +635,14 @@ def build_xcode_simulator(derived_data, *, run=None):
     evidence.mkdir(parents=True, exist_ok=False)
     entitlements = evidence / "CI-Simulator.entitlements"
     with entitlements.open("wb") as stream:
-        plistlib.dump({"application-identifier": TEAM_ID + ".io.github.betterzslf",
+        plistlib.dump({"application-identifier": TEAM_ID + "." + bundle,
                       "com.apple.developer.team-identifier": TEAM_ID, "get-task-allow": True}, stream)
     command = ["xcodebuild", "-project", "iosApp/BetterZslf.xcodeproj", "-scheme", "BetterZslf",
                "-configuration", "Debug", "-sdk", "iphonesimulator", "-destination", "generic/platform=iOS Simulator",
                "-derivedDataPath", str(derived), "-resultBundlePath", str(derived / "build.xcresult"),
                "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "CODE_SIGN_ENTITLEMENTS=" + str(entitlements),
-               "OTHER_CODE_SIGN_FLAGS="]
+               "OTHER_CODE_SIGN_FLAGS=", "BETTER_ZSLF_EDITION=" + edition,
+               "BETTER_ZSLF_BUNDLE_ID=" + bundle, "PRODUCT_BUNDLE_IDENTIFIER=" + bundle]
     _build_capture(["xcodebuild", "-version"], evidence, "xcode-version", 30, run)
     _build_capture(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-version"], evidence, "sdk-version", 30, run)
     _build_capture(["xcrun", "--find", "codesign"], evidence, "codesign-path", 15, run)
@@ -1074,8 +1085,7 @@ def run_diagnostics(artifacts, app_path, bundle, udid, runner, update_pid, sleep
     if not artifacts.is_dir():
         raise ValueError("Artifact directory must already exist")
     udid = canonical_udid(udid)
-    if type(bundle) is not str or not BUNDLE_RE.fullmatch(bundle):
-        raise ValueError("Invalid diagnostic bundle identity")
+    validate_bundle(bundle)
     source, _, executable = _source_app(app_path, bundle)
     if not callable(update_pid) or not callable(getattr(runner, "call_env", None)):
         raise ValueError("Diagnostics require a PID ownership callback and runner.call_env")
@@ -1338,10 +1348,11 @@ def main(argv=None):
     parser.add_argument("mode", choices=("sign", "build-xcode"))
     parser.add_argument("--artifacts", type=Path, required=True)
     parser.add_argument("--app", type=Path)
-    parser.add_argument("--bundle")
+    parser.add_argument("--bundle", choices=SUPPORTED_BUNDLES, default=DEFAULT_BUNDLE,
+                        help="Selected edition identity; defaults to the standard bundle")
     args = parser.parse_args(argv)
     if args.mode == "build-xcode":
-        build_xcode_simulator(args.artifacts)
+        build_xcode_simulator(args.artifacts, bundle=args.bundle)
     else:
         if args.app is None:
             parser.error("sign requires --app")

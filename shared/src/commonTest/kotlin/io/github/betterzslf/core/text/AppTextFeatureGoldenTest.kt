@@ -3,11 +3,9 @@ package io.github.betterzslf.core.text
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.feature.accountrecovery.RECOVERY_WRITE_BACK_NOTICE
-import io.github.betterzslf.feature.water.WaterFailureGuard
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-private const val ORIGINAL_WATER_ALIAS: String = WaterFailureGuard.LOCKOUT_NOTICE
 private const val ORIGINAL_RECOVERY_ALIAS: String = RECOVERY_WRITE_BACK_NOTICE
 
 /** Expectations are independent literals copied from the pre-migration source snapshot, not AppText. */
@@ -738,7 +736,6 @@ class AppTextFeatureGoldenTest {
         assertEquals("external server message", ApiError.Business(42, "external server message").message)
         assertEquals("external success message", ApiResult.Success(7, "external success message").message)
         assertEquals("", ApiResult.Success(7).message)
-        assertEquals("多次失败可能锁定水控器，需在通电状态下等待约 1 小时。认证失败后已断开，不会自动重试。", ORIGINAL_WATER_ALIAS)
         assertEquals("请求可能已接收，请等待回执，返回不等于撤销", ORIGINAL_RECOVERY_ALIAS)
 
         val events = mutableListOf<String>()

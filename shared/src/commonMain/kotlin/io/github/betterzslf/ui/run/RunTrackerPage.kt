@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.Route
+import io.github.betterzslf.edition.EditionAccess
 import io.github.betterzslf.feature.run.*
 import io.github.betterzslf.feature.runui.*
 import io.github.betterzslf.platform.rememberLocationPermissionRequester
@@ -103,7 +104,9 @@ internal fun RunTrackerPage(graph: AppGraph, page: Route.Page, open: (Route) -> 
             itemsIndexed(model.localSessions, key = { index, row -> "local:${row.metadata.trid}:$index" }) { _, row ->
                 SectionCard(AppText.Run.localSessionTitle((row.metadata.trid)), AppText.Run.localSessionSummary((runPhase(row.phase)), (row.acceptedSampleCount)), { scope.launch { runtime.restore(row.metadata.trid) } })
             }
-            if (selection != null) item("import-mode") { TextButton(AppText.Run.SWITCH_TO_ROUTE_IMPORT_PREVIEW_THIS_TIME, onClick = { open(Route.Page("runimport", selection.encode(), AppText.Run.ROUTE_IMPORT_PREVIEW_TITLE)) }) }
+            if (selection != null && EditionAccess.routeEditorsEnabled) item("import-mode") { TextButton(AppText.Run.SWITCH_TO_ROUTE_IMPORT_PREVIEW_THIS_TIME, onClick = {
+                if (EditionAccess.routeEditorsEnabled) open(Route.Page("runimport", selection.encode(), AppText.Run.ROUTE_IMPORT_PREVIEW_TITLE))
+            }) }
         }
     }
 

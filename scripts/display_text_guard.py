@@ -7,8 +7,8 @@ Public generator API (Kotlin entry point remains unchanged):
     has_han(token) -> bool            # decoded literal parts only
     make_exception(path, source, token, reason, owner, *, category='protocol')
 
-Scope: commonMain package ui/core/feature/data/platform/**/*.kt, App.kt and
-optional AppGraph.kt; shared/src/{androidMain,iosMain,jvmMain}/kotlin/**/*.kt,
+Scope: commonMain package ui/core/feature/data/platform/edition/**/*.kt, App.kt and
+optional AppGraph.kt; shared/src/{androidMain,iosMain,jvmMain,standardMain,proMain}/kotlin/**/*.kt,
 androidApp/src/main/kotlin/**/*.kt and iosApp/Sources/**/*.swift. Only the exact
 commonMain core/text/AppText.kt is catalog-excluded. Every scope directory is
 required; resources, tests and other source sets are not included.
@@ -52,8 +52,8 @@ UI_PREFIX = KOTLIN_BASE + "ui/"
 APP_PATH = KOTLIN_BASE + "App.kt"
 APP_GRAPH_PATH = KOTLIN_BASE + "AppGraph.kt"
 CATALOG_PATH = KOTLIN_BASE + "core/text/AppText.kt"
-SCOPE_PREFIXES = tuple(KOTLIN_BASE + name + "/" for name in ("ui", "core", "feature", "data", "platform"))
-C_KOTLIN_PREFIXES = tuple("shared/src/" + name + "/kotlin/" for name in ("androidMain", "iosMain", "jvmMain")) + (
+SCOPE_PREFIXES = tuple(KOTLIN_BASE + name + "/" for name in ("ui", "core", "feature", "data", "platform", "edition"))
+C_KOTLIN_PREFIXES = tuple("shared/src/" + name + "/kotlin/" for name in ("androidMain", "iosMain", "jvmMain", "standardMain", "proMain")) + (
     "androidApp/src/main/kotlin/",
 )
 SWIFT_PREFIX = "iosApp/Sources/"

@@ -1,6 +1,7 @@
 package io.github.betterzslf.navigation
 
 import io.github.betterzslf.Route
+import io.github.betterzslf.edition.BuildEdition
 import io.github.betterzslf.reconcileLoggedOutRoute
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,13 +17,13 @@ class SessionNavigationTest {
         val page = Route.Page("water", title = "宿舍热水器")
         val stack = mutableListOf<NavKey>(Route.Main, Route.Login, page)
         repeat(3) { stack.reconcileLoggedOutRoute() }
-        assertEquals(listOf<NavKey>(Route.Main, Route.Login, page), stack)
+        assertEquals(if (BuildEdition.isPro) listOf<NavKey>(Route.Main, Route.Login, page) else listOf<NavKey>(Route.Main, Route.Login), stack)
     }
     @Test fun expiredWaterSessionInsertsLoginUnderCurrentOfflinePage() {
         val page = Route.Page("water")
         val stack = mutableListOf<NavKey>(Route.Main, page)
         stack.reconcileLoggedOutRoute()
-        assertEquals(listOf<NavKey>(Route.Main, Route.Login, page), stack)
+        assertEquals(if (BuildEdition.isPro) listOf<NavKey>(Route.Main, Route.Login, page) else listOf<NavKey>(Route.Main, Route.Login), stack)
     }
     @Test fun protectedPageIsHiddenOnLogout() {
         val stack = mutableListOf<NavKey>(Route.Main, Route.Page("runtracker"))

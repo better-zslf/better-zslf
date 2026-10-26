@@ -10,6 +10,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.Route
+import io.github.betterzslf.edition.EditionAccess
+import io.github.betterzslf.edition.EditionUnavailablePage
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.feature.runui.*
@@ -22,6 +24,10 @@ import top.yukonga.miuix.kmp.basic.*
 /** The app owns runtime. Route composition never disposes a tracker, coordinator, or upload queue. */
 @Composable
 fun RunFeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBack: () -> Unit, runtime: RunRuntime) {
+    if (!EditionAccess.allowsPage(page.kind)) {
+        EditionUnavailablePage(onBack)
+        return
+    }
     val session by graph.sessions.session.collectAsState()
     key(graph, session?.userId, session?.token, page) {
         when (page.kind) {
@@ -30,7 +36,7 @@ fun RunFeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, o
             "runrecords" -> RunRecordsPage(graph, page, onOpen, onBack, runtime)
             "runrecord" -> RunRecordPage(graph, page, onBack)
             "runtracker" -> RunTrackerPage(graph, page, onOpen, onBack, runtime)
-            "runimport" -> RunImportPage(graph, page, onOpen, onBack)
+            "runimport" -> graph.editionFeatures.Page(graph, page, onOpen, onBack)
             else -> Screen(page.title.ifBlank { AppText.Navigation.CAMPUS_RUN }, onBack) { padding ->
                 LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp)) {
                     item { SectionCard(AppText.Common.UNKNOWN_PAGE_TYPE, AppText.Run.REOPEN_FROM_RUN_ENTRY_HINT) }
@@ -66,7 +72,9 @@ fun RunTaskList(graph: AppGraph, onOpen: (Route) -> Unit, onBack: (() -> Unit)? 
                     item("actions") {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(AppText.Run.REAL_RECORDING_AND_RECOVERY, onClick = { onOpen(Route.Page("runtracker", title = AppText.Run.REAL_RUN_RECORD_TITLE)) })
-                            TextButton(AppText.Run.LOCAL_ROUTE_PREVIEW_TITLE, onClick = { onOpen(Route.Page("runimport", title = AppText.Run.ROUTE_IMPORT_PREVIEW_TITLE)) })
+                            if (EditionAccess.routeEditorsEnabled) TextButton(AppText.Run.LOCAL_ROUTE_PREVIEW_TITLE, onClick = {
+                                if (EditionAccess.routeEditorsEnabled) onOpen(Route.Page("runimport", title = AppText.Run.ROUTE_IMPORT_PREVIEW_TITLE))
+                            })
                         }
                     }
                     item("groups") {
@@ -115,7 +123,9 @@ private fun RunDetailPage(graph: AppGraph, page: Route.Page, open: (Route) -> Un
                 item("record") { TextButton(AppText.Run.ENTER_REAL_LOCATION_RECORDING, enabled = detail.canStart && selection != null, onClick = { selection?.let { open(Route.Page("runtracker", it.encode(), detail.task.title)) } }, modifier = Modifier.fillMaxWidth()) }
                 if (!detail.canStart) item("not-ready") { SectionCard(AppText.Run.DETAILS_ONLY_FOR_NOW, AppText.Run.missingTaskFields((detail.missingFields.joinToString()))) }
                 item("records") { TextButton(AppText.Run.SCHEDULE_SCORES_AND_HISTORY, enabled = selection != null, onClick = { selection?.let { open(Route.Page("runrecords", it.encode(), AppText.Run.SCHEDULE_RUN_RECORDS_TITLE)) } }, modifier = Modifier.fillMaxWidth()) }
-                item("import") { TextButton(AppText.Run.IMPORT_ROUTE_LOCAL_PREVIEW_ACTION, onClick = { open(Route.Page("runimport", page.id, AppText.Run.ROUTE_IMPORT_PREVIEW_TITLE)) }, modifier = Modifier.fillMaxWidth()) }
+                if (EditionAccess.routeEditorsEnabled) item("import") { TextButton(AppText.Run.IMPORT_ROUTE_LOCAL_PREVIEW_ACTION, onClick = {
+                    if (EditionAccess.routeEditorsEnabled) open(Route.Page("runimport", page.id, AppText.Run.ROUTE_IMPORT_PREVIEW_TITLE))
+                }, modifier = Modifier.fillMaxWidth()) }
                 runRawFields(detail.task.raw)
             } else if (!query.loading && query.error == null) item("shape") { SectionCard(AppText.Run.TASK_DETAIL_STRUCTURE_UNRECOGNIZED, AppText.Run.UNDECODABLE_TASK_DETAIL_NO_RECORDING_HINT) }
         }

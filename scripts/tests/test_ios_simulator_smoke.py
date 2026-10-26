@@ -13,6 +13,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import ios_simulator_smoke as smoke
+from ci_workflow_contract import read_test_workflow
 
 FIXTURE = Path(__file__).parent / "fixtures/ios-simulator/inventory.json"
 OWN = "DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD"
@@ -260,6 +261,7 @@ class SimulatorCommandFlowTests(unittest.TestCase):
                 mock.patch.object(smoke, "smoke", return_value={}) as body, mock.patch("builtins.print"):
             smoke.main()
         self.assertIsNone(body.call_args.kwargs["requested_runtime"])
+        self.assertEqual(body.call_args.kwargs["expected_bundle"], BUNDLE)
 
     def test_existing_600s_deadline_is_propagated_without_rearming_or_extending(self):
         for invalid in (True, float("nan"), float("inf")):
@@ -980,6 +982,18 @@ class ObserverCommandTests(unittest.TestCase):
 
 
 class SmokeWiringTests(unittest.TestCase):
+    def test_selected_edition_bundle_is_only_forwarded_to_smoke_not_cleanup(self):
+        shell = (smoke.ROOT / "scripts/ci-ios-smoke.sh").read_text()
+        self.assertIn('${ORG_GRADLE_PROJECT_betterZslfEdition-standard}', shell)
+        self.assertIn('standard) bundle=io.github.betterzslf ;;', shell)
+        self.assertIn('pro) bundle=io.github.betterzslf.pro ;;', shell)
+        smoke_lines = [line for line in shell.splitlines() if "python3 scripts/ios_simulator_smoke.py smoke " in line]
+        cleanup_lines = [line for line in shell.splitlines() if "python3 scripts/ios_simulator_smoke.py cleanup " in line]
+        self.assertEqual(len(smoke_lines), 2)
+        self.assertEqual(len(cleanup_lines), 2)
+        self.assertTrue(all('--bundle "$bundle"' in line for line in smoke_lines))
+        self.assertTrue(all('--bundle' not in line for line in cleanup_lines))
+
     def test_runtime_pin_wiring_is_smoke_only_exact_array_and_sdk_line(self):
         shell = (smoke.ROOT / "scripts/ci-ios-smoke.sh").read_text()
         self.assertIn("runtime_args=()", shell)
@@ -992,7 +1006,7 @@ class SmokeWiringTests(unittest.TestCase):
         self.assertTrue(all('${runtime_args[@]+"${runtime_args[@]}"}' in line for line in smoke_lines))
         self.assertTrue(all("runtime_args" not in line and "--runtime" not in line for line in cleanup_lines))
         self.assertNotIn("BETTER_ZSLF_CI_RUNTIME", (smoke.ROOT / "scripts/ios_simulator_smoke.py").read_text())
-        workflow = (smoke.ROOT / ".github/workflows/ci.yml").read_text()
+        workflow = read_test_workflow()
         step = workflow.split("      - name: Smoke launch on an owned iOS Simulator\n", 1)[1].split("      - name:", 1)[0]
         self.assertEqual(workflow.count("BETTER_ZSLF_CI_RUNTIME:"), 1)
         self.assertIn("          BETTER_ZSLF_CI_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-4\n", step)
@@ -1002,7 +1016,7 @@ class SmokeWiringTests(unittest.TestCase):
         self.assertIn("timeout-minutes: 12", step)
 
     def test_xcode_method_is_shared_by_build_and_smoke_without_changing_manual_default(self):
-        workflow = (smoke.ROOT / ".github/workflows/ci.yml").read_text()
+        workflow = read_test_workflow()
         ios = workflow[workflow.index("  ios:"):]
         self.assertEqual(ios.count("BETTER_ZSLF_CI_SIGNING_METHOD: xcode-simulator"), 1)
         self.assertLess(ios.index("BETTER_ZSLF_CI_SIGNING_METHOD: xcode-simulator"), ios.index("    steps:"))
@@ -1017,7 +1031,7 @@ class SmokeWiringTests(unittest.TestCase):
         self.assertIn("trap cleanup EXIT", shell)
         self.assertIn("trap 'interrupted=1; exit 130' INT", shell)
         self.assertIn("trap 'interrupted=1; exit 143' TERM", shell)
-        workflow = (smoke.ROOT / ".github/workflows/ci.yml").read_text()
+        workflow = read_test_workflow()
         self.assertLess(workflow.index("run: bash scripts/ci-ios.sh"), workflow.index("run: bash scripts/ci-ios-smoke.sh"))
         self.assertIn("timeout-minutes: 12\n        run: bash scripts/ci-ios-smoke.sh", workflow)
         self.assertIn(".local/ios-ci/Logs/", workflow)

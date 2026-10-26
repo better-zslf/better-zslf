@@ -21,26 +21,39 @@ def section(start, end):
     return ANDROID.split(start, 1)[1].split(end, 1)[0]
 
 
+POLICY = (ROOT / "shared/src/commonMain/kotlin/io/github/betterzslf/feature/update/GithubReleaseModels.kt").read_text(encoding="utf-8")
+EDITION_SOURCES = {edition: (ROOT / f"shared/src/{edition}Main/kotlin/io/github/betterzslf/edition/BuildEdition.kt").read_text(encoding="utf-8") for edition in ("standard", "pro")}
+
+
 def kotlin_regex(name):
-    raw = re.search(r'private val ' + name + r' = Regex\("((?:\\.|[^"\\])*)"\)', ANDROID).group(1)
+    raw = re.search(r'private val ' + name + r' = Regex\("((?:\\.|[^"\\])*)"\)', POLICY).group(1)
     return re.compile(json.loads('"' + raw + '"'))
 
 
-VERSION = kotlin_regex("version")
-SHA = kotlin_regex("sha")
-URL_TEMPLATE = re.search(r'"(https://github\.com/[^"\n]+)"', ANDROID).group(1)
+def edition_constant(edition, name):
+    return re.search(r'const val ' + name + r'(?:: String)? = "([^"\n]*)"', EDITION_SOURCES[edition]).group(1)
 
 
-def extracted_policy(version="1.2.3", size=1, sha="a" * 64, url=None):
-    """Use source-extracted regexes/template, alongside assertions of the Kotlin guard shape."""
-    expected = URL_TEMPLATE.replace("${spec.versionName}", version)
-    return 1 <= len(version) <= 128 and VERSION.fullmatch(version) is not None and 1 <= size <= 250 * 1024 * 1024 and SHA.fullmatch(sha) is not None and (expected if url is None else url) == expected
+VERSION = kotlin_regex("pattern")
+SHA = kotlin_regex("shaPattern")
+ASSET_TEMPLATE = re.search(r'const val ASSET_PREFIX = "([^"\n]+)"', POLICY).group(1)
+URL_TEMPLATE = ASSET_TEMPLATE.replace("${BuildEdition.updateRepository}", edition_constant("standard", "updateRepository")) + "v${spec.versionName}/better-zslf-${spec.versionName}.apk"
+
+
+def extracted_policy(version="1.2.3", size=1, sha="a" * 64, url=None, edition="standard"):
+    """Actual common regex/template plus actual selected edition constants; not Kotlin runtime proof."""
+    prefix = ASSET_TEMPLATE.replace("${BuildEdition.updateRepository}", edition_constant(edition, "updateRepository"))
+    expected = prefix + f"v{version}/better-zslf-{version}.apk"
+    suffix = edition_constant(edition, "versionNameSuffix")
+    numeric = version.removesuffix(suffix) if suffix else version
+    return 1 <= len(version) <= 128 and VERSION.fullmatch(numeric) is not None and 1 <= size <= 250 * 1024 * 1024 and SHA.fullmatch(sha) is not None and (expected if url is None else url) == expected
 
 
 class NativeUpdaterSourceTests(unittest.TestCase):
     def test_policy_extracted_from_actual_source_keeps_all_bounds(self):
-        for text in ("spec.versionName.length in 1..128", "spec.sizeBytes in 1..MAX_BYTES", "sha.matches(spec.sha256)", "version.matches(spec.versionName)", "250L * 1024 * 1024"):
-            self.assertIn(text, ANDROID)
+        self.assertIn("fun valid(spec: ApkUpdateSpec): Boolean = GithubReleasePolicy.isInstallSpec(spec)", ANDROID)
+        for text in ("normalized.length > 128", "version.versionName != spec.versionName", "shaPattern.matches(spec.sha256)", "spec.sizeBytes !in 1..MAX_APK_BYTES", "250L * 1024 * 1024"):
+            self.assertIn(text, POLICY)
         self.assertTrue(extracted_policy())
         self.assertTrue(extracted_policy(size=250 * 1024 * 1024, sha="F" * 64))
         for size in (0, -1, 250 * 1024 * 1024 + 1, 2**63 - 1):
@@ -162,7 +175,21 @@ class NativeUpdaterSourceTests(unittest.TestCase):
         self.assertEqual([(p.tag, p.get("path")) for p in paths], [("cache-path", "updates/")])
         main = ET.parse(ROOT / "androidApp/src/main/AndroidManifest.xml").getroot()
         permissions = {e.get(A + "name") for e in main.findall("uses-permission")}
-        self.assertTrue({"android.permission.FOREGROUND_SERVICE_LOCATION", "android.permission.ACCESS_FINE_LOCATION", "android.permission.BLUETOOTH_CONNECT"} <= permissions)
+        self.assertTrue({"android.permission.FOREGROUND_SERVICE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"} <= permissions)
+        self.assertFalse(any("BLUETOOTH" in permission for permission in permissions))
+        pro = ET.parse(ROOT / "androidApp/src/pro/AndroidManifest.xml").getroot()
+        pro_permissions = {e.get(A + "name") for e in pro.findall("uses-permission")}
+        self.assertTrue(permissions <= pro_permissions)
+        self.assertTrue({"android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_SCAN"} <= pro_permissions)
+
+    def test_pro_repository_suffix_and_package_are_isolated(self):
+        self.assertTrue(extracted_policy(version="1.2.3-pro", edition="pro"))
+        self.assertFalse(extracted_policy(version="1.2.3-pro"))
+        normal_url = URL_TEMPLATE.replace("${spec.versionName}", "1.2.3-pro")
+        self.assertFalse(extracted_policy(version="1.2.3-pro", edition="pro", url=normal_url))
+        self.assertEqual(edition_constant("standard", "androidApplicationId"), "io.github.betterzslf")
+        self.assertEqual(edition_constant("pro", "androidApplicationId"), "io.github.betterzslf.pro")
+        self.assertGreaterEqual(ANDROID.count("context.packageName != BuildEdition.androidApplicationId"), 2)
 
     def test_errors_and_diagnostics_do_not_dump_paths_urls_or_exception_messages(self):
         self.assertIn('toString(): String = "ApkUpdateSpec(redacted)"', COMMON)

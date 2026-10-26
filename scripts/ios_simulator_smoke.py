@@ -107,15 +107,21 @@ def choose_destination(inventory, requested_runtime=None):
     raise ValueError("No installed available iOS runtime/device-type pair; no runtime will be downloaded")
 
 
-def app_metadata(app):
+def app_metadata(app, expected_bundle=None):
+    from ios_keychain_diagnostics import validate_bundle
+    if expected_bundle is not None:
+        validate_bundle(expected_bundle)
     app = Path(app).resolve()
     if app.suffix != ".app" or not app.is_dir():
         raise ValueError("Expected an existing built .app directory")
     with (app / "Info.plist").open("rb") as stream:
         info = plistlib.load(stream)
     bundle, executable = info.get("CFBundleIdentifier", ""), info.get("CFBundleExecutable", "")
+    validate_bundle(bundle)
     if not BUNDLE_RE.fullmatch(bundle) or not re.fullmatch(r"[A-Za-z0-9_.-]+", executable) or executable in (".", ".."):
         raise ValueError("Invalid built app bundle ID/executable")
+    if expected_bundle is not None and bundle != expected_bundle:
+        raise ValueError("Built app bundle does not match the selected edition")
     if "iPhoneSimulator" not in info.get("CFBundleSupportedPlatforms", []):
         raise ValueError("Built app is not an iPhoneSimulator product")
     if not (app / executable).is_file():
@@ -123,13 +129,13 @@ def app_metadata(app):
     return str(app), bundle, executable
 
 
-def select_app(explicit=None):
+def select_app(explicit=None, expected_bundle=None):
     if explicit:
-        return app_metadata(explicit)
+        return app_metadata(explicit, expected_bundle=expected_bundle)
     candidates = list((ROOT / ".local/ios-ci/Build/Products/Debug-iphonesimulator").glob("*.app"))
     if len(candidates) != 1:
         raise ValueError("Expected exactly one built simulator .app; pass an explicit app path")
-    return app_metadata(candidates[0])
+    return app_metadata(candidates[0], expected_bundle=expected_bundle)
 
 
 def parse_launch_pid(output, bundle):
@@ -536,7 +542,7 @@ def exported_png_is_valid(artifacts, filename):
 
 
 def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=False, diagnostic_mode="ab",
-          signing_method="manual-ad-hoc", body_deadline=None, requested_runtime=None):
+          signing_method="manual-ad-hoc", body_deadline=None, requested_runtime=None, expected_bundle=None):
     from ios_keychain_diagnostics import validate_signing_method
     validate_signing_method(signing_method, diagnostic_mode)
     if diagnostic_mode not in ("ab", "signed-positive"):
@@ -550,7 +556,7 @@ def smoke(artifacts, app, runner=None, sleep=time.sleep, keychain_diagnostics=Fa
         runner.body_deadline_monotonic = body_deadline  # Read-only observers share the original 600s cutoff.
     if (artifacts / "owner.json").exists():
         raise ValueError("Ownership directory must be fresh for this invocation")
-    app_path, bundle, executable = app_metadata(app)
+    app_path, bundle, executable = app_metadata(app, expected_bundle=expected_bundle)
     # CI8: initial cold read timed out before any owned device existed. Retry only
     # TimeoutExpired once, never nonzero output/bad JSON, without touching services/devices.
     for attempt in range(2):
@@ -729,10 +735,13 @@ def cleanup(artifacts, runner=None, fast=False, sleep=time.sleep, clock=time.mon
 
 
 def main():
+    from ios_keychain_diagnostics import DEFAULT_BUNDLE, SUPPORTED_BUNDLES
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("smoke", "cleanup"))
     parser.add_argument("--artifacts", type=Path, required=True)
     parser.add_argument("--app", type=Path)
+    parser.add_argument("--bundle", choices=SUPPORTED_BUNDLES, default=DEFAULT_BUNDLE,
+                        help="Smoke only: selected standard/Pro bundle; cleanup uses persisted ownership")
     parser.add_argument("--runtime", help="Smoke only: exact installed/available iOS runtime ID; no fallback or download")
     parser.add_argument("--fast", action="store_true", help="Skip diagnostics during signal cleanup")
     parser.add_argument("--keychain-diagnostics", action="store_true", help="Explicit debug-Simulator-only Keychain diagnostics")
@@ -743,6 +752,7 @@ def main():
                         default=os.environ.get("BETTER_ZSLF_CI_SIGNING_METHOD", "manual-ad-hoc"),
                         help="Explicit shared build/smoke method; historical AB stays manual")
     args = parser.parse_args()
+    selected_bundle = getattr(args, "bundle", DEFAULT_BUNDLE)
     if sys.platform != "darwin":
         raise SystemExit("Native simulator smoke requires macOS; use offline fixture unit tests elsewhere")
     if not args.artifacts.is_dir():
@@ -759,10 +769,11 @@ def main():
         body_deadline = time.monotonic() + 600
         signal.alarm(600)  # 10-minute body inside the 12-minute step; cleanup has 2 minutes.
         try:
-            app, _, _ = select_app(args.app)
+            app, _, _ = select_app(args.app, expected_bundle=selected_bundle)
             print(json.dumps(smoke(args.artifacts.resolve(), app, keychain_diagnostics=args.keychain_diagnostics,
                                    diagnostic_mode=args.diagnostic_mode, signing_method=args.signing_method,
-                                   body_deadline=body_deadline, requested_runtime=getattr(args, "runtime", None)), indent=2))
+                                   body_deadline=body_deadline, requested_runtime=getattr(args, "runtime", None),
+                                   expected_bundle=selected_bundle), indent=2))
         except (Exception, SmokeDeadlineExceeded) as error:
             save_json(args.artifacts / "error.json", {"result": "startup-smoke-failed", "error": str(error)})
             raise

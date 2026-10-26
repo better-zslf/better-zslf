@@ -10,15 +10,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from prepare_signing import REQUIRED, decode_keystore
-from release_metadata import load_version
+from release_metadata import APPLICATION_IDS, load_version
 
 
 class VersionTests(unittest.TestCase):
-    def check_version(self, text, tag=None):
+    def check_version(self, text, tag=None, edition="standard"):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "version.properties"
             path.write_text(text, encoding="utf-8")
-            return load_version(path, tag)
+            return load_version(path, tag, edition)
 
     def test_current_tag(self):
         self.assertEqual(self.check_version("VERSION_NAME=0.1.0\nVERSION_CODE=1\n", "v0.1.0"),
@@ -52,6 +52,30 @@ class VersionTests(unittest.TestCase):
 
     def test_comments_and_crlf(self):
         self.assertEqual(self.check_version("# Version source\r\nVERSION_NAME=0.1.0\r\nVERSION_CODE=1\r\n")["versionName"], "0.1.0")
+
+    def test_pro_suffix_keeps_base_version_and_stable_code(self):
+        self.assertEqual(self.check_version("VERSION_NAME=1.2.3\nVERSION_CODE=42\n", "v1.2.3-pro", "pro"),
+                         {"versionName": "1.2.3-pro", "versionCode": 42, "tag": "v1.2.3-pro"})
+
+    def test_pro_rejects_unsuffixed_tag(self):
+        with self.assertRaisesRegex(ValueError, "Tag must exactly"):
+            self.check_version("VERSION_NAME=1.2.3\nVERSION_CODE=42\n", "v1.2.3", "pro")
+
+    def test_standard_rejects_pro_tag(self):
+        with self.assertRaisesRegex(ValueError, "Tag must exactly"):
+            self.check_version("VERSION_NAME=1.2.3\nVERSION_CODE=42\n", "v1.2.3-pro")
+
+    def test_edition_is_closed_set(self):
+        for edition in ("", "Pro", "standard-pro", "../../pro", "pro;echo BAD"):
+            with self.subTest(edition=edition), self.assertRaisesRegex(ValueError, "Edition"):
+                self.check_version("VERSION_NAME=1.2.3\nVERSION_CODE=42\n", edition=edition)
+
+    def test_pro_properties_still_use_numeric_ios_marketing_version(self):
+        with self.assertRaisesRegex(ValueError, "numeric x.y.z"):
+            self.check_version("VERSION_NAME=1.2.3-pro\nVERSION_CODE=42\n", edition="pro")
+
+    def test_package_identity_is_explicit(self):
+        self.assertEqual(APPLICATION_IDS, {"standard": "io.github.betterzslf", "pro": "io.github.betterzslf.pro"})
 
 
 class SigningInputTests(unittest.TestCase):
@@ -99,6 +123,25 @@ class ReleaseTaskTests(unittest.TestCase):
         self.assertEqual(tasks, [":shared:jvmTest", ":androidApp:test", ":androidApp:lintRelease",
                                  ":androidApp:assembleRelease", ":androidApp:bundleRelease"])
         self.assertNotIn(":androidApp:testReleaseUnitTest", script)
+
+
+class SourceReleaseWorkflowContractTests(unittest.TestCase):
+    """Source-shape contracts, not GitHub event execution or network proof."""
+    def workflow(self):
+        return (Path(__file__).resolve().parents[2] / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    def test_published_and_push_checkouts_pin_event_sha_and_recheck_tag(self):
+        workflow = self.workflow()
+        self.assertIn("ref: ${{ github.event_name == 'workflow_dispatch' && steps.request.outputs.source_ref || github.sha }}", workflow)
+        self.assertNotIn("ref: ${{ github.event_name == 'push' && github.sha ||", workflow)
+        self.assertIn("revision('refs/tags/' + tag + '^{commit}') != sha", workflow)
+
+    def test_manual_notification_does_not_enter_tag_only_signing_environment(self):
+        workflow = self.workflow()
+        signing, notify = workflow.split("\n  release:\n", 1)[1].split("\n  notify:\n", 1)
+        self.assertIn("    environment: release\n", signing)
+        self.assertNotIn("    environment:", notify)
+        self.assertIn("PRO_CI_DISPATCH_TOKEN: ${{ secrets.PRO_CI_DISPATCH_TOKEN }}", notify)
 
 
 if __name__ == "__main__":

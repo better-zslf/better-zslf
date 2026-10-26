@@ -25,10 +25,23 @@ if [[ ! "$MARKETING_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
   exit 2
 fi
 
+# Xcode's resolved edition wins over the ambient Gradle environment, like version settings.
+edition="${BETTER_ZSLF_EDITION-${ORG_GRADLE_PROJECT_betterZslfEdition-standard}}"
+case "$edition" in
+  standard) bundle=io.github.betterzslf ;;
+  pro) bundle=io.github.betterzslf.pro ;;
+  *) printf '%s\n' 'betterZslfEdition must be standard or pro.' >&2; exit 2 ;;
+esac
+if [[ "${PRODUCT_BUNDLE_IDENTIFIER-$bundle}" != "$bundle" ]] ||
+   [[ "${BETTER_ZSLF_BUNDLE_ID-$bundle}" != "$bundle" ]]; then
+  printf '%s\n' 'Xcode edition and bundle identifier disagree; regenerate the project.' >&2
+  exit 2
+fi
+
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(CDPATH= cd -- "$script_dir/../.." && pwd)"
 cd "$repo_root"
 # Forward the exact resolved Xcode values so CI overrides apply to both builds identically.
 # Do not enable shell tracing or print the Xcode environment (it may contain signing credentials).
 exec /bin/bash "$repo_root/gradlew" :shared:embedAndSignAppleFrameworkForXcode \
-  "-PversionName=$MARKETING_VERSION" "-PversionCode=$CURRENT_PROJECT_VERSION"
+  "-PversionName=$MARKETING_VERSION" "-PversionCode=$CURRENT_PROJECT_VERSION" "-PbetterZslfEdition=$edition"

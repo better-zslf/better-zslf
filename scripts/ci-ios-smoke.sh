@@ -3,7 +3,24 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 [[ "$(uname -s)" == Darwin ]] || { echo 'Native simulator smoke requires macOS.' >&2; exit 1; }
-[[ $# -le 1 ]] || { echo 'Usage: ci-ios-smoke.sh [built-simulator.app]' >&2; exit 2; }
+edition="${ORG_GRADLE_PROJECT_betterZslfEdition-standard}"
+app=""
+for argument in "$@"; do
+  case "$argument" in
+    -PbetterZslfEdition=*) edition="${argument#-PbetterZslfEdition=}" ;;
+    -*) echo 'Usage: ci-ios-smoke.sh [-PbetterZslfEdition=standard|pro] [built-simulator.app]' >&2; exit 2 ;;
+    *)
+      [[ -z "$app" && -n "$argument" ]] || { echo 'Expected at most one built simulator app.' >&2; exit 2; }
+      app="$argument"
+      ;;
+  esac
+done
+case "$edition" in
+  standard) bundle=io.github.betterzslf ;;
+  pro) bundle=io.github.betterzslf.pro ;;
+  *) echo 'betterZslfEdition must be standard or pro.' >&2; exit 2 ;;
+esac
+export ORG_GRADLE_PROJECT_betterZslfEdition="$edition"
 python3 iosApp/tests/test-keychain-diagnostics.py
 mkdir -p .local/ios-ci/Logs
 artifacts="$(mktemp -d "$PWD/.local/ios-ci/Logs/simulator-smoke.XXXXXX")"
@@ -32,8 +49,8 @@ if [[ -n "${BETTER_ZSLF_CI_RUNTIME:-}" ]]; then
   runtime_args=(--runtime "$BETTER_ZSLF_CI_RUNTIME")
 fi
 # Guarded array expansion also preserves an empty default under macOS Bash 3.2 nounset.
-if [[ $# == 1 ]]; then
-  python3 scripts/ios_simulator_smoke.py smoke ${runtime_args[@]+"${runtime_args[@]}"} --keychain-diagnostics --artifacts "$artifacts" --app "$1"
+if [[ -n "$app" ]]; then
+  python3 scripts/ios_simulator_smoke.py smoke ${runtime_args[@]+"${runtime_args[@]}"} --bundle "$bundle" --keychain-diagnostics --artifacts "$artifacts" --app "$app"
 else
-  python3 scripts/ios_simulator_smoke.py smoke ${runtime_args[@]+"${runtime_args[@]}"} --keychain-diagnostics --artifacts "$artifacts"
+  python3 scripts/ios_simulator_smoke.py smoke ${runtime_args[@]+"${runtime_args[@]}"} --bundle "$bundle" --keychain-diagnostics --artifacts "$artifacts"
 fi

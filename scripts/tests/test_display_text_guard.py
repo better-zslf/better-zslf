@@ -29,6 +29,13 @@ PHASE_C_ROOTS = (
     ("androidApp/src/main/kotlin/", "kt"),
     ("iosApp/Sources/", "swift"),
 )
+# Independent edition expansion: common contract plus BOTH selected-source trees.
+# All are required even when a test only places a token in one edition.
+EDITION_ROOTS = (
+    ("shared/src/commonMain/kotlin/io/github/betterzslf/edition/", "kt"),
+    ("shared/src/standardMain/kotlin/", "kt"),
+    ("shared/src/proMain/kotlin/", "kt"),
+)
 DIAGNOSTIC_PATH = "shared/src/iosMain/kotlin/io/github/betterzslf/platform/IosStartupDiagnostics.kt"
 # Full diagnostic text is fixture DATA only; this independent SHA freezes it.
 # It is never imported/executed. Every exception still matches just one token.
@@ -507,7 +514,7 @@ class GuardExceptionTests(unittest.TestCase):
         self.allowlist = self.root / "scripts/display-text-exceptions.json"
         for name in ("core", "feature", "data", "platform"):
             (self.root / "shared/src/commonMain/kotlin/io/github/betterzslf" / name).mkdir(parents=True)
-        for prefix, _ in PHASE_C_ROOTS:
+        for prefix, _ in (*PHASE_C_ROOTS, *EDITION_ROOTS):
             (self.root / prefix).mkdir(parents=True)
         self.write(self.app_path, "fun App() = Unit\n")
         self.source = 'val protocol = "协议"\n'
@@ -1105,6 +1112,99 @@ class GuardExceptionTests(unittest.TestCase):
         self.assertEqual((result.protocol_tokens, result.lookup_tokens, result.deferred_tokens), (0, 0, 0))
         self.assertEqual(result.to_dict()["exempted_tokens"], 0)
 
+    def test_edition_roots_scan_common_contract_and_both_selected_trees(self):
+        self.write(self.ui_path, "val label = Unit\n")
+        paths = [EDITION_ROOTS[0][0] + "nested/Contract.kt"]
+        for prefix, _ in EDITION_ROOTS[1:]:
+            paths.extend(prefix + suffix for suffix in (
+                "io/github/betterzslf/edition/nested/Facade.kt",
+                "io/github/betterzslf/platform/nested/Editing.kt",
+                "another/package/Display.kt"))
+        for path in paths:
+            self.write(path, 'val label = "版本显示"\n')
+        result = self.run_guard()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.files_scanned, 2 + len(paths))
+        self.assertEqual({v["path"] for v in result.violations}, set(paths))
+        self.assertEqual([v["source"] for v in result.violations], ['"版本显示"'] * len(paths))
+        self.assertEqual(result.errors, ())
+
+    def test_edition_missing_root_or_file_instead_of_directory_fails_closed(self):
+        self.write(self.ui_path, "val label = Unit\n")
+        for prefix, _ in EDITION_ROOTS:
+            with self.subTest(prefix=prefix):
+                path = self.root / prefix
+                path.rmdir()
+                try:
+                    for replaced_by_file in (False, True):
+                        with self.subTest(replaced_by_file=replaced_by_file):
+                            if replaced_by_file:
+                                path.write_text("not a directory", encoding="utf-8")
+                            result = self.run_guard()
+                            self.assertFalse(result.ok)
+                            self.assertEqual([(e["code"], e["path"]) for e in result.errors],
+                                             [("scope_error", prefix)])
+                            self.assertEqual(result.violations, ())
+                finally:
+                    if path.is_file():
+                        path.unlink()
+                    path.mkdir(exist_ok=True)
+        self.assertTrue(self.run_guard().ok)
+
+    def test_edition_unknown_syntax_fails_with_exact_location_in_each_root(self):
+        self.write(self.ui_path, "val label = Unit\n")
+        for prefix, _ in EDITION_ROOTS:
+            with self.subTest(prefix=prefix):
+                path = prefix + "nested/Unknown.kt"
+                self.write(path, '$$"""未知语法"""')
+                try:
+                    result = self.run_guard()
+                    self.assertFalse(result.ok)
+                    self.assertEqual([(e["code"], e["path"], e["line"], e["column"]) for e in result.errors],
+                                     [("lexical_error", path, 1, 1)])
+                finally:
+                    (self.root / path).unlink()
+
+    def test_edition_exact_protocol_exception_never_exempts_same_line_display(self):
+        self.write(self.ui_path, "val label = Unit\n")
+        entries, paths = [], []
+        source = 'val key = "协议"; Text("按钮")\n'
+        for prefix, _ in EDITION_ROOTS:
+            path = prefix + "nested/Pair.kt"
+            self.write(path, source)
+            entries.append(guard.make_exception(path, source, guard.scan_source(source)[0],
+                                                "Exact upstream protocol value", "fixture"))
+            paths.append(path)
+        self.allow(entries)
+        result = self.run_guard()
+        self.assertFalse(result.ok)
+        self.assertEqual((result.han_tokens, result.exempted_tokens, result.protocol_tokens), (6, 3, 3))
+        self.assertEqual({v["path"] for v in result.violations}, set(paths))
+        self.assertEqual([v["source"] for v in result.violations], ['"按钮"'] * 3)
+        self.assertEqual(result.errors, ())
+
+    def test_edition_exception_keeps_all_four_exact_position_fields(self):
+        self.write(self.ui_path, "val label = Unit\n")
+        source = 'val key = "协议"\n'
+        for prefix, _ in EDITION_ROOTS:
+            path = prefix + "nested/Position.kt"
+            self.write(path, source)
+            try:
+                original = guard.make_exception(path, source, guard.scan_source(source)[0],
+                                                "Exact upstream protocol value", "fixture")
+                for field in ("start", "end", "line", "column"):
+                    with self.subTest(prefix=prefix, field=field):
+                        bad = copy.deepcopy(original)
+                        bad["position"][field] += 1
+                        self.allow([bad])
+                        result = self.run_guard()
+                        self.assertFalse(result.ok)
+                        self.assertEqual([(e["code"], e["path"]) for e in result.errors],
+                                         [("exception_position_error", path)])
+                        self.assertEqual([(v["path"], v["source"]) for v in result.violations], [(path, '"协议"')])
+            finally:
+                (self.root / path).unlink()
+
     def diagnostic_fixture(self):
         self.assertEqual(hashlib.sha256(DIAGNOSTIC_FIXTURE.encode("utf-8")).hexdigest(), DIAGNOSTIC_SOURCE_SHA256)
         self.write(self.ui_path, 'val label = "ASCII"\n')
@@ -1485,23 +1585,123 @@ class PlatformRenderBytesTests(unittest.TestCase):
             chunks.extend((values[hole.expression_source], part))
         return "".join(chunks).encode("utf-8")
 
-    def test_phase_c_live_route_html_complete_bytes_equal_frozen_original(self):
-        before = guard.scan_source(RUN_MAP_HTML)[0]
+    def route_template(self):
         candidates = [t for t in guard.scan_source(self.source(self.platform + "RunMapWeb.kt"))
                       if t.kind == "raw_string" and t.source.startswith('"""<!doctype html>')]
         self.assertEqual(len(candidates), 1)
-        after = candidates[0]
-        label = self.catalog_label("ROUTE_MAP_ACCESSIBILITY_LABEL")
+        token = candidates[0]
+        self.assertEqual([h.expression_source for h in token.holes], [
+            "csp", "AppText.Run.ROUTE_MAP_ACCESSIBILITY_LABEL", "data", "documentId",
+            "RunMapEditing.script", "RunMapEditing.amapBinding", "RunMapEditing.tiandituBinding", "sdkTag"])
+        return token
+
+    def editing_literals(self, edition):
+        self.assertIn(edition, ("standard", "pro"))
+        source = self.source("shared/src/" + edition + "Main/kotlin/io/github/betterzslf/platform/RunMapEditing.kt")
+        declarations = list(re.finditer(r"^    const val (script|amapBinding|tiandituBinding): String = ", source, re.M))
+        self.assertEqual([m.group(1) for m in declarations], ["script", "amapBinding", "tiandituBinding"])
+        tokens = {t.start: t for t in guard.scan_source(source)}
+        values = {}
+        for declaration in declarations:
+            self.assertIn(declaration.end(), tokens)
+            token = tokens[declaration.end()]
+            self.assertIn(token.kind, ("string", "raw_string"))
+            self.assertEqual(token.holes, ())
+            # Only a complete literal initializer is supported, not a call/concat/template fallback.
+            suffix = source[token.end:].splitlines(keepends=True)
+            self.assertIsNotNone(re.fullmatch(r"[ \t]*(?:\r\n|\r|\n)?", suffix[0] if suffix else ""))
+            values["RunMapEditing." + declaration.group(1)] = token.decoded_literal
+        return values
+
+    def route_values(self, values, edition):
+        return {**values, "AppText.Run.ROUTE_MAP_ACCESSIBILITY_LABEL": self.catalog_label("ROUTE_MAP_ACCESSIBILITY_LABEL"),
+                **self.editing_literals(edition)}
+
+    def kotlin_golden_documents(self, method):
+        source = self.source("shared/src/commonTest/kotlin/io/github/betterzslf/core/text/AppTextPlatformGoldenTest.kt")
+        starts = list(re.finditer(r"^    fun " + re.escape(method) + r"\(\) \{", source, re.M))
+        self.assertEqual(len(starts), 1)
+        section_start = starts[0].end()
+        section = source[section_start:]
+        next_method = re.search(r"^    fun \w+\(", section, re.M)
+        self.assertIsNotNone(next_method)
+        section = section[:next_method.start()]
+        declarations = list(re.finditer(r"^        val (expected|expectedStandard) = ", section, re.M))
+        self.assertEqual([m.group(1) for m in declarations], ["expected", "expectedStandard"])
+        # Lex the complete balanced file; sections only locate declarations, never relax parsing.
+        tokens = {t.start: t for t in guard.scan_source(source)}
+        documents = {}
+        for declaration, edition in zip(declarations, ("pro", "standard")):
+            absolute_start = section_start + declaration.end()
+            self.assertIn(absolute_start, tokens)
+            token = tokens[absolute_start]
+            self.assertEqual(token.kind, "raw_string")
+            self.assertTrue(token.source.startswith('"""<!doctype html>'))
+            self.assertEqual(token.holes, ())
+            documents[edition] = token.decoded_literal.encode("utf-8")
+        return documents
+
+    def golden_values(self, provider, edition):
+        self.assertIn(edition, ("pro", "standard"))
+        # Independent public inputs from the Kotlin fixture, NOT extracted from generated HTML.
+        document_id = "platform_golden_document_44"
+        domains, frame, sdk_url = {
+            "AMAP": ("https://amap.com https://*.amap.com https://autonavi.com https://*.autonavi.com", "GCJ02",
+                     r"https://webapi.amap.com/maps?v=1.4.15\u0026amp;key=public_fixture_key_44"),
+            "TIAN_DI_TU": ("https://tianditu.gov.cn https://*.tianditu.gov.cn https://tianditu.com https://*.tianditu.com", "WGS84",
+                           r"https://api.tianditu.gov.cn/api?v=4.0\u0026amp;tk=public_fixture_key_44"),
+        }[provider]
+        csp = ("default-src 'none'; base-uri 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; "
+               "form-action 'none'; media-src 'none'; script-src 'nonce-" + document_id + "' 'unsafe-eval' " + domains + "; "
+               "style-src 'unsafe-inline' " + domains + "; img-src data: blob: " + domains + "; font-src data: " + domains + "; "
+               "connect-src " + domains + "; worker-src blob:;")
+        data = ('{"documentId":"' + document_id + '","provider":"' + provider + '","frame":"' + frame
+                + '","apiKey":"public_fixture_key_44","editMode":' + ("true" if edition == "pro" else "false")
+                + ',"dark":true,"actual":[[[1.25,2.5],[3.75,4.5]]],"recommended":[[[1.25,2.5],[3.75,4.5]]],'
+                + '"imported":[[[3.75,4.5],[1.25,2.5]]],"current":[1.25,2.5],"center":[1.25,2.5],"zoom":15,'
+                + r'"checkpoints":[{"id":"checkpoint_fixture","label":"public\u003c\u0026\u003e\u2028\u2029","point":[3.75,4.5]}]}')
+        sdk_tag = r'"\u003cscript nonce=\"' + document_id + r'\" src=\"' + sdk_url + r'\"\u003e\u003c/script\u003e"'
+        return {"csp": csp, "data": data, "documentId": document_id, "sdkTag": sdk_tag}
+
+    def test_phase_c_live_route_html_complete_bytes_equal_frozen_original(self):
+        before = guard.scan_source(RUN_MAP_HTML)[0]
+        after = self.route_template()
         self.assertEqual([h.expression_source for h in before.holes], ["csp", "data", "documentId", "sdkTag"])
-        self.assertEqual([h.expression_source for h in after.holes],
-                         ["csp", "AppText.Run.ROUTE_MAP_ACCESSIBILITY_LABEL", "data", "documentId", "sdkTag"])
         for values in ({"csp": "", "data": "", "documentId": "", "sdkTag": ""},
                        {"csp": "default-src 'none'; script-src 'nonce-fixture';",
                         "data": '{"synthetic":"<>&\\u2028"}', "documentId": "fixture_doc",
                         "sdkTag": '"synthetic_sdk_tag"'}):
             with self.subTest(values=values):
-                self.assertEqual(self.assemble(before, values), self.assemble(
-                    after, {**values, "AppText.Run.ROUTE_MAP_ACCESSIBILITY_LABEL": label}))
+                # Preserve the original full Pro snapshot and both existing input vectors.
+                self.assertEqual(self.assemble(before, values), self.assemble(after, self.route_values(values, "pro")))
+
+    def test_both_editions_match_each_independent_kotlin_full_utf8_golden(self):
+        template = self.route_template()
+        for method, provider, pro_size, pro_sha in (
+            ("amapDocumentPreservesOriginalUtf8", "AMAP", 9281,
+             "80ffee5e183cce08eda42a0708410e0fa8a2fcac6616a6c5e03cff955a6e5f30"),
+            ("tianDiTuDocumentPreservesOriginalUtf8", "TIAN_DI_TU", 9356,
+             "32b15e51d9dee508c257088f9cb57512289d1db3ed49e234afde54729c48983a"),
+        ):
+            expected = self.kotlin_golden_documents(method)
+            self.assertEqual(len(expected["pro"]), pro_size)
+            self.assertEqual(hashlib.sha256(expected["pro"]).hexdigest(), pro_sha)
+            for edition in ("pro", "standard"):
+                with self.subTest(provider=provider, edition=edition):
+                    values = self.route_values(self.golden_values(provider, edition), edition)
+                    actual = self.assemble(template, values)
+                    # Standard uses its OWN independent Kotlin literal, never a modified Pro snapshot.
+                    self.assertEqual(actual, expected[edition])
+                    if edition == "standard":
+                        self.assertTrue(all(value == "" for value in self.editing_literals(edition).values()))
+                        for fragment in (b"function clicked(event)", b"post('draw'", b"map.on('click',clicked);",
+                                         b"map.addEventListener('click',clicked);"):
+                            self.assertNotIn(fragment, actual)
+
+    def test_route_assembly_rejects_unknown_interpolation(self):
+        token = guard.scan_source('"""$csp ${unknown.value}"""')[0]
+        with self.assertRaises(AssertionError):
+            self.assemble(token, {"csp": "fixture"})
 
     def test_phase_c_live_bootstrap_const_concatenation_has_original_complete_bytes(self):
         source = self.source(self.platform + "RunMapBootstrapPolicy.kt")
@@ -1538,7 +1738,8 @@ class RepositoryDisplayTextGateTests(unittest.TestCase):
         command = "python3 scripts/display_text_guard.py --root ."
         self.assertEqual(shell.count(command), 1)
         self.assertLess(shell.index(command), shell.index("bash ./gradlew"))
-        workflow = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        from ci_workflow_contract import read_test_workflow
+        workflow = read_test_workflow()
         self.assertIn("run: bash scripts/ci-android.sh", workflow.split("  ios:", 1)[0])
 
 

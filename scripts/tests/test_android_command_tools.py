@@ -6,12 +6,13 @@ import xml.etree.ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from verify_android_command_tools import FIXTURE, ROOT, select_archive, validate_ci, workflow_pins
+from ci_workflow_contract import read_test_workflow
 
 
 class AndroidCommandToolsTests(unittest.TestCase):
     def setUp(self):
         self.repository = ET.parse(FIXTURE).getroot()
-        self.workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.workflow = read_test_workflow()
 
     def test_current_ci_has_host_specific_immutable_pins(self):
         self.assertEqual(workflow_pins(self.workflow), {

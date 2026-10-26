@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline fixtures only: no xcrun, codesign, Keychain, native app or HTTP is executed."""
 import copy
+import io
 import json
 from pathlib import Path
 import plistlib
@@ -494,6 +495,62 @@ class DiagnosticsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             diag.inspect_macho(path, self.artifacts, "bad-layout")
         self.assertIn("error", json.loads((self.artifacts / "bad-layout.json").read_text()))
+
+    def test_edition_bundle_whitelist_accepts_only_standard_and_pro(self):
+        for bundle in (BUNDLE, BUNDLE + ".pro"):
+            self.assertEqual(diag.validate_bundle(bundle), bundle)
+        for invalid in (None, 1, [], "", BUNDLE + ".beta", BUNDLE + ".pro.extra", BUNDLE + "\n"):
+            with self.subTest(bundle=invalid), self.assertRaises(ValueError):
+                diag.validate_bundle(invalid)
+
+    def test_pro_product_metadata_requires_selected_identity_before_inventory(self):
+        pro = BUNDLE + ".pro"
+        self.info["CFBundleIdentifier"] = pro
+        with (self.app / "Info.plist").open("wb") as stream:
+            plistlib.dump(self.info, stream)
+        self.assertEqual(diag._source_app(self.app, pro)[1], pro)
+        self.assertEqual(smoke.app_metadata(self.app, expected_bundle=pro)[1], pro)
+        with self.assertRaises(ValueError):
+            smoke.smoke(self.artifacts, self.app, runner=self.runner, expected_bundle=BUNDLE)
+        self.assertEqual(self.runner.calls, [])
+        self.assertFalse((self.artifacts / "owner.json").exists())
+        with self.assertRaises(ValueError):
+            diag._source_app(self.app, BUNDLE)
+
+    def test_pro_xcode_build_forwards_identity_edition_and_entitlements(self):
+        pro, derived, commands = BUNDLE + ".pro", self.root / "pro-build", []
+        def run(command, **kwargs):
+            commands.append(command)
+            return mock.Mock(returncode=0)
+        with mock.patch.object(diag.sys, "platform", "darwin"):
+            diag.build_xcode_simulator(derived, bundle=pro, run=run)
+        for command in (commands[-2], commands[-1]):
+            self.assertIn("BETTER_ZSLF_EDITION=pro", command)
+            self.assertIn("BETTER_ZSLF_BUNDLE_ID=" + pro, command)
+            self.assertIn("PRODUCT_BUNDLE_IDENTIFIER=" + pro, command)
+        with (derived / "Logs/xcode-packaging/CI-Simulator.entitlements").open("rb") as stream:
+            self.assertEqual(plistlib.load(stream)["application-identifier"], diag.TEAM_ID + "." + pro)
+
+    def test_unknown_build_bundle_fails_before_capture_or_artifacts(self):
+        derived, run = self.root / "invalid-edition-build", mock.Mock()
+        with self.assertRaises(ValueError):
+            diag.build_xcode_simulator(derived, bundle=BUNDLE + ".pro.extra", run=run)
+        run.assert_not_called()
+        self.assertFalse(derived.exists())
+
+    def test_build_cli_default_and_pro_bundle_choices_are_explicit(self):
+        arguments = ["build-xcode", "--artifacts", str(self.artifacts)]
+        with mock.patch.object(diag, "build_xcode_simulator") as build:
+            diag.main(arguments)
+            build.assert_called_once_with(self.artifacts, bundle=BUNDLE)
+            build.reset_mock()
+            diag.main(arguments + ["--bundle", BUNDLE + ".pro"])
+            build.assert_called_once_with(self.artifacts, bundle=BUNDLE + ".pro")
+            build.reset_mock()
+            with mock.patch.object(sys, "stderr", io.StringIO()), self.assertRaises(SystemExit) as raised:
+                diag.main(arguments + ["--bundle", BUNDLE + ".other"])
+            self.assertEqual(raised.exception.code, 2)
+            build.assert_not_called()
 
     def test_xcode_build_records_actual_tools_settings_and_packaging_inputs(self):
         derived = self.root / "new-build"

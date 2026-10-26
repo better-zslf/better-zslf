@@ -134,7 +134,8 @@ class AppUpdateControllerTest {
         controller.requestDownload(); controller.confirmDownload(); controller.requestInstall(); controller.confirmInstall(); controller.cancelDownload()
         assertFalse(controller.canDownload()); assertFalse(controller.canInstall())
         assertEquals(0, updater.downloads); assertEquals(0, updater.installs); assertEquals(0, updater.cancels)
-        assertEquals("https://github.com/better-zslf/better-zslf/releases", GithubReleasePolicy.RELEASES_URL)
+        val repository = if (io.github.betterzslf.edition.BuildEdition.isPro) "better-zslf/pro-ci" else "better-zslf/better-zslf"
+        assertEquals("https://github.com/$repository/releases", GithubReleasePolicy.RELEASES_URL)
         controller.close(); assertEquals(0, updater.closes)
     }
 

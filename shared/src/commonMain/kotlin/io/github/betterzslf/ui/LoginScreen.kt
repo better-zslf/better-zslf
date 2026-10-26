@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.*
 import androidx.compose.ui.unit.dp
 import io.github.betterzslf.AppGraph
+import io.github.betterzslf.edition.EditionAccess
 import io.github.betterzslf.core.result.ApiResult
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
@@ -59,7 +60,7 @@ fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit, onWater: (() -> U
             }
             item { Text(AppText.Auth.SESSION_STORAGE_WITHOUT_PASSWORD_HINT, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
             onResetPassword?.let { openReset -> item { TextButton(AppText.Recovery.RECOVER_PASSWORD_TITLE, onClick = openReset, modifier = Modifier.fillMaxWidth()) } }
-            onWater?.let { openWater -> item { TextButton(AppText.Water.OFFLINE_HEATER_ENTRY, onClick = openWater, modifier = Modifier.fillMaxWidth()) } }
+            if (EditionAccess.waterEnabled) onWater?.let { openWater -> item { graph.editionFeatures.LoginEntry(openWater) } }
             item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(AppText.App.USER_AGREEMENT_DISPLAY_LABEL, onClick = { onDocument("用户协议") })
                 TextButton(AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, onClick = { onDocument("隐私政策") })

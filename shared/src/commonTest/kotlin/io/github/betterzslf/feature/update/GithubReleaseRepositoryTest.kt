@@ -144,7 +144,7 @@ class GithubReleaseRepositoryTest {
             apkUrl.replace("github.com", "fixture:secret@github.com"), apkUrl.replace("github.com", "github.com:443"),
             "$apkUrl?token=fixture-secret", "$apkUrl#fragment", apkUrl.replace("v1.1.0/", "v1.1.0/../"),
             apkUrl.replace("v1.1.0/", "v1.1.0/%2e%2e/"), apkUrl.replace("v1.1.0", "v9.9.9"),
-            apkUrl.replace("better-zslf/better-zslf", "other/repository"), apkUrl.replace("v1.1.0/", "1.1.0/"),
+            apkUrl.replace(io.github.betterzslf.edition.BuildEdition.updateRepository, "other/repository"), apkUrl.replace("v1.1.0/", "1.1.0/"),
         )
         for (url in badUrls) {
             val repo = GithubReleaseRepository(HttpClient(MockEngine { respond(release(listOf(apk(url), checksumAsset()))) }))

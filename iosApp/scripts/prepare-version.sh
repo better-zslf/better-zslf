@@ -44,13 +44,21 @@ version_code="$(read_property VERSION_CODE)" || {
 # Match Gradle precedence: explicit -P arguments override ORG_GRADLE_PROJECT_* environment values.
 version_name="${ORG_GRADLE_PROJECT_versionName:-$version_name}"
 version_code="${ORG_GRADLE_PROJECT_versionCode:-$version_code}"
+edition="${ORG_GRADLE_PROJECT_betterZslfEdition-standard}"
 for argument in "$@"; do
   case "$argument" in
     -PversionName=*) version_name="${argument#-PversionName=}" ;;
     -PversionCode=*) version_code="${argument#-PversionCode=}" ;;
-    *) printf '%s\n' 'Expected only -PversionName=... or -PversionCode=... arguments.' >&2; exit 2 ;;
+    -PbetterZslfEdition=*) edition="${argument#-PbetterZslfEdition=}" ;;
+    *) printf '%s\n' 'Expected -PversionName=..., -PversionCode=... or -PbetterZslfEdition=standard|pro.' >&2; exit 2 ;;
   esac
 done
+
+case "$edition" in
+  standard) bundle=io.github.betterzslf ;;
+  pro) bundle=io.github.betterzslf.pro ;;
+  *) printf '%s\n' 'betterZslfEdition must be standard or pro.' >&2; exit 2 ;;
+esac
 
 # iOS CFBundleShortVersionString is a three-integer release version, not a prerelease label.
 # Validate before writing xcconfig so command/config injection is never evaluated.
@@ -72,6 +80,8 @@ trap 'rm -f "$temporary"' EXIT
   printf '%s\n' '// Do not edit or commit; rerun iosApp/scripts/generate-project.sh after version changes.'
   printf 'BETTER_ZSLF_VERSION_NAME = %s\n' "$version_name"
   printf 'BETTER_ZSLF_VERSION_CODE = %s\n' "$version_code"
+  printf 'BETTER_ZSLF_EDITION = %s\n' "$edition"
+  printf 'BETTER_ZSLF_BUNDLE_ID = %s\n' "$bundle"
 } > "$temporary"
 if [[ ! -f "$output" ]] || ! cmp -s "$temporary" "$output"; then
   mv -f "$temporary" "$output"

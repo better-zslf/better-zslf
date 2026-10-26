@@ -1,6 +1,7 @@
 package io.github.betterzslf.feature.update
 
 import io.github.betterzslf.core.text.AppText
+import io.github.betterzslf.edition.BuildEdition
 import io.github.betterzslf.platform.ApkUpdateSpec
 
 /** Stable SemVer only. Numeric components are compared as digit strings, never narrowed. */
@@ -20,7 +21,10 @@ class StableVersion private constructor(val versionName: String, private val par
         fun parse(value: String): StableVersion? {
             val normalized = value.removePrefix("v")
             if (normalized.isEmpty() || normalized.length > 128) return null
-            val match = pattern.matchEntire(normalized) ?: return null
+            // Pro Android display/tag names use -pro; iOS marketing versions remain numeric.
+            // Standard never accepts a Pro suffix or arbitrary prerelease/build metadata.
+            val numeric = if (BuildEdition.isPro) normalized.removeSuffix(BuildEdition.versionNameSuffix) else normalized
+            val match = pattern.matchEntire(numeric) ?: return null
             return StableVersion(normalized, (1..3).map { match.groupValues[it] })
         }
     }
@@ -67,9 +71,9 @@ interface GithubReleaseSource { suspend fun check(currentVersionName: String): G
 
 /** Only this project's public releases; server-provided HTML links never drive browser navigation. */
 object GithubReleasePolicy {
-    const val RELEASES_URL = "https://github.com/better-zslf/better-zslf/releases"
-    const val LATEST_API_URL = "https://api.github.com/repos/better-zslf/better-zslf/releases/latest"
-    const val ASSET_PREFIX = "https://github.com/better-zslf/better-zslf/releases/download/"
+    const val RELEASES_URL = "https://github.com/${BuildEdition.updateRepository}/releases"
+    const val LATEST_API_URL = "https://api.github.com/repos/${BuildEdition.updateRepository}/releases/latest"
+    const val ASSET_PREFIX = "https://github.com/${BuildEdition.updateRepository}/releases/download/"
     const val MAX_APK_BYTES = 250L * 1024 * 1024
     const val MAX_JSON_BYTES = 1024 * 1024
     const val MAX_CHECKSUM_BYTES = 64 * 1024

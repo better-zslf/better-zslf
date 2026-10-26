@@ -11,7 +11,9 @@ import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.platform.HtmlPanel
 import io.github.betterzslf.ui.content.ContentPage
 import io.github.betterzslf.ui.booking.BookingPage
-import io.github.betterzslf.ui.water.WaterHeaterScreen
+import io.github.betterzslf.edition.BuildEdition
+import io.github.betterzslf.edition.EditionAccess
+import io.github.betterzslf.edition.EditionUnavailablePage
 import io.github.betterzslf.ui.run.RunFeaturePage
 import io.github.betterzslf.ui.run.RunTaskList
 import io.github.betterzslf.ui.campusnet.CampusNetworkFeaturePage
@@ -35,6 +37,10 @@ fun ConfirmDialog(show: Boolean, title: String, summary: String, dismiss: () -> 
 
 @Composable
 fun FeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBack: () -> Unit) {
+    if (!EditionAccess.allowsPage(page.kind)) {
+        EditionUnavailablePage(onBack)
+        return
+    }
     when (page.kind) {
         "settings" -> SettingsScreen(graph, onOpen, onBack)
         "password" -> PasswordScreen(graph, onBack)
@@ -43,7 +49,7 @@ fun FeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBa
         "venues", "venue", "venuetimes", "venueapply", "myvenues", "venueapplication", "fitness", "fitnessitems", "fitnessenrol" -> BookingPage(graph, page, onOpen, onBack)
         "runs", "rundetail", "runrecords", "runrecord", "runtracker", "runimport" -> RunFeaturePage(graph, page, onOpen, onBack, graph.runRuntime)
         "community" -> CommunityScreen(graph, onOpen)
-        "water" -> WaterHeaterScreen(graph.water, onBack)
+        "water" -> graph.editionFeatures.Page(graph, page, onOpen, onBack)
         "campusnet" -> CampusNetworkFeaturePage(graph, onBack)
         "feedback" -> FeedbackScreen(graph, onBack)
         "updates" -> AppUpdatePage(graph.platform.versionName, graph.githubUpdates, graph.appUpdater, graph.platform::openUrl, onBack)
@@ -218,7 +224,7 @@ private fun FeedbackScreen(graph: AppGraph, back: () -> Unit) {
 private fun AboutScreen(graph: AppGraph, back: () -> Unit, openUpdates: () -> Unit) {
     Screen(AppText.App.ABOUT_APP_TITLE, back) { padding -> PageList(padding) {
         item { SectionCard("better-zslf", AppText.Content.aboutVersion((graph.platform.versionName))) }
-        item { SectionCard(AppText.App.DATA_USE_WHEN_NEEDED_TITLE, AppText.App.PRIVACY_AND_OFFLINE_WATER_PROTOCOL_HINT) }
+        item { SectionCard(AppText.App.DATA_USE_WHEN_NEEDED_TITLE, if (BuildEdition.isPro) AppText.App.PRIVACY_AND_OFFLINE_WATER_PROTOCOL_HINT else AppText.Edition.STANDARD_PRIVACY_HINT) }
         item { ArrowPreference(AppText.Updates.PROJECT_RELEASES_AND_UPDATES_LABEL, summary = AppText.Updates.MANUAL_GITHUB_RELEASES_CHECK_SUMMARY, onClick = openUpdates) }
         item { ArrowPreference(AppText.App.PROJECT_SOURCE_LABEL, onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf") }) }
     } }

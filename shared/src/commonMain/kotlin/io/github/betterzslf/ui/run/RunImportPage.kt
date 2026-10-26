@@ -11,6 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.Route
+import io.github.betterzslf.edition.EditionAccess
+import io.github.betterzslf.edition.EditionUnavailablePage
 import io.github.betterzslf.feature.run.*
 import io.github.betterzslf.feature.runui.*
 import io.github.betterzslf.platform.FilePickResult
@@ -27,6 +29,10 @@ import top.yukonga.miuix.kmp.basic.*
 /** Entire draft is route-local and in-memory; this page never changes preferredRunMode/settings. */
 @Composable
 internal fun RunImportPage(graph: AppGraph, page: Route.Page, open: (Route) -> Unit, back: () -> Unit) {
+    if (!EditionAccess.routeEditorsEnabled) {
+        EditionUnavailablePage(back)
+        return
+    }
     val settings by graph.settings.settings.collectAsState()
     val account by graph.sessions.session.collectAsState()
     var refresh by remember { mutableIntStateOf(0) }

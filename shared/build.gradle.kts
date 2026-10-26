@@ -6,6 +6,38 @@ plugins {
     alias(libs.plugins.compose.compiler)
 }
 
+// One edition per compilation, including native/framework and host-test targets.
+// This is source selection, not a runtime feature flag or Android-only flavor.
+val betterZslfEdition = providers.gradleProperty("betterZslfEdition").orElse("standard").get()
+require(betterZslfEdition in setOf("standard", "pro")) {
+    "betterZslfEdition must be standard or pro (was '$betterZslfEdition')"
+}
+val isProEdition = betterZslfEdition == "pro"
+val proOnlyMainSources = listOf(
+    "**/feature/water/**",
+    "**/feature/waterui/**",
+    "**/ui/water/**",
+    "**/platform/BluetoothAccess*.kt",
+    "**/feature/run/RunRouteParser.kt",
+    "**/feature/run/RunRouteValidation.kt",
+    "**/feature/run/RunDetourPlanner.kt",
+    "**/feature/runui/RunImportController.kt",
+    "**/feature/runui/RunManualDraft.kt",
+    "**/ui/run/RunImportPage.kt",
+    "**/ui/run/RunManualDraftSession.kt",
+    "**/ui/run/RunManualDraftSheet.kt",
+)
+val proOnlyTestSources = listOf(
+    "**/feature/water/**",
+    "**/feature/waterui/**",
+    "**/feature/run/RunGeometryAndImportTest.kt",
+    "**/feature/run/RunRouteAndTrackTest.kt",
+    "**/feature/runui/RunImportControllerTest.kt",
+    "**/feature/runui/RunManualDraftTest.kt",
+    "**/feature/runui/RunManualImportControllerTest.kt",
+    "**/ui/run/RunManualDraftSessionTest.kt",
+)
+
 kotlin {
     jvmToolchain(21)
     android {
@@ -26,6 +58,20 @@ kotlin {
         }
     }
     sourceSets {
+        // Shared contracts have exactly one selected implementation. Unselected directories are
+        // never compiler inputs; existing Pro source remains in the repository for the Pro build.
+        commonMain {
+            kotlin.srcDir("src/${betterZslfEdition}Main/kotlin")
+        }
+        commonTest {
+            kotlin.srcDir("src/${betterZslfEdition}Test/kotlin")
+        }
+        all {
+            if (!isProEdition) {
+                kotlin.exclude(proOnlyMainSources)
+                kotlin.exclude(proOnlyTestSources)
+            }
+        }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
@@ -39,7 +85,7 @@ kotlin {
             implementation(libs.ktor.core)
             implementation(libs.coroutines.core)
             implementation(libs.serialization.json)
-            implementation(libs.kable)
+            if (isProEdition) implementation(libs.kable)
             implementation(libs.lifecycle.compose)
         }
         commonTest.dependencies {

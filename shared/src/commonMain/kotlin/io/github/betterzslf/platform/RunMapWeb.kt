@@ -129,13 +129,7 @@ object RunMapWeb {
     document.body.style.background=state.dark?'#171b22':'#eef2f5';
   }
   function onReady(){if(ready||failed){return;}ready=true;clearTimeout(timer);clearInterval(poll);post('ready');}
-  function clicked(event){
-    if(!state.editMode||failed){return;}
-    const value=event&&event.lnglat;if(!value){return;}
-    const longitude=typeof value.getLng==='function'?value.getLng():value.lng;
-    const latitude=typeof value.getLat==='function'?value.getLat():value.lat;
-    if(Number.isFinite(longitude)&&Number.isFinite(latitude)&&longitude>=-180&&longitude<=180&&latitude>=-90&&latitude<=90){post('draw',{longitude:longitude,latitude:latitude,frame:frame});}
-  }
+${RunMapEditing.script}
   function initialize(){
     if(map||failed){return;}
     if(provider==='AMAP'&&(!window.AMap||!AMap.Map)){return;}
@@ -143,12 +137,12 @@ object RunMapWeb {
     try{
       const center=point(state.center);
       if(provider==='AMAP'){
-        map=new AMap.Map('map',{center:center,zoom:state.zoom,resizeEnable:true});map.on('complete',onReady);map.on('click',clicked);
+        map=new AMap.Map('map',{center:center,zoom:state.zoom,resizeEnable:true});map.on('complete',onReady);${RunMapEditing.amapBinding}
       }else{
         const suffix='&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&FORMAT=tiles&TILEMATRIXSET=w&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk='+encodeURIComponent(state.apiKey);
         const vector=new T.TileLayer('https://t0.tianditu.gov.cn/vec_w/wmts?LAYER=vec'+suffix,{minZoom:1,maxZoom:18});
         const labels=new T.TileLayer('https://t0.tianditu.gov.cn/cva_w/wmts?LAYER=cva'+suffix,{minZoom:1,maxZoom:18});
-        map=new T.Map('map',{layers:[vector,labels]});map.addEventListener('load',onReady);map.addEventListener('click',clicked);map.centerAndZoom(center,state.zoom);
+        map=new T.Map('map',{layers:[vector,labels]});map.addEventListener('load',onReady);${RunMapEditing.tiandituBinding}map.centerAndZoom(center,state.zoom);
       }
       render();
     }catch(_){fail('SDK');}
@@ -197,15 +191,7 @@ object RunMapWeb {
                 val id = root.string("id") ?: return null
                 if (model.checkpoints.any { it.id == id }) RunMapEvent.CheckpointSelected(id) else null
             }
-            "draw" -> {
-                if (!model.editMode || root.keys != setOf("documentId", "type", "longitude", "latitude", "frame")) return null
-                val frame = frame(requireNotNull(model.provider))
-                if (root.string("frame") != frame.name) return null
-                val longitude = root.number("longitude") ?: return null
-                val latitude = root.number("latitude") ?: return null
-                val point = runCatching { GeoPoint(longitude, latitude) }.getOrNull() ?: return null
-                RunMapEvent.DrawPoint(point, frame)
-            }
+            "draw" -> RunMapEditing.parseEvent(root, model, frame(requireNotNull(model.provider)))
             else -> null
         }
     }
@@ -268,7 +254,7 @@ object RunMapWeb {
         } ?: model.checkpoints.firstOrNull()?.let { convert(it.point, it.coordinateSystem) }
         return buildJsonObject {
             put("documentId", documentId); put("provider", provider.name); put("frame", destination.name)
-            put("apiKey", model.apiKey); put("editMode", model.editMode); put("dark", model.dark)
+            put("apiKey", model.apiKey); put("editMode", RunMapEditing.enabled(model)); put("dark", model.dark)
             put("actual", path(model.actualPath)); put("recommended", path(model.recommendedPath)); put("imported", path(model.importedPath))
             put("current", current?.let(::point) ?: JsonNull); put("center", point(first ?: GeoPoint(105.0, 35.0))); put("zoom", if (first == null) 4 else 15)
             putJsonArray("checkpoints") { model.checkpoints.forEach { checkpoint -> add(buildJsonObject {
@@ -281,7 +267,6 @@ object RunMapWeb {
         .replace("&", "\\u0026").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
 
     private fun JsonObject.string(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
-    private fun JsonObject.number(key: String): Double? = (get(key) as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull?.takeIf { it.isFinite() }
 
     /** Events are flat objects. Reject nested structures before parsing, bounding stack use and duplicate fields. */
     private fun flatObjectFields(message: String): Int? {

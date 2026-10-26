@@ -2,7 +2,7 @@
 
 本目录提供 SwiftUI 宿主和 XcodeGen 工程定义；共享 UI 通过
 [`MainViewController`](<../shared/src/iosMain/kotlin/io/github/betterzslf/MainViewController.kt>)
-调用 `ComposeUIViewController { App() }`。Bundle ID 为 `io.github.betterzslf`，目标下限 iOS 14。
+调用 `ComposeUIViewController { App() }`。标准版 Bundle ID 为 `io.github.betterzslf`，Pro 为 `io.github.betterzslf.pro`，目标下限 iOS 14。
 当前 KMP 目标为 arm64 真机与 Apple Silicon 模拟器；没有 Intel 模拟器目标。
 
 ## 生成与编译（macOS）
@@ -30,7 +30,7 @@ xcodebuild -project iosApp/BetterZslf.xcodeproj \
 只维护根 [`version.properties`](<../version.properties>) 的 `VERSION_NAME` / `VERSION_CODE`。
 [`prepare-version.sh`](<scripts/prepare-version.sh>) 将它们转换为生成目录中的 xcconfig；
 [`Info.plist`](<Info.plist>) 引用 `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)`，没有另一份版本常量。
-iOS 的 `PlatformServices.versionName` 读取实际 App bundle 版本。
+iOS 的 `PlatformServices.versionName` 读取实际 App bundle numeric 版本，UI 再由共享 `BuildEdition.versionNameSuffix` 为 Pro 追加 `-pro`；`CFBundleShortVersionString` 本身保持 numeric base。
 
 CI 临时覆盖与 Gradle 使用同名参数：
 
@@ -40,11 +40,31 @@ bash iosApp/scripts/generate-project.sh -PversionName=1.2.3 -PversionCode=123
 
 优先级：命令行 `-PversionName` / `-PversionCode` >
 `ORG_GRADLE_PROJECT_versionName` / `ORG_GRADLE_PROJECT_versionCode` 环境变量 > 根属性文件。
-Xcode build phase 将最终展开的版本原样作为 `-P` 参数传给 Gradle。
+Xcode build phase 将最终展开的版本与版别原样作为 `-P` 参数传给 Gradle。
 `versionName` 必须为 iOS 接受的三段整数版本，`versionCode` 为正整数；无效值立即失败，不静默转换。
 修改根版本或 CI 覆盖后，**先重新运行生成脚本，再启动新的 xcodebuild/Xcode build**；
 构建脚本阶段才生成 xcconfig 对当前构建的版本设置生效过晚，因此版本准备放在项目生成之前。
 生成工程与生成版本配置均由本目录忽略规则排除。
+
+## standard / pro 版别
+
+`betterZslfEdition` 只接受 `standard` / `pro`，未设置时为 `standard`；明确传空值或未知版别会提前失败。
+`-PbetterZslfEdition=...` 优先于 `ORG_GRADLE_PROJECT_betterZslfEdition`。生成的 xcconfig 同时记录版别与两种固定 bundle ID，
+Xcode 的 `PRODUCT_BUNDLE_IDENTIFIER` 引用此配置，framework build phase 显式传同版 `-P`，并校验 Xcode edition/bundle 一致。
+
+```bash
+export ORG_GRADLE_PROJECT_betterZslfEdition=pro
+bash iosApp/scripts/generate-project.sh
+# CI build/smoke also accept -PbetterZslfEdition=standard|pro; one shared env keeps both aligned.
+bash scripts/ci-ios.sh
+bash scripts/ci-ios-smoke.sh
+```
+
+诊断 Python 的 `--bundle` 仅允许这两个固定 ID、默认标准版；smoke 在 inventory/create 前核对实际产品身份。
+cleanup 始终读取已持久化的 owner，不由新参数覆盖原 bundle/UDID。Native CF 探针、观测时窗和清理规则未因选版改变。
+完整测试 workflow 已迁至独立 Pro CI；测试前必须由控制仓库设置 `BETTER_ZSLF_TEST_WORKFLOW` 为真实 `.github/workflows/tests.yml` 的绝对路径，
+由[工作流路径契约](<../scripts/ci_workflow_contract.py>)验证，缺失/相对路径/错误文件名会失败；不回退源码构建 workflow 或测试 fixture。
+本次双版本适配仅新增源码和离线测试定义，尚未在此编辑任务中执行测试或编译；下面历史标准版 Native 成果不直接外推为新版 Pro 验收。
 
 ## 平台数据与文章隔离
 

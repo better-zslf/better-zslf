@@ -1,6 +1,7 @@
 package io.github.betterzslf.platform
 
 import io.github.betterzslf.feature.run.GeoPoint
+import io.github.betterzslf.edition.BuildEdition
 import kotlinx.serialization.json.*
 import kotlin.test.*
 
@@ -192,7 +193,8 @@ class RunMapWebTest {
     @Test fun drawEventsAreEditingOnlyAndStayInTheirProviderFrameNotNativeGps() {
         val draw = event("draw", ",\"longitude\":116.4,\"latitude\":39.9,\"frame\":\"GCJ02\"")
         assertNull(RunMapWeb.parseEvent(draw, model(), documentId))
-        assertEquals(RunMapEvent.DrawPoint(GeoPoint(116.4, 39.9), RunMapCoordinateSystem.GCJ02), RunMapWeb.parseEvent(draw, model().copy(editMode = true), documentId))
+        val expected = if (BuildEdition.isPro) RunMapEvent.DrawPoint(GeoPoint(116.4, 39.9), RunMapCoordinateSystem.GCJ02) else null
+        assertEquals(expected, RunMapWeb.parseEvent(draw, model().copy(editMode = true), documentId))
         assertNull(RunMapWeb.parseEvent(draw, model(RunMapProvider.TIAN_DI_TU).copy(editMode = true), documentId))
         assertNull(RunMapWeb.parseEvent(draw.dropLast(1) + ",\"native\":true}", model().copy(editMode = true), documentId))
     }
@@ -203,7 +205,8 @@ class RunMapWebTest {
             assertNull(RunMapWeb.parseEvent(message, model().copy(editMode = true), documentId))
         }
         val edge = event("draw", ",\"longitude\":180,\"latitude\":90,\"frame\":\"WGS84\"")
-        assertNotNull(RunMapWeb.parseEvent(edge, model(RunMapProvider.TIAN_DI_TU).copy(editMode = true), documentId))
+        val parsedEdge = RunMapWeb.parseEvent(edge, model(RunMapProvider.TIAN_DI_TU).copy(editMode = true), documentId)
+        if (BuildEdition.isPro) assertNotNull(parsedEdge) else assertNull(parsedEdge)
     }
 
     @Test fun checkpointSelectionRequiresAnIdStillPresentInTheLatestModel() {
@@ -230,6 +233,20 @@ class RunMapWebTest {
         assertTrue(RunMapWeb.isAllowedRequest(owned, RunMapProvider.AMAP))
         for (url in listOf("data:text/html,<script>x</script>", "data:image/svg+xml,<svg/>", "blob:https://school.edu.cn/AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA", "blob:unknown")) assertFalse(RunMapWeb.isAllowedRequest(url, RunMapProvider.AMAP))
         assertFalse(RunMapWeb.isAllowedRequest(owned, null))
+    }
+
+    @Test fun editionSelectionRemovesDrawingBridgeButKeepsRealAndServerPaths() {
+        val points = listOf(beijing, GeoPoint(116.398, 39.917))
+        val input = model().copy(editMode = true,
+            actualPath = RunMapPath(points, RunMapCoordinateSystem.GCJ02),
+            recommendedPath = RunMapPath(points, RunMapCoordinateSystem.GCJ02))
+        val html = assertNotNull(RunMapWeb.document(input, documentId).html)
+        assertEquals(BuildEdition.isPro, html.contains("function clicked(event)"))
+        assertEquals(BuildEdition.isPro, html.contains("post('draw'"))
+        assertEquals(BuildEdition.isPro, data(input)["editMode"]!!.jsonPrimitive.boolean)
+        assertEquals(2, data(input)["actual"]!!.jsonArray.single().jsonArray.size)
+        assertEquals(2, data(input)["recommended"]!!.jsonArray.single().jsonArray.size)
+        assertTrue(assertNotNull(RunMapWeb.updateScript(input, documentId)).contains("\"editMode\":${BuildEdition.isPro}"))
     }
 
     @Test fun navigationNeverOpensProviderExternalOrLocalPages() {

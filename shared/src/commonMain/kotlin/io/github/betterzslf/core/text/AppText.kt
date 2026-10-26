@@ -2,6 +2,12 @@ package io.github.betterzslf.core.text
 
 /** App-owned Chinese display copy. Pure, synchronous; never a source of protocol IDs. */
 object AppText {
+    object Edition {
+        const val FEATURE_UNAVAILABLE_TITLE: String = "当前版本未包含此功能"
+        const val REOPEN_AVAILABLE_ENTRY_HINT: String = "请返回当前版本的功能入口。"
+        const val STANDARD_PRIVACY_HINT: String = "无广告、无统计和崩溃上报。校园功能直连学校服务；跑步仅记录真实定位并由你手动确认。"
+    }
+
     object App {
         const val ABOUT_APP_TITLE: String = "关于应用"
         const val ABOUT_TITLE: String = "关于"

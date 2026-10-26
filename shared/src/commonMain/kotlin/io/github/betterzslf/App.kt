@@ -19,9 +19,9 @@ import io.github.betterzslf.platform.createLocationTracker
 import io.github.betterzslf.ui.run.RunTaskList
 import kotlin.time.Clock
 import kotlinx.coroutines.launch
-import io.github.betterzslf.feature.water.KableWaterBleTransport
-import io.github.betterzslf.feature.water.WaterBleController
-import io.github.betterzslf.platform.createWaterEpilogueContext
+import io.github.betterzslf.edition.EditionAccess
+import io.github.betterzslf.edition.EditionFeatures
+import io.github.betterzslf.edition.createEditionFeatures
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -46,12 +46,13 @@ class AppGraph(val platform: PlatformServices) {
     val api = ApiClient(http, sessions)
     val repositories = AppRepositories(api, sessions)
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    // Construction of the transport is inert; scanning is only collected after an explicit UI action.
-    val water: WaterBleController by lazy { WaterBleController(applicationScope, KableWaterBleTransport(), ::createWaterEpilogueContext) }
+    // The selected facade contains no Pro implementation in standard compiler inputs.
+    val editionFeatures: EditionFeatures by lazy { createEditionFeatures(applicationScope) }
     private var runRuntimeInstance: RunRuntime? = null
     val runRuntime: RunRuntime
         get() = runRuntimeInstance ?: RunRuntime(applicationScope, platform.storage, repositories.run,
-            createLocationTracker(), { Clock.System.now().toEpochMilliseconds() }, sessions.session
+            createLocationTracker(), { Clock.System.now().toEpochMilliseconds() }, sessions.session,
+            transportFactory = null // Both editions retain explicit local real-GPS recording only.
         ).also { runRuntimeInstance = it }
     // Public release traffic has its own client and never borrows school authentication.
     private var githubUpdatesInstance: GithubReleaseRepository? = null
@@ -116,6 +117,7 @@ sealed interface Route : NavKey {
 
 /** A route can be on a stack once; repeated taps never create duplicate keys. */
 fun MutableList<NavKey>.pushUnique(route: Route) {
+    if (route is Route.Page && !EditionAccess.allowsPage(route.kind)) return
     val existing = indexOf(route)
     if (existing >= 0) {
         while (lastIndex > existing) removeAt(lastIndex)
@@ -124,8 +126,9 @@ fun MutableList<NavKey>.pushUnique(route: Route) {
 
 /** Preserve an explicit offline page across Activity recreation while keeping login underneath it. */
 fun MutableList<NavKey>.reconcileLoggedOutRoute() {
+    removeAll { it is Route.Page && !EditionAccess.allowsPage(it.kind) }
     val top = lastOrNull() as? Route.Page
-    if (top?.kind in setOf("water", "document", "resetpassword")) {
+    if (top != null && EditionAccess.allowsOfflinePage(top.kind)) {
         if (none { it == Route.Login }) add(lastIndex.coerceAtLeast(0), Route.Login)
     } else {
         pushUnique(Route.Login)
@@ -192,7 +195,7 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
             }
             entry<Route.Login> {
                 LoginScreen(graph, onDocument = { root.pushUnique(Route.Page("document", it, it)) },
-                    onWater = { root.pushUnique(Route.Page("water", title = AppText.Water.DORMITORY_HEATER_TITLE)) },
+                    onWater = if (EditionAccess.waterEnabled) ({ root.pushUnique(Route.Page("water")) }) else null,
                     onResetPassword = { root.pushUnique(Route.Page("resetpassword", title = AppText.Recovery.RECOVER_PASSWORD_TITLE)) })
             }
             entry<Route.Page>(swipeDismiss = if ((root.lastOrNull() as? Route.Page)?.kind in setOf("water", "runtracker", "resetpassword")) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) {

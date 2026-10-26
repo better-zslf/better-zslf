@@ -141,7 +141,33 @@ class SourceReleaseWorkflowContractTests(unittest.TestCase):
         signing, notify = workflow.split("\n  release:\n", 1)[1].split("\n  notify:\n", 1)
         self.assertIn("    environment: release\n", signing)
         self.assertNotIn("    environment:", notify)
-        self.assertIn("PRO_CI_DISPATCH_TOKEN: ${{ secrets.PRO_CI_DISPATCH_TOKEN }}", notify)
+        self.assertIn("PRO_CI_DISPATCH_TOKEN: ${{ steps.pro-dispatch-token.outputs.token }}", notify)
+        self.assertIn("SOURCE_RELEASE_TOKEN: ${{ github.token }}", notify)
+
+    def test_dispatch_app_is_pinned_and_single_repository_actions_only(self):
+        notify = self.workflow().split("\n  notify:\n", 1)[1]
+        action = "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3"
+        self.assertEqual(notify.count(action), 1)
+        app = notify.split("      - name: Mint a single-repository Pro dispatch App token\n", 1)[1].split("      - name:", 1)[0]
+        for required in ("client-id: ${{ vars.CI_APP_CLIENT_ID }}", "private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}",
+                         "owner: better-zslf", "repositories: pro-ci", "permission-actions: write"):
+            self.assertIn(required, app)
+        self.assertEqual(re.findall(r"(?m)^          owner: (.+)$", app), ["better-zslf"])
+        self.assertEqual(re.findall(r"(?m)^          repositories: (.+)$", app), ["pro-ci"])
+        self.assertEqual(re.findall(r"(?m)^          (permission-[a-z-]+): (.+)$", app), [("permission-actions", "write")])
+        self.assertNotIn("permission-contents:", app)
+        self.assertNotIn("skip-token-revoke:", app)
+        self.assertNotIn("secrets.PRO_CI_DISPATCH_TOKEN", notify)
+        self.assertNotIn("secrets.SOURCE_READ_TOKEN", notify)
+        self.assertLess(notify.index(action), notify.index("PRO_CI_DISPATCH_TOKEN: ${{ steps.pro-dispatch-token.outputs.token }}"))
+
+    def test_app_private_key_is_action_input_only_and_not_a_job_output(self):
+        notify = self.workflow().split("\n  notify:\n", 1)[1]
+        self.assertNotRegex(notify, r"(?m)^    env:")
+        key_lines = [line.strip() for line in notify.splitlines() if "${{ secrets.CI_APP_PRIVATE_KEY }}" in line]
+        self.assertEqual(key_lines, ["private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}"])
+        self.assertNotIn("CI_APP_PRIVATE_KEY", notify.split("        run: |", 1)[1])
+        self.assertNotRegex(self.workflow(), r"(?m)^      [A-Za-z0-9_-]+:.*steps\.[^.]+\.outputs\.token")
 
 
 if __name__ == "__main__":

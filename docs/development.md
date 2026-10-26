@@ -40,6 +40,14 @@ Pro开发、操作与专项验收见[Pro文档](https://github.com/better-zslf/p
 | iOS | Keychain、WebView、文件选择、定位及惰性原生能力actual | framework、Xcode Simulator app、真实CF/Keychain与跨进程恢复通过，Login已人工视觉核对；真机/学校登录/其余交互待验 |
 | CI与发版 | 主仓仅build/release，测试工作流归Pro CI的分仓契约已确定 | 旧CI16构建及Native smoke成功；新双仓工作流、签名/环境配置、edition产物及正式发版另验 |
 
+## CI认证与固定来源
+
+跨仓配置已选GitHub App，不再要求个人PAT。Source/Pro两仓分别使用Repository Variable `CI_APP_CLIENT_ID`与Repository Secret `CI_APP_PRIVATE_KEY`（GitHub App PEM，非Android PKCS12），原`release` Environment的五项Android签名secret保留。每个跨仓job独立现签单仓installation token，约1小时、job末默认revoke，不跨job复用；无需服务器或Webhook。
+
+Source只维护标准版build/release；完整测试统一在Pro CI的canonical [tests.yml](https://github.com/better-zslf/pro-ci/blob/main/.github/workflows/tests.yml)。应用源码固定为S，Pro控制器固定为C；Pro tag指向C，Pro产物metadata中的Source SHA仍绑定S，已有tag/release不覆盖。Source手工`publish=false`用40位`source_ref`测试，不伪造正式tag/release。[App配置与权限](https://github.com/better-zslf/pro-ci/blob/main/docs/ci.md)说明每job范围与签名检查职责。
+
+维护者已确认App JWT身份及installation元数据，两仓App Variable/Secret已真配置；两个singleRepo token分别只见唯一Pro CI（Actions写/Metadata读）与唯一Source（Contents读/Metadata读），读源main ref和Pro活跃workflow通过，测试token已revoke。未枚举App全installation仓库名单；新App完整CI及Native/自动发行仍需实际run，本轮文档不代执行或外推产品验收。
+
 ## 正常跑步保留的流程
 
 查询任务、成绩和历史，查看服务端提供的任务地图/推荐路径；没有真实任务时不补造任务数据。用户显式开启真实GPS记录，按权限与定位状态处理暂停/继续/结束；恢复不自动启动定位或沿用旧进程确认。结束冻结实测样本，零/单点记录保留，不为补足距离生成点。

@@ -212,15 +212,25 @@ jobs:
            needs.intent.outputs.publish_standard == 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    # Dispatch uses only a repository Actions token, not the signing environment.
+    # Dispatch uses only a job-local App Actions token, not the signing environment.
     # Source release deployment policy allows v* tags; manual main dry-runs must
     # remain usable without creating a formal source tag or exposing signing keys.
     permissions:
       contents: read
     steps:
-      - name: Dispatch only the trusted Pro main workflow with a repository-scoped Actions token
+      - name: Mint a single-repository Pro dispatch App token
+        id: pro-dispatch-token
+        if: github.repository == 'better-zslf/better-zslf'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          client-id: ${{ vars.CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+          owner: better-zslf
+          repositories: pro-ci
+          permission-actions: write
+      - name: Dispatch only the trusted Pro main workflow with the job-local App token
         env:
-          PRO_CI_DISPATCH_TOKEN: ${{ secrets.PRO_CI_DISPATCH_TOKEN }}
+          PRO_CI_DISPATCH_TOKEN: ${{ steps.pro-dispatch-token.outputs.token }}
           SOURCE_RELEASE_TOKEN: ${{ github.token }}
           SOURCE_TAG: ${{ needs.intent.outputs.source_tag }}
           SOURCE_COMMIT: ${{ needs.intent.outputs.source_ref }}
@@ -234,7 +244,7 @@ jobs:
                   raise SystemExit('GitHub API redirects are not accepted')
           def request(path, token, body=None):
               if not token:
-                  raise SystemExit('Configure the required repository-scoped workflow token')
+                  raise SystemExit('Required job-local workflow token is missing')
               data = None if body is None else json.dumps(body).encode('utf-8')
               req = urllib.request.Request('https://api.github.com/repos/' + path, data=data,
                   method='GET' if body is None else 'POST',

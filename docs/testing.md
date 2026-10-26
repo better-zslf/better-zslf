@@ -6,6 +6,13 @@
 
 热水器及路线导入/手绘/补里程/自动规划的专项开发、操作和验收历史迁至[Pro验证记录](https://github.com/better-zslf/pro-ci/blob/main/docs/testing.md)、[热水器](https://github.com/better-zslf/pro-ci/blob/main/docs/water.md)、[路线工具](https://github.com/better-zslf/pro-ci/blob/main/docs/routes.md)。Pro CI为私有仓，链接需相应访问权限。默认standard保留任务/成绩/历史/服务器地图/真实GPS记录与显式人工流程；Pro也保留生产`runFactory=null`等既有门。双仓与edition验收另记，不把627等旧报告当作本轮已跑。
 
+## 2026-10-26：GitHub App迁移，非Native验收
+
+- 当前跨仓认证改为GitHub App；维护者已确认JWT身份、installation `175411436`的`better-zslf`/selected及Actions写/Contents读/Metadata读元数据。另已实证Pro CI token仅列唯一Pro CI仓（Actions写/Metadata读），Source token仅列唯一Source仓（Contents读/Metadata读）；读源main ref与Pro活跃workflow通过，测试token已revoke。未枚举App全installation仓库名单，不把这些API结果外推为新App完整CI、Native或自动发行通过。
+- 两仓`CI_APP_CLIENT_ID`（Repository Variable）和`CI_APP_PRIVATE_KEY`（加密Repository Secret，App PEM）已配置成功，不再要求两枚个人PAT。每job单仓token约1小时、job末默认revoke，不跨job复用；五项Android签名secret不变。[配置与状态](https://github.com/better-zslf/pro-ci/blob/main/docs/ci.md)。
+- 完整测试workflow统一在Pro canonical tests入口；源码S、控制器C、source gate/签名/aggregate职责分别记录。Pro tag为C而产物Source SHA为S，既有tag/release不覆盖；Source `publish=false`以40位`source_ref`dry-run，不创建正式tag/release。
+- 本文档任务未执行CLI、网络或测试，不读取用户私有文件；历史测试数量及后续维护者的真实CI结果分别登记。
+
 ## 2026-10-23：首次集成
 
 - Kotlin 2.4.21 / Compose Multiplatform 1.12.2 / Miuix 0.9.4。

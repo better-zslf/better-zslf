@@ -1,6 +1,7 @@
 package io.github.betterzslf.ui.run
 
 import io.github.betterzslf.core.text.AppText
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -14,8 +15,11 @@ import io.github.betterzslf.feature.run.*
 import io.github.betterzslf.feature.runui.*
 import io.github.betterzslf.platform.FilePickResult
 import io.github.betterzslf.platform.rememberFilePicker
+import io.github.betterzslf.platform.runMapProviderFor
 import io.github.betterzslf.ui.Screen
 import io.github.betterzslf.ui.SectionCard
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import top.yukonga.miuix.kmp.basic.*
@@ -24,6 +28,7 @@ import top.yukonga.miuix.kmp.basic.*
 @Composable
 internal fun RunImportPage(graph: AppGraph, page: Route.Page, open: (Route) -> Unit, back: () -> Unit) {
     val settings by graph.settings.settings.collectAsState()
+    val account by graph.sessions.session.collectAsState()
     var refresh by remember { mutableIntStateOf(0) }
     val selection = remember(page.id) { RunTaskSelection.decode(page.id) }
     val query = if (selection == null) RunPageQuery() else rememberRunQuery(graph, selection, refresh) { it.detail(selection.errandId, it.boundOwnerId.orEmpty(), selection.errandScheduleId) }
@@ -36,11 +41,52 @@ internal fun RunImportPage(graph: AppGraph, page: Route.Page, open: (Route) -> U
     var seed by remember { mutableStateOf("0") }
     var fileMessage by remember { mutableStateOf<String?>(null) }
     var visible by remember { mutableIntStateOf(40) }
+    val sourceBusy = model.busy || query.loading
+    val owner = remember(graph, account?.userId, account?.token) { Any() }
+    val provider = runMapProviderFor(account?.mapWebType)
+    val apiKey = account?.mapToken
+    val identity = remember(owner, controller, provider, apiKey) { RunManualDraftIdentity(owner, controller, provider, apiKey) }
+    val latestController by rememberUpdatedState(controller)
+    var manualEditor by remember(controller) { mutableStateOf<RunManualImportEditor?>(null) }
+    var manualNotice by remember(controller) { mutableStateOf<String?>(null) }
+    fun captureManualEditor(): RunManualImportEditor? {
+        if (sourceBusy || !identity.configured) return null
+        val admission = controller.beginManualDraft() ?: return null
+        val capturedController = controller
+        val capturedAccount = account
+        return RunManualImportEditor(RunManualDraftSession(identity,
+            isIdentityCurrent = { latestController === capturedController && graph.sessions.session.value == capturedAccount },
+            isAdmissionCurrent = { capturedController.isManualDraftCurrent(admission) }), admission)
+    }
+    fun cancelManualEditor(editor: RunManualImportEditor) {
+        editor.close()
+        if (manualEditor === editor) manualEditor = null
+    }
+    val mountedEditor = manualEditor
+    DisposableEffect(mountedEditor) { onDispose { mountedEditor?.close() } }
+    SideEffect {
+        val editor = manualEditor
+        if (editor != null) {
+            if (editor.session.identity != identity) {
+                val canReset = editor.session.identity.sharesOwner(identity) && controller.isManualDraftCurrent(editor.admission)
+                editor.close()
+                manualEditor = if (canReset) captureManualEditor() else null
+                manualNotice = AppText.ManualRoute.SOURCE_CHANGED
+            } else if (!editor.session.refresh() && editor.session.state.value.phase == RunManualDraftPhase.STALE) {
+                cancelManualEditor(editor)
+                manualNotice = AppText.ManualRoute.SOURCE_CHANGED
+            }
+        }
+    }
     val picker = rememberFilePicker { result ->
         when (result) {
             FilePickResult.Cancelled -> fileMessage = AppText.Run.IMPORT_CANCELLED_PREVIEW_RETAINED
             is FilePickResult.Failed -> fileMessage = result.message
-            is FilePickResult.Selected -> { fileMessage = null; scope.launch { controller.read(result.file) } }
+            is FilePickResult.Selected -> {
+                manualEditor?.let(::cancelManualEditor)
+                fileMessage = null
+                scope.launch { controller.read(result.file) }
+            }
         }
     }
     val distance = target.trim().toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }
@@ -48,10 +94,13 @@ internal fun RunImportPage(graph: AppGraph, page: Route.Page, open: (Route) -> U
     val seedNumber = seed.trim().toIntOrNull()
     val parameterized = distance != null && duration != null
     val changed = model.validation != null && (model.targetDistanceMeters != distance || model.durationMillis != duration)
-    val busy = model.busy || query.loading
+    val busy = sourceBusy || manualEditor != null
     val frame = model.workingCoordinateSystem
+    val dark = when (settings.theme) { "Dark" -> true; "Light" -> false; else -> isSystemInDarkTheme() }
 
-    Screen(page.title.ifBlank { AppText.Run.ROUTE_IMPORT_LOCAL_PREVIEW_TITLE }, back, actions = { TextButton(AppText.Run.CLEAR_DRAFT, enabled = !busy, onClick = { scope.launch { controller.clear() } }) }) { padding ->
+    val guardedBack: () -> Unit = { manualEditor?.let(::cancelManualEditor) ?: back() }
+    Screen(page.title.ifBlank { AppText.Run.ROUTE_IMPORT_LOCAL_PREVIEW_TITLE }, guardedBack, actions = { TextButton(AppText.Run.CLEAR_DRAFT, enabled = !busy, onClick = { scope.launch { controller.clear() } }) }) { padding ->
+        BoxWithConstraints(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item("local-only") { SectionCard(AppText.Run.LOCAL_ROUTE_PREVIEW_ONLY_TITLE, AppText.Run.IMPORT_PREVIEW_ISOLATION_HINT) }
             runFeedback(query, { refresh++ })
@@ -62,12 +111,22 @@ internal fun RunImportPage(graph: AppGraph, page: Route.Page, open: (Route) -> U
                     TextButton(AppText.Run.USE_RECOMMENDED_PATH, enabled = !busy && detail.walkPaths.isNotEmpty(), onClick = { scope.launch { controller.useRecommended() } }, modifier = Modifier.weight(1f))
                 }
             }
+            item("manual-source") {
+                TextButton(AppText.ManualRoute.OPEN_EDITOR, enabled = !busy && identity.configured, modifier = Modifier.fillMaxWidth(), onClick = {
+                    if (manualEditor == null) {
+                        manualNotice = null
+                        manualEditor = captureManualEditor()
+                    }
+                })
+                if (!identity.configured) Text(AppText.Run.MAP_PROVIDER_AND_PUBLIC_KEY_CONFIGURATION_REQUIRED)
+            }
+            manualNotice?.let { notice -> item("manual-notice") { Text(notice) } }
             item("size-limit") { Text(AppText.Run.ROUTE_FILE_LIMITS_AND_COORDINATES_HINT) }
             fileMessage?.let { message -> item("file-message") { SectionCard(AppText.Common.FILE_SELECTION_TITLE, message) } }
             model.error?.let { message -> item("error") { SectionCard(AppText.Run.LOCAL_PREVIEW_INCOMPLETE, message) } }
             if (model.busy) item("busy") { CircularProgressIndicator() }
             if (model.source != null) {
-                item("source") { SectionCard(model.fileName ?: AppText.Run.ROUTE_DRAFT_TITLE, AppText.Run.importSourceSummary((model.source).toString(), (model.originalPoints.size), (model.originalSegments.size), (model.workingPoints.size), (if (model.normalized) AppText.Run.DENSITY_ADJUSTED_EXPLICITLY else AppText.Run.DENSITY_NOT_ADJUSTED), (if (model.detoured) AppText.Run.LOCAL_DISTANCE_EXTENSION_APPLIED else AppText.Run.NO_DISTANCE_EXTENSION))) }
+                item("source") { SectionCard(model.fileName ?: AppText.Run.ROUTE_DRAFT_TITLE, AppText.Run.importSourceSummary((if (model.source == RunImportSource.MANUAL_MAP) AppText.ManualRoute.SOURCE_LABEL else model.source.toString()), (model.originalPoints.size), (model.originalSegments.size), (model.workingPoints.size), (if (model.normalized) AppText.Run.DENSITY_ADJUSTED_EXPLICITLY else AppText.Run.DENSITY_NOT_ADJUSTED), (if (model.detoured) AppText.Run.LOCAL_DISTANCE_EXTENSION_APPLIED else AppText.Run.NO_DISTANCE_EXTENSION))) }
                 item("original-map") { RunMapPreview(graph, model.originalSegments.mapIndexed { index, points -> AppText.Run.originalSegment((index + 1)) to points }, coordinateSystem = model.originalCoordinateSystem) }
             }
             item("target") { TextField(target, { target = it }, enabled = !busy, label = AppText.Run.LOCAL_TARGET_DISTANCE_METERS_FIELD, modifier = Modifier.fillMaxWidth(), singleLine = true) }
@@ -103,9 +162,55 @@ internal fun RunImportPage(graph: AppGraph, page: Route.Page, open: (Route) -> U
                 itemsIndexed(model.originalPoints.take(visible), key = { index, _ -> "original:$index" }) { index, point -> SectionCard(AppText.Run.importedCoordinateOrdinal((index + 1)), coordinate(point)) }
                 if (visible < model.originalPoints.size) item("more-original") { TextButton(AppText.Run.EXPAND_MORE_ORIGINAL_COORDINATES, onClick = { visible += 40 }) }
             }
-            if (page.id.isNotBlank()) item("real-mode") { TextButton(AppText.Run.SWITCH_TO_REAL_RECORDING_THIS_TIME, onClick = { open(Route.Page("runtracker", page.id, AppText.Run.REAL_RUN_RECORD_TITLE)) }) }
+            if (page.id.isNotBlank()) item("real-mode") { TextButton(AppText.Run.SWITCH_TO_REAL_RECORDING_THIS_TIME, enabled = !busy, onClick = { open(Route.Page("runtracker", page.id, AppText.Run.REAL_RUN_RECORD_TITLE)) }) }
+        }
+        manualEditor?.let { editor ->
+            key(editor.session.mount) {
+                RunManualDraftSheet(editor.session,
+                    availableHeight = (maxHeight - padding.calculateTopPadding() - padding.calculateBottomPadding()).coerceAtLeast(0.dp),
+                    dark = dark, onCancel = { cancelManualEditor(editor) }, onCommit = { commit ->
+                        val route = commit.route
+                        if (route == null || manualEditor !== editor || !editor.session.refresh()) {
+                            cancelManualEditor(editor)
+                        } else {
+                            editor.saveJob = scope.launch {
+                                try {
+                                    val accepted = manualEditor === editor && editor.session.refresh() &&
+                                        controller.useManual(route, editor.admission) {
+                                            manualEditor === editor && editor.session.canPublishCommit(commit)
+                                        }
+                                    if (manualEditor === editor && editor.session.finishCommit(commit, accepted) && accepted) {
+                                        // Do not apply the old admission check after our own successful replacement.
+                                        editor.session.close()
+                                        manualEditor = null
+                                        fileMessage = null
+                                    }
+                                } catch (cancelled: CancellationException) {
+                                    editor.session.close()
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    editor.session.finishCommit(commit, accepted = false)
+                                } finally {
+                                    editor.saveJob = null
+                                }
+                            }
+                        }
+                    })
+            }
+        }
         }
     }
+}
+
+/** Page-scope job ownership is separate from the native document's event admission. */
+private class RunManualImportEditor(val session: RunManualDraftSession, val admission: RunManualImportAdmission) {
+    var saveJob: Job? = null
+    fun close() {
+        session.close()
+        saveJob?.cancel()
+        saveJob = null
+    }
+    override fun toString(): String = "RunManualImportEditor(redacted)"
 }
 
 private fun localPreviewDetail() = RunTaskDetail(

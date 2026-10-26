@@ -4,7 +4,10 @@ import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.feature.run.*
 import io.github.betterzslf.platform.PickedFile
 import io.github.betterzslf.platform.RunMapCoordinateSystem
+import io.github.betterzslf.platform.RunMapCoordinates
+import io.github.betterzslf.platform.RunMapEvent
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,7 +15,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 
 /** All state is an in-memory local preview; this controller has no store, repository, or upload API. */
-enum class RunImportSource { GPX_FILE, KML_FILE, RECOMMENDED }
+enum class RunImportSource { GPX_FILE, KML_FILE, RECOMMENDED, MANUAL_MAP }
 data class RunImportState(
     val fileName: String? = null,
     val source: RunImportSource? = null,
@@ -35,11 +38,62 @@ data class RunImportState(
     val originalPoints: List<GeoPoint> get() = originalSegments.flatten()
 }
 
-class RunImportController(private val detail: RunTaskDetail, private val nowMillis: () -> Long) {
+/** Opaque, ephemeral permission to replace exactly one unchanged local preview. */
+class RunManualImportAdmission internal constructor(
+    private val controller: RunImportController,
+    private val originalState: RunImportState,
+) {
+    internal fun expectedStateFor(owner: RunImportController): RunImportState? =
+        originalState.takeIf { controller === owner }
+
+    override fun toString(): String = "RunManualImportAdmission(redacted)"
+}
+
+class RunImportController private constructor(
+    private val detail: RunTaskDetail,
+    private val processingDispatcher: CoroutineDispatcher,
+    private val nowMillis: () -> Long,
+) {
+    constructor(detail: RunTaskDetail, nowMillis: () -> Long) : this(detail, Dispatchers.Default, nowMillis)
+
+    internal constructor(detail: RunTaskDetail, nowMillis: () -> Long, processingDispatcher: CoroutineDispatcher) :
+        this(detail, processingDispatcher, nowMillis)
+
     private val nativeDetail = detail.inNativeWgs84()
     private val mutableState = MutableStateFlow(RunImportState(warnings = detail.warnings))
     val state = mutableState.asStateFlow()
     private val mutex = Mutex()
+
+    /** Opening or cancelling an editor does not mutate the parent preview. */
+    fun beginManualDraft(): RunManualImportAdmission? {
+        val current = mutableState.value
+        return if (current.busy) null else RunManualImportAdmission(this, current)
+    }
+
+    fun isManualDraftCurrent(admission: RunManualImportAdmission): Boolean {
+        val current = mutableState.value
+        return !current.busy && admission.expectedStateFor(this) === current
+    }
+
+    suspend fun useManual(route: RunManualRoute, admission: RunManualImportAdmission, canPublish: () -> Boolean = { true }): Boolean {
+        val expected = admission.expectedStateFor(this) ?: return false
+        if (!canPublish()) return false
+        return edit(expectedState = expected, canPublish = canPublish) {
+            require(route.pointCount >= 2) { AppText.ManualRoute.AT_LEAST_TWO_POINTS_REQUIRED }
+            require(route.pointCount <= RunManualDraft.MAX_POINTS) { AppText.ManualRoute.INVALID_DRAFT }
+            val sourcePoints = route.points
+            val checked = RunManualDraft.empty(route.provider).appendAll(sourcePoints.map {
+                RunMapEvent.DrawPoint(it, route.coordinateSystem)
+            })
+            require(checked.accepted && checked.draft.canCommit) { AppText.ManualRoute.INVALID_DRAFT }
+            val originals = listOf(sourcePoints.toList())
+            RunImportState(fileName = AppText.ManualRoute.SOURCE_LABEL, source = RunImportSource.MANUAL_MAP,
+                originalSegments = originals, originalCoordinateSystem = route.coordinateSystem,
+                workingPoints = inWgs84(originals, route.coordinateSystem).flatten(),
+                workingCoordinateSystem = RunMapCoordinateSystem.WGS84,
+                warnings = detail.warnings + listOf(AppText.ManualRoute.LOCAL_ONLY_WARNING, AppText.ManualRoute.WORKING_COPY_WGS84_HINT))
+        }
+    }
 
     suspend fun read(file: PickedFile): Boolean = edit { old ->
         val extension = file.name.substringAfterLast('.', "").lowercase()
@@ -66,7 +120,7 @@ class RunImportController(private val detail: RunTaskDetail, private val nowMill
     /** Explicit geometric operation. Disconnected imported segments are never silently bridged. */
     suspend fun normalize(): Boolean = edit { old ->
         require(old.originalSegments.isNotEmpty()) { AppText.Run.SELECT_ROUTE_FIRST }
-        val points = if (!old.detoured) RunRouteNormalizer.normalizeSegments(if (old.source == RunImportSource.RECOMMENDED) nativeDetail.walkPaths else old.originalSegments)
+        val points = if (!old.detoured) RunRouteNormalizer.normalizeSegments(inWgs84(old.originalSegments, old.originalCoordinateSystem))
             else RunRouteNormalizer.normalize(old.workingPoints)
         old.copy(workingPoints = points, normalized = true, validation = null, generated = null, generatedValidation = null,
             error = null, warnings = old.warnings + AppText.Run.GEOMETRIC_DENSITY_ADJUSTED_ROAD_TRAVERSABILITY_UNVERIFIED_HINT)
@@ -109,14 +163,31 @@ class RunImportController(private val detail: RunTaskDetail, private val nowMill
         return RouteRequirements(minimumDistanceMeters = maxOf(targetDistanceMeters, detail.minimumDistanceMeters ?: 0.0), durationMillis = durationMillis)
     }
 
-    private suspend fun edit(transform: (RunImportState) -> RunImportState): Boolean {
+    private fun inWgs84(segments: List<List<GeoPoint>>, frame: RunMapCoordinateSystem): List<List<GeoPoint>> =
+        segments.map { segment -> segment.map { point ->
+            requireNotNull(RunMapCoordinates.convert(point, frame, RunMapCoordinateSystem.WGS84)) {
+                AppText.Run.ROUTE_PARAMETER_OR_COORDINATE_VALIDATION_FAILED
+            }
+        } }
+
+    private suspend fun edit(expectedState: RunImportState? = null, canPublish: () -> Boolean = { true }, transform: (RunImportState) -> RunImportState): Boolean {
         if (!mutex.tryLock()) return false
         val old = mutableState.value
+        if (expectedState != null && old !== expectedState) {
+            mutex.unlock()
+            return false
+        }
         mutableState.value = old.copy(busy = true, error = null)
         return try {
-            val next = withContext(Dispatchers.Default) { transform(old) }
-            mutableState.value = next.copy(busy = false)
-            next.error == null
+            val next = withContext(processingDispatcher) { transform(old) }
+            // Re-read the live owner/editor immediately before publication, not after a UI receipt.
+            if (!canPublish()) {
+                mutableState.value = old.copy(busy = false)
+                false
+            } else {
+                mutableState.value = next.copy(busy = false)
+                next.error == null
+            }
         } catch (cancelled: CancellationException) {
             mutableState.value = old.copy(busy = false)
             throw cancelled

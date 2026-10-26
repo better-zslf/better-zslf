@@ -93,8 +93,19 @@ Xcode build phase 将最终展开的版本原样作为 `-P` 参数传给 Gradle�
 2026-10-24，提交 `bfcb613` 的[第 4 轮 CI](https://github.com/better-zslf/better-zslf/actions/runs/40039619033)
 已在[真实 macOS job](https://github.com/better-zslf/better-zslf/actions/runs/40039619033/job/120707347678)
 通过 **Kotlin/Native 编译、Shared framework 链接、XcodeGen 工程生成及 unsigned simulator app 构建**。
-本次成功证据覆盖构建，**未覆盖 iOS app 启动/运行、权限交互或真机验收**。
-本机实现环境为 Windows/WSL，另已通过 16 项离线脚本测试、4 个脚本的 `bash -n`、plist/YAML 解析与关键配置断言。
+该轮成功证据仅覆盖构建，**未覆盖 iOS app 启动/运行、权限交互或真机验收**。
+
+2026-10-25（CI UTC），提交 `9e6ccbca245d103d51e1e0ca720fd8cff43a2957` 的
+[CI16](https://github.com/better-zslf/better-zslf/actions/runs/40192133595)
+已通过 framework、Xcode Simulator app 构建及实际原生启动验证。实际 runtime 为 iOS 26.4.1（23E254a）；
+真实 CF/Keychain 合成探针覆盖新增/读取/更新、空字符串、UTF-8、命名空间隔离、删除及跨进程恢复，
+seed 退出确认后由不同 PID 完成 verify。AppGraph 与 sessionAbsent 断言通过，初始 Login 截图已人工核对。
+归档中的 `login_ui_verified=false` / `ui_review=pending` 保持原样，不冒充自动交互验收；
+Darwin `onRequest` 使用 fail-closed 出口保护，没有数值 HTTP 计数器或抓包结论。
+此前 CI12/14/15 的签名、启动或初始 inventory 失败各自保留；本次同源新宿主成功不构成单因定位。
+这些结果不代替真机、学校账号登录、权限与其它页面交互；详见[验证记录](<../docs/testing.md>)。
+
+早期本机实现环境为 Windows/WSL，另已通过 16 项离线脚本测试、4 个脚本的 `bash -n`、plist/YAML 解析与关键配置断言。
 可在 macOS 或 WSL 离线复现
 [`version-scripts-test.sh`](<tests/version-scripts-test.sh>)：
 
@@ -103,8 +114,8 @@ bash iosApp/tests/version-scripts-test.sh
 ```
 
 这些离线测试只验证属性解析、覆盖优先级、输入校验和 XcodeGen/Gradle 调用参数（工具使用 stub），
-不作为原生编译证据；真实原生构建以上述 macOS CI 为准。待执行的运行验收还应覆盖：
-Keychain CRUD/空字符串/重启恢复/登出删除/服务隔离、浅深色文章、页内锚点、`target=_blank`、
+不作为原生编译证据；真实原生构建与合成存储运行以上述 macOS CI 为准。合成 namespace 的删除与隔离已验证，
+真实会话的登出删除仍需账号交互验收。其它待执行的运行验收还包括：浅深色文章、页内锚点、`target=_blank`、
 HTTPS 外链、自定义 scheme/脚本/表单/自动重定向受限、VoiceOver 与退出页面清理。
 新增能力已通过 **28 项实际纯 Kotlin 规则 JVM 测试**与 **37 项源码/plist 守卫**。
 真实测试源为 [`CapabilityRulesTest.kt`](<tests/CapabilityRulesTest.kt>)，直接编译

@@ -1506,4 +1506,41 @@ object AppText {
         const val HOST_TEST_BLUETOOTH_ADAPTER_NOT_CONNECTED: String = "宿主测试目标未连接蓝牙适配器。"
     }
 
+    object ManualRoute {
+        const val SOURCE_LABEL: String = "地图点选草稿"
+        const val LOCAL_ONLY_WARNING: String = "地图点选不是 GPS 实测，仅保留本机预览；不进入真实跑步记录，也不会上传。"
+        const val WORKING_COPY_WGS84_HINT: String = "保留地图点选的原始坐标系，工作副本转换为 WGS84；不会修改原始点。"
+        const val AT_LEAST_TWO_POINTS_REQUIRED: String = "请在地图上点选至少两个不同的点，再保存本机预览。"
+        const val INVALID_DRAFT: String = "地图草稿无效，原有本机预览保持不变。"
+        const val OPEN_EDITOR: String = "在地图上绘制本机路线"
+        const val TITLE: String = "绘制本机路线"
+        const val CANCEL: String = "取消绘制"
+        const val SAVE_PREVIEW: String = "替换本机预览"
+        const val UNDO: String = "撤销末点"
+        const val CLEAR: String = "清空绘制"
+        const val DEFAULT_VIEW_HINT: String = "默认全国视野不是当前位置。请先缩放或平移地图，再点选路线。"
+        const val FIRST_POINT_HINT: String = "首点已保留；再选一个不同点后显示连线。"
+        const val WAITING_FOR_MAP: String = "正在等待地图服务就绪；尚未接收绘制点。"
+        const val MAP_READY: String = "地图已就绪，请点选路线；这些点不是 GPS 采样。"
+        const val SAVING_PREVIEW: String = "正在更新本机预览，请等待结果。"
+        const val SAVE_FAILED_REOPEN: String = "本次替换未完成，请关闭后重新打开绘制；原有预览保持不变。"
+        const val SOURCE_CHANGED: String = "账号、地图配置或本机预览已变化，请重新打开绘制。"
+        const val POINT_LIMIT: String = "绘制点数已达到本地上限。请撤销或清空后继续。"
+        const val INVALID_POINT: String = "此点的坐标或坐标系与当前地图不符，未加入草稿。"
+        const val DUPLICATE_POINT: String = "相邻点相同，未重复加入。"
+        const val EMPTY_DRAFT: String = "当前绘制草稿为空。"
+        const val GCJ02_LABEL: String = "GCJ-02 · 高德地图"
+        const val WGS84_LABEL: String = "WGS84 · 天地图"
+
+        fun draftSummary(pointCount: Int, frameLabel: String): String {
+            require(pointCount >= 0)
+            return "本次绘制 $pointCount 个点 · $frameLabel"
+        }
+
+        fun pointBudget(pointCount: Int, maximum: Int): String {
+            require(maximum > 0 && pointCount in 0..maximum)
+            return "$pointCount / $maximum 个点"
+        }
+    }
+
 }

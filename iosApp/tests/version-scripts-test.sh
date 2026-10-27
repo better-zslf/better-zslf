@@ -9,7 +9,7 @@ trap 'rm -rf "$work"' EXIT
 fixture="$work/fixture with spaces"
 mkdir -p "$fixture/iosApp/scripts" "$work/bin"
 cp "$ios_dir/scripts/prepare-version.sh" "$ios_dir/scripts/embed-shared-framework.sh" \
-  "$ios_dir/scripts/generate-project.sh" "$fixture/iosApp/scripts/"
+  "$ios_dir/scripts/generate-project.sh" "$ios_dir/scripts/version_settings.py" "$fixture/iosApp/scripts/"
 prepare="$fixture/iosApp/scripts/prepare-version.sh"
 embed="$fixture/iosApp/scripts/embed-shared-framework.sh"
 generate="$fixture/iosApp/scripts/generate-project.sh"
@@ -160,4 +160,54 @@ rm "$GRADLE_CAPTURE"
 OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES /bin/bash "$embed" >/dev/null
 [[ ! -e "$GRADLE_CAPTURE" ]] || fail 'IDE guard reran Gradle'
 pass 'official IDE integration guard skips duplicate Gradle invocation'
+
+# An rcN prerelease stays out of Apple's numeric marketing version but must survive the whole bridge.
+printf 'VERSION_NAME=1.0.0\nVERSION_CODE=2\nVERSION_PRERELEASE=rc1\n' > "$fixture/version.properties"
+/bin/bash "$prepare" >/dev/null
+contains_line "$config" 'BETTER_ZSLF_VERSION_NAME = 1.0.0' 'RC numeric Apple marketing version'
+contains_line "$config" 'BETTER_ZSLF_VERSION_CODE = 2' 'RC build number'
+contains_line "$config" 'BETTER_ZSLF_VERSION_PRERELEASE = rc1' 'RC label'
+contains_line "$config" 'BETTER_ZSLF_DISPLAY_VERSION = 1.0.0-rc1' 'RC display version'
+pass 'RC keeps the numeric marketing version and adds a display label'
+/bin/bash "$prepare" -PversionName=1.0.0-rc1 >/dev/null
+contains_line "$config" 'BETTER_ZSLF_DISPLAY_VERSION = 1.0.0-rc1' 'RC accepts the exact full override'
+pass 'RC accepts the exact full display override'
+for invalid in 1.0.0 1.0.0-rc2 1.0.0-rc01 1.0.0-rc1-pro 1.0.0-beta1; do
+  expect_failure /bin/bash "$prepare" "-PversionName=$invalid"
+done
+pass 'RC rejects overrides that drop change or mistype the prerelease'
+ORG_GRADLE_PROJECT_betterZslfEdition=pro /bin/bash "$prepare" >/dev/null
+contains_line "$config" 'BETTER_ZSLF_DISPLAY_VERSION = 1.0.0-rc1-pro' 'Pro RC display version'
+contains_line "$config" 'BETTER_ZSLF_VERSION_NAME = 1.0.0' 'Pro RC marketing version stays numeric'
+pass 'Pro RC separates marketing version from the edition display label'
+for suffix in rc0 rc01 rc1000000 RC1 rc.1; do
+  printf 'VERSION_NAME=1.0.0\nVERSION_CODE=2\nVERSION_PRERELEASE=%s\n' "$suffix" > "$fixture/version.properties"
+  expect_failure /bin/bash "$prepare"
+done
+printf 'VERSION_NAME=1.0.0\nVERSION_CODE=2\nVERSION_PRERELEASE=\n' > "$fixture/version.properties"
+expect_failure /bin/bash "$prepare"
+printf 'VERSION_NAME=1.0.0\nVERSION_CODE=2\nVERSION_PRERELEASE=rc1\nVERSION_UNEXPECTED=1\n' > "$fixture/version.properties"
+expect_failure /bin/bash "$prepare"
+pass 'invalid empty or unknown prerelease metadata fails'
+printf 'VERSION_NAME=1.0.0\nVERSION_CODE=2\nVERSION_PRERELEASE=rc1\n' > "$fixture/version.properties"
+PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=1.0.0 \
+  CURRENT_PROJECT_VERSION=2 BETTER_ZSLF_VERSION_NAME=1.0.0 BETTER_ZSLF_VERSION_CODE=2 \
+  BETTER_ZSLF_VERSION_PRERELEASE=rc1 BETTER_ZSLF_DISPLAY_VERSION=1.0.0-rc1 /bin/bash "$embed"
+contains_line "$GRADLE_CAPTURE" '-PversionName=1.0.0-rc1' 'RC display version forwards to Gradle'
+contains_line "$GRADLE_CAPTURE" '-PversionCode=2' 'RC build number forwards to Gradle'
+pass 'RC forwards only the full display version to Gradle (stub)'
+expect_failure env PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=1.0.0 \
+  CURRENT_PROJECT_VERSION=2 /bin/bash "$embed"
+expect_failure env PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=1.0.0 \
+  CURRENT_PROJECT_VERSION=2 BETTER_ZSLF_VERSION_PRERELEASE=rc1 BETTER_ZSLF_DISPLAY_VERSION=1.0.0 /bin/bash "$embed"
+expect_failure env PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=1.0.0-rc1 \
+  CURRENT_PROJECT_VERSION=2 BETTER_ZSLF_VERSION_PRERELEASE=rc1 BETTER_ZSLF_DISPLAY_VERSION=1.0.0-rc1 /bin/bash "$embed"
+pass 'regenerated or stale Xcode RC settings fail before Gradle'
+PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=1.0.0 \
+  CURRENT_PROJECT_VERSION=2 BETTER_ZSLF_EDITION=pro BETTER_ZSLF_BUNDLE_ID=io.github.betterzslf.pro \
+  PRODUCT_BUNDLE_IDENTIFIER=io.github.betterzslf.pro BETTER_ZSLF_VERSION_NAME=1.0.0 \
+  BETTER_ZSLF_VERSION_PRERELEASE=rc1 BETTER_ZSLF_DISPLAY_VERSION=1.0.0-rc1-pro /bin/bash "$embed"
+contains_line "$GRADLE_CAPTURE" '-PversionName=1.0.0-rc1-pro' 'Pro RC Gradle version'
+contains_line "$GRADLE_CAPTURE" '-PbetterZslfEdition=pro' 'Pro RC Gradle edition'
+pass 'Pro RC matches the Android edition display version (stub)'
 printf 'All %s offline iOS script tests passed; no native compilation was performed.\n' "$count"

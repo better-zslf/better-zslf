@@ -27,10 +27,15 @@ xcodebuild -project iosApp/BetterZslf.xcodeproj \
 
 ## 单一版本源
 
-只维护根 [`version.properties`](<../version.properties>) 的 `VERSION_NAME` / `VERSION_CODE`。
-[`prepare-version.sh`](<scripts/prepare-version.sh>) 将它们转换为生成目录中的 xcconfig；
-[`Info.plist`](<Info.plist>) 引用 `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)`，没有另一份版本常量。
-iOS 的 `PlatformServices.versionName` 读取实际 App bundle numeric 版本，UI 再由共享 `BuildEdition.versionNameSuffix` 为 Pro 追加 `-pro`；`CFBundleShortVersionString` 本身保持 numeric base。
+只维护根 [`version.properties`](<../version.properties>) 的 `VERSION_NAME` / `VERSION_CODE`，
+以及可选的 `VERSION_PRERELEASE=rc1`（仅预发布用，格式为 `rc` 加不带前导零的序号）。
+[`prepare-version.sh`](<scripts/prepare-version.sh>) 是薄桥，实际校验由离线 Python 助手
+[`version_settings.py`](<scripts/version_settings.py>) 完成，因此本目录需要 `python3`（CI 已具备）。
+[`Info.plist`](<Info.plist>) 引用 `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)`，
+显示名再用 `$(BETTER_ZSLF_DISPLAY_VERSION)`，没有另一份版本常量。
+iOS 的 `PlatformServices.versionName` 优先读取 `BetterZslfDisplayVersion`，回退到数字
+`CFBundleShortVersionString` 加 `BuildEdition.versionNameSuffix`；`CFBundleShortVersionString`
+本身保持数字 base，`1.0.0-rc1` 这类预发布标签只出现在显示版本和 Gradle 覆盖里。
 
 CI 临时覆盖与 Gradle 使用同名参数：
 

@@ -21,10 +21,13 @@ private object IosPlatformServices : PlatformServices {
         service = "${NSBundle.mainBundle.bundleIdentifier ?: "io.github.betterzslf"}.key-value-store",
     )
 
-    // Xcode obtains both bundle versions from the root version.properties via the generation script.
+    // Xcode obtains all version values from the root version.properties via the generation script.
+    // Display keeps the optional rcN label; CFBundleShortVersionString remains the numeric Apple version.
     override val versionName: String
-        get() = (NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String)
-            ?.let { it + BuildEdition.versionNameSuffix } ?: "unknown"
+        get() = (NSBundle.mainBundle.objectForInfoDictionaryKey("BetterZslfDisplayVersion") as? String)
+            ?.takeIf { it.isNotEmpty() }
+            ?: (NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String)
+                ?.let { it + BuildEdition.versionNameSuffix } ?: "unknown"
 
     // Deliberately omit the user-assigned device name, identifiers, and other fingerprinting data.
     override val description: String

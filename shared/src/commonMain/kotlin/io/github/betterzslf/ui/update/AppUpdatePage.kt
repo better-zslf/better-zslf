@@ -30,7 +30,7 @@ fun AppUpdatePage(
     onOpenRelease: (String) -> Unit,
     onBack: () -> Unit,
 ) {
-    val displayedVersion = StableVersion.parse(currentVersionName)?.takeIf { it.versionName == currentVersionName }?.versionName ?: AppText.Updates.UNKNOWN_VERSION
+    val displayedVersion = StableVersion.parseInstalled(currentVersionName)?.takeIf { it.versionName == currentVersionName }?.versionName ?: AppText.Updates.UNKNOWN_VERSION
     val scope = rememberCoroutineScope()
     val controller = remember(currentVersionName, repository, updater, scope) { AppUpdateController(currentVersionName, repository, updater, scope) }
     val state by controller.state.collectAsState()

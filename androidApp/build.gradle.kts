@@ -10,7 +10,11 @@ val appVersion = Properties().apply {
 val edition = providers.gradleProperty("betterZslfEdition").getOrElse("standard")
 require(edition in setOf("standard", "pro")) { "betterZslfEdition must be standard or pro" }
 val isProEdition = edition == "pro"
-val expectedName = appVersion.getProperty("VERSION_NAME") + if (isProEdition) "-pro" else ""
+val baseName = requireNotNull(appVersion.getProperty("VERSION_NAME")) { "VERSION_NAME is required" }
+require(Regex("(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)").matches(baseName)) { "VERSION_NAME must be numeric x.y.z" }
+val prerelease = appVersion.getProperty("VERSION_PRERELEASE")
+require(prerelease == null || Regex("rc[1-9][0-9]{0,5}").matches(prerelease)) { "VERSION_PRERELEASE must be rc followed by 1..6 digits without leading zero" }
+val expectedName = baseName + (prerelease?.let { "-$it" } ?: "") + if (isProEdition) "-pro" else ""
 val resolvedName = providers.gradleProperty("versionName").getOrElse(expectedName)
 require(resolvedName == expectedName) { "versionName must match version.properties and the selected edition" }
 val resolvedCode = providers.gradleProperty("versionCode").getOrElse(appVersion.getProperty("VERSION_CODE")).toInt()

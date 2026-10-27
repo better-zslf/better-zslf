@@ -9,7 +9,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
@@ -18,11 +21,18 @@ import coil3.request.*
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.Route
 import io.github.betterzslf.feature.profile.*
+import io.github.betterzslf.ui.AppUiTokens
 import io.github.betterzslf.ui.ConfirmDialog
+import io.github.betterzslf.ui.InfoBanner
+import io.github.betterzslf.ui.MetricStrip
 import io.github.betterzslf.ui.PageList
 import io.github.betterzslf.ui.Screen
 import io.github.betterzslf.ui.SectionCard
+import io.github.betterzslf.ui.SectionTitle
+import io.github.betterzslf.ui.UiMetric
+import io.github.betterzslf.ui.UiTone
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** Shared Android/iOS/JVM Miuix profile. Avatar decoding never receives a network URL. */
@@ -53,6 +63,7 @@ private fun ProfileOwnerScreen(graph: AppGraph, open: (Route) -> Unit) {
     val observed by controller.state.collectAsState()
     val state = if (observed.hasSession) controller.visibleState() else observed
     var logout by remember { mutableStateOf(false) }
+    var detailsExpanded by remember { mutableStateOf(false) }
     DisposableEffect(controller, resources) {
         onDispose { controller.close(); resources.close() }
     }
@@ -62,43 +73,92 @@ private fun ProfileOwnerScreen(graph: AppGraph, open: (Route) -> Unit) {
         TextButton(AppText.Common.REFRESH, enabled = !state.loading, onClick = controller::refresh)
     }) { padding ->
         PageList(padding) {
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    ProfileAvatar(state.avatar, imageLoader, controller)
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(state.fields?.name ?: AppText.Profile.NAME_NOT_PROVIDED, style = MiuixTheme.textStyles.title4)
-                        Text(avatarSummary(state.avatar))
-                        state.photoIssue?.let { Text(AppText.Profile.avatarReadIssue((profileReadMessage(it)))) }
+            item("identity") {
+                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                    insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        ProfileAvatar(state.avatar, imageLoader, controller)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(state.fields?.name ?: AppText.Profile.NAME_NOT_PROVIDED,
+                                fontSize = 24.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(listOfNotNull(state.fields?.studentNumber, state.fields?.schoolName).joinToString(" · ")
+                                .ifBlank { AppText.Common.NOT_PROVIDED }, fontSize = 13.sp,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            if (state.avatar !is ProfileAvatarState.BytesReady) {
+                                Text(avatarSummary(state.avatar), fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                            }
+                        }
                     }
                 }
             }
-            if (state.loading) item {
-                CircularProgressIndicator()
-                TextButton(AppText.Profile.CANCEL_PROFILE_READ, onClick = controller::cancel)
-            }
-            if (state.cancelled) item { SectionCard(AppText.Profile.PROFILE_READ_CANCELLED, AppText.Profile.REFRESH_TO_READ_AGAIN_NO_AUTO_RETRY_HINT) }
-            state.fieldsIssue?.let { issue -> item { SectionCard(AppText.Profile.PERSONAL_PROFILE_TITLE, profileReadMessage(issue)) } }
-            item {
-                val fields = state.fields
-                SectionCard(AppText.Profile.PERSONAL_PROFILE_TITLE, AppText.Profile.personalFields((fields?.name ?: AppText.Common.NOT_PROVIDED), (fields?.schoolName ?: AppText.Common.NOT_PROVIDED), (fields?.studentNumber ?: AppText.Common.NOT_PROVIDED), (fields?.account ?: AppText.Common.NOT_PROVIDED), (fields?.identity ?: AppText.Common.NOT_PROVIDED), (fields?.gender ?: AppText.Common.NOT_PROVIDED)))
-            }
-            item {
+            item("statistics") {
                 val stats = state.statistics
-                SectionCard(AppText.Profile.MY_FOOTPRINTS_TITLE, state.statisticsIssue?.let(::profileReadMessage)
-                    ?: AppText.Profile.personalStatistics((stats?.collected?.toString() ?: AppText.Common.NOT_PROVIDED), (stats?.comments?.toString() ?: AppText.Common.NOT_PROVIDED), (stats?.history?.toString() ?: AppText.Common.NOT_PROVIDED)))
+                MetricStrip(listOf(
+                    UiMetric(stats?.collected?.toString() ?: AppText.Common.NOT_PROVIDED, AppText.Profile.COLLECTED_ARTICLES_LABEL),
+                    UiMetric(stats?.comments?.toString() ?: AppText.Common.NOT_PROVIDED, AppText.Profile.COMMENTS_LABEL),
+                    UiMetric(stats?.history?.toString() ?: AppText.Common.NOT_PROVIDED, AppText.Profile.BROWSING_HISTORY_LABEL),
+                ))
             }
-            item { Text(AppText.Profile.ACCOUNT_SECTION_TITLE) }
-            item { SectionCard(AppText.Auth.CHANGE_PASSWORD_TITLE, onClick = { open(Route.Page("password", title = AppText.Auth.CHANGE_PASSWORD_TITLE)) }) }
-            item { SectionCard(AppText.Recovery.SMS_PASSWORD_RECOVERY_TITLE, AppText.Recovery.VERIFY_SMS_THEN_RESET_SCHOOL_PASSWORD_SUMMARY, { open(Route.Page("resetpassword", title = AppText.Recovery.RECOVER_PASSWORD_TITLE)) }) }
-            item { SectionCard(AppText.Settings.SETTINGS_TITLE, AppText.Settings.THEME_RUN_PREFERENCES_AND_LOCAL_DATA_SUMMARY, { open(Route.Page("settings", title = AppText.Settings.SETTINGS_TITLE)) }) }
-            item { Text(AppText.App.ABOUT_TITLE) }
-            item { SectionCard(AppText.Updates.VERSION_UPDATE_TITLE, "better-zslf ${graph.platform.versionName}", { open(Route.Page("updates", title = AppText.Updates.VERSION_UPDATE_TITLE)) }) }
-            item { SectionCard(AppText.App.ABOUT_APP_TITLE, onClick = { open(Route.Page("about", title = AppText.App.ABOUT_APP_TITLE)) }) }
-            item { Text(AppText.App.AGREEMENTS_AND_HELP_SECTION_TITLE) }
-            listOf("用户协议" to AppText.App.USER_AGREEMENT_DISPLAY_LABEL, "隐私政策" to AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, "使用帮助" to AppText.App.USER_GUIDE_DISPLAY_LABEL).forEach { (documentId, title) ->
-                item { SectionCard(title, onClick = { open(Route.Page("document", documentId, title)) }) }
+            if (state.loading) item("loading") {
+                LinearProgressIndicator()
+                TextButton(AppText.Profile.CANCEL_PROFILE_READ, onClick = controller::cancel, modifier = Modifier.fillMaxWidth())
             }
-            item { TextButton(AppText.Auth.LOG_OUT, onClick = { logout = true }, modifier = Modifier.fillMaxWidth()) }
+            if (state.cancelled) item("cancelled") {
+                InfoBanner(AppText.Profile.REFRESH_TO_READ_AGAIN_NO_AUTO_RETRY_HINT,
+                    title = AppText.Profile.PROFILE_READ_CANCELLED, tone = UiTone.Neutral)
+            }
+            state.fieldsIssue?.let { issue -> item("fields-issue") {
+                InfoBanner(profileReadMessage(issue), title = AppText.Profile.PERSONAL_PROFILE_TITLE, tone = UiTone.Warning)
+            } }
+            state.statisticsIssue?.let { issue -> item("statistics-issue") {
+                InfoBanner(profileReadMessage(issue), title = AppText.Profile.MY_FOOTPRINTS_TITLE, tone = UiTone.Warning)
+            } }
+            state.photoIssue?.let { issue -> item("photo-issue") {
+                InfoBanner(AppText.Profile.avatarReadIssue(profileReadMessage(issue)), tone = UiTone.Neutral)
+            } }
+            item("account-heading") { SectionTitle(AppText.Profile.ACCOUNT_SECTION_TITLE) }
+            item("account-actions") {
+                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
+                    ArrowPreference(AppText.Settings.SETTINGS_TITLE,
+                        onClick = { open(Route.Page("settings", title = AppText.Settings.SETTINGS_TITLE)) })
+                    ArrowPreference(AppText.Auth.CHANGE_PASSWORD_TITLE,
+                        onClick = { open(Route.Page("password", title = AppText.Auth.CHANGE_PASSWORD_TITLE)) })
+                    ArrowPreference(AppText.Recovery.SMS_PASSWORD_RECOVERY_TITLE,
+                        summary = AppText.Recovery.VERIFY_SMS_THEN_RESET_SCHOOL_PASSWORD_SUMMARY,
+                        onClick = { open(Route.Page("resetpassword", title = AppText.Recovery.RECOVER_PASSWORD_TITLE)) })
+                    ArrowPreference(AppText.Profile.PERSONAL_PROFILE_TITLE,
+                        holdDownState = detailsExpanded, onClick = { detailsExpanded = !detailsExpanded })
+                }
+            }
+            if (detailsExpanded) item("profile-details") {
+                val fields = state.fields
+                InfoBanner(AppText.Profile.personalFields(fields?.name ?: AppText.Common.NOT_PROVIDED,
+                    fields?.schoolName ?: AppText.Common.NOT_PROVIDED, fields?.studentNumber ?: AppText.Common.NOT_PROVIDED,
+                    fields?.account ?: AppText.Common.NOT_PROVIDED, fields?.identity ?: AppText.Common.NOT_PROVIDED,
+                    fields?.gender ?: AppText.Common.NOT_PROVIDED), title = AppText.Profile.PERSONAL_PROFILE_TITLE, tone = UiTone.Neutral)
+            }
+            item("app-heading") { SectionTitle(AppText.App.ABOUT_TITLE) }
+            item("app-actions") {
+                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
+                    ArrowPreference(AppText.App.ABOUT_APP_TITLE,
+                        onClick = { open(Route.Page("about", title = AppText.App.ABOUT_APP_TITLE)) })
+                    ArrowPreference(AppText.Updates.VERSION_UPDATE_TITLE, summary = graph.platform.versionName,
+                        onClick = { open(Route.Page("updates", title = AppText.Updates.VERSION_UPDATE_TITLE)) })
+                }
+            }
+            item("help-heading") { SectionTitle(AppText.App.AGREEMENTS_AND_HELP_SECTION_TITLE) }
+            item("help-actions") {
+                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
+                    listOf("用户协议" to AppText.App.USER_AGREEMENT_DISPLAY_LABEL, "隐私政策" to AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, "使用帮助" to AppText.App.USER_GUIDE_DISPLAY_LABEL).forEach { (documentId, title) ->
+                        ArrowPreference(title, onClick = { open(Route.Page("document", documentId, title)) })
+                    }
+                }
+            }
+            item("logout") {
+                TextButton(AppText.Auth.LOG_OUT, onClick = { logout = true }, modifier = Modifier.fillMaxWidth(),
+                    minHeight = AppUiTokens.ButtonHeight, cornerRadius = AppUiTokens.ButtonRadius,
+                    colors = ButtonDefaults.textButtonColors(textColor = MiuixTheme.colorScheme.error))
+            }
         }
         ConfirmDialog(logout, AppText.Auth.LOG_OUT_CONFIRM_TITLE, AppText.Auth.LOG_OUT_LOCAL_SESSION_ONLY_HINT, { logout = false }) {
             controller.close(); resources.close()
@@ -124,7 +184,7 @@ private fun ProfileAvatar(state: ProfileAvatarState, loader: ImageLoader, contro
     val context = LocalPlatformContext.current
     val image = (state as? ProfileAvatarState.BytesReady)?.image
     var decoded by remember(image) { mutableStateOf(false) }
-    Box(Modifier.size(96.dp).clip(CircleShape).background(MiuixTheme.colorScheme.primary.copy(alpha = 0.10f)), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(72.dp).clip(CircleShape).background(MiuixTheme.colorScheme.primary.copy(alpha = 0.10f)), contentAlignment = Alignment.Center) {
         if (image == null) Text(AppText.Profile.AVATAR_PLACEHOLDER_LABEL) else {
             val request = remember(image, context) {
                 ImageRequest.Builder(context).data(image.encoded).size(256, 256)

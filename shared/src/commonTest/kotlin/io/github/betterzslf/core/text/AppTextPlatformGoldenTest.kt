@@ -17,7 +17,7 @@ import kotlin.test.assertNull
 
 private const val ORIGINAL_EMPTY_DOCUMENT_ALIAS: String = RunMapBootstrapPolicy.emptyDocument
 
-/** Expectations are independent literals copied from the pre-migration source snapshot, not AppText. */
+/** Independent literals for reviewed copy; original platform document snapshots remain unchanged. */
 class AppTextPlatformGoldenTest {
     private val p = GeoPoint(longitude = 1.25, latitude = 2.5)
     private val q = GeoPoint(longitude = 3.75, latitude = 4.5)

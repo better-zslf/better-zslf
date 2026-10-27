@@ -17,8 +17,11 @@ import io.github.betterzslf.feature.booking.*
 import io.github.betterzslf.platform.FilePickResult
 import io.github.betterzslf.platform.PickedFile
 import io.github.betterzslf.platform.rememberFilePicker
-import io.github.betterzslf.ui.Screen
-import io.github.betterzslf.ui.SectionCard
+import io.github.betterzslf.ui.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.sp
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
 import top.yukonga.miuix.kmp.basic.*
@@ -64,20 +67,31 @@ internal fun VenueApply(graph: AppGraph, page: Route.Page, open: (Route) -> Unit
     Screen(AppText.Booking.BOOKING_APPLICATION_TITLE, { if (!frozen || confirmation?.phase != BookingPhase.RUNNING) back() }, actions = {
         TextButton(AppText.Common.REFRESH_INFORMATION, enabled = !frozen && !infoState.loading && !timeState.loading, onClick = refresh)
     }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item("venue-summary") { SectionCard(venueName.ifBlank { AppText.Booking.APPLICATION_VENUE_TITLE }, AppText.Booking.venueSelection((selection.dateTime), (selection.siteId))) }
+        LazyColumn(Modifier.fillMaxSize().consumeWindowInsets(padding), contentPadding = bookingContentPadding(padding, form = true), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item("venue-summary") { BookingPanel(AppText.Booking.APPLICATION_REVIEW_SUMMARY_TITLE) {
+                BookingDetailLine(AppText.Booking.VENUE_LABEL, venueName.ifBlank { AppText.Booking.VENUE_INFORMATION_PENDING })
+                BookingDetailLine(AppText.Booking.RESERVATION_DATE_LABEL, bookingDateLabel(selection.dateTime).ifBlank { selection.dateTime.ifBlank { AppText.Common.NOT_SELECTED } })
+                BookingDetailLine(AppText.Booking.TIME_SLOT_LABEL, AppText.Booking.chosenSlots(selection.timeIds.size))
+            } }
             bookingQueryFeedback(infoState, { scope.launch { info.refresh() } }, "form-info")
             bookingQueryFeedback(timeState, { scope.launch { times.refresh() } }, "form-time")
             itemsIndexed(selectedRows, key = { index, _ -> "selected-time:$index" }) { index, row -> BookingRecordCard(row, AppText.Booking.selectedSlotOrdinal((index + 1))) }
-            item("form-help") { SectionCard(AppText.Booking.APPLICATION_DETAILS_TITLE, AppText.Booking.APPROVAL_AND_STAMPED_DOCUMENT_UPLOAD_HINT) }
-            item("group") { TextField(group, { changed(); group = it }, label = AppText.Booking.APPLICANT_GROUP_FIELD, enabled = !frozen, modifier = Modifier.fillMaxWidth(), singleLine = true) }
-            item("content") { TextField(content, { changed(); content = it }, label = AppText.Booking.ACTIVITY_DESCRIPTION_FIELD, enabled = !frozen, modifier = Modifier.fillMaxWidth(), maxLines = 6) }
-            item("contact") { TextField(contact, { changed(); contact = it }, label = AppText.Booking.CONTACT_PERSON_FIELD, enabled = !frozen, modifier = Modifier.fillMaxWidth(), singleLine = true) }
-            item("phone") { TextField(phone, { changed(); phone = it }, label = AppText.Booking.CONTACT_PHONE_FIELD, enabled = !frozen, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+            item("form-help") { InfoBanner(AppText.Booking.FORM_SCOPE_HELP_HINT) }
+            item("application-form") { BookingPanel(AppText.Booking.APPLICATION_DETAILS_TITLE) {
+                TextField(group, { changed(); group = it }, label = AppText.Booking.APPLICANT_GROUP_FIELD, enabled = !frozen,
+                    cornerRadius = AppUiTokens.FieldRadius, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                TextField(content, { changed(); content = it }, label = AppText.Booking.ACTIVITY_DESCRIPTION_FIELD, enabled = !frozen,
+                    cornerRadius = AppUiTokens.FieldRadius, modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 6)
+                TextField(contact, { changed(); contact = it }, label = AppText.Booking.CONTACT_PERSON_FIELD, enabled = !frozen,
+                    cornerRadius = AppUiTokens.FieldRadius, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                TextField(phone, { changed(); phone = it }, label = AppText.Booking.CONTACT_PHONE_FIELD, enabled = !frozen,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), cornerRadius = AppUiTokens.FieldRadius,
+                    modifier = Modifier.fillMaxWidth(), singleLine = true)
+            } }
             item("acknowledge") { BookingCheck(acknowledged, AppText.Booking.APPLICATION_AND_SLOTS_ACKNOWLEDGEMENT, enabled = !frozen) { acknowledged = it; controller?.edit(); controller = null } }
             if (validation.isNotEmpty()) item("validation") { SectionCard(AppText.Common.REVIEW_REQUIRED, validation.joinToString("\n")) }
             item("preview-button") {
-                Button(enabled = !frozen && !infoState.loading && !timeState.loading, onClick = {
+                Button(modifier = Modifier.fillMaxWidth(), minHeight = AppUiTokens.ButtonHeight, cornerRadius = AppUiTokens.ButtonRadius, colors = ButtonDefaults.buttonColorsPrimary(), enabled = !frozen && !infoState.loading && !timeState.loading, onClick = {
                     val form = VenueApplicationForm(selection.siteId, selection.timeIds, venueName, venueStatus,
                         group.trim(), content.trim(), contact.trim(), phone.trim(), userId, userName)
                     val problems = form.validation() + buildList {
@@ -94,11 +108,11 @@ internal fun VenueApply(graph: AppGraph, page: Route.Page, open: (Route) -> Unit
                             AppText.Booking.APPLICATION_SUBMISSION_STEPS_HINT)))
                         controller = next
                     }
-                }) { Text(AppText.Booking.GENERATE_FULL_PREVIEW) }
+                }) { Text(AppText.Booking.REVIEW_APPLICATION_ACTION) }
             }
             if (confirmation != null) {
                 bookingConfirmationItems(confirmation, { controller?.edit(); controller = null })
-                if (confirmation.phase == BookingPhase.PREVIEW) item("final-button") { Button(onClick = { dialog = true }) { Text(AppText.Common.OPEN_FINAL_CONFIRMATION_AFTER_REVIEW) } }
+                if (confirmation.phase == BookingPhase.PREVIEW) item("final-button") { BookingPrimaryButton(AppText.Booking.SUBMIT_APPLICATION_ACTION) { dialog = true } }
                 val applyId = confirmation.references["applyId"].orEmpty()
                 if (applyId.isNotBlank()) item("created-detail") { ArrowPreference(AppText.Booking.VIEW_CREATED_APPLICATION, summary = AppText.Booking.QUERY_RESULT_BEFORE_REAPPLYING, onClick = { open(Route.Page("venueapplication", applyId, AppText.Booking.BOOKING_APPLICATION_DETAIL_TITLE)) }) }
             }
@@ -134,17 +148,17 @@ internal fun VenueAttachmentSection(graph: AppGraph, applyId: String, detail: Bo
     }
     // This bounded section contains at most 9 files; the enclosing details page remains lazy.
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SmallTitle(AppText.Booking.STAMPED_DOCUMENTS_TITLE)
-        Text(AppText.Booking.STAMPED_DOCUMENT_UPLOAD_LIMITS_HINT)
+        SectionTitle(AppText.Booking.STAMPED_DOCUMENTS_TITLE)
+        InfoBanner(AppText.Booking.STAMPED_DOCUMENT_UPLOAD_LIMITS_HINT)
         TextButton(AppText.Booking.SELECT_PHOTO_FILES, enabled = !frozen && files.size < 9, onClick = picker::launch)
-        if (pickerMessage.isNotBlank()) Text(pickerMessage)
+        if (pickerMessage.isNotBlank() && !frozen) InfoBanner(pickerMessage)
         files.forEachIndexed { index, file ->
             SectionCard(AppText.Booking.attachmentName((index + 1), (file.name)), AppText.Booking.attachmentMemoryInfo((file.mediaType), (file.size)))
             if (!frozen) TextButton(AppText.Booking.removeAttachment((index + 1)), onClick = { files = files.filterIndexed { i, _ -> i != index }; controller = null; acknowledged = false })
         }
         BookingCheck(acknowledged, AppText.Booking.ATTACHMENT_PURPOSE_ACKNOWLEDGEMENT, !frozen) { acknowledged = it; controller = null }
         if (validation.isNotEmpty()) SectionCard(AppText.Common.REVIEW_REQUIRED, validation.joinToString("\n"))
-        Button(enabled = !frozen, onClick = {
+        Button(modifier = Modifier.fillMaxWidth(), minHeight = AppUiTokens.ButtonHeight, cornerRadius = AppUiTokens.ButtonRadius, colors = ButtonDefaults.buttonColorsPrimary(), enabled = !frozen, onClick = {
             validation = attachmentValidation(applyId, userId, files, status) + if (!acknowledged) listOf(AppText.Booking.ACKNOWLEDGE_ATTACHMENTS_FIRST) else emptyList()
             if (validation.isEmpty()) {
                 val next = attachmentConfirmation(RepositoryAttachmentTransport(graph.repositories.venues), applyId, userId,
@@ -155,10 +169,8 @@ internal fun VenueAttachmentSection(graph: AppGraph, applyId: String, detail: Bo
             }
         }) { Text(AppText.Booking.PREVIEW_ATTACHMENT_UPLOAD) }
         if (state != null) {
-            if (state.message.isNotBlank()) SectionCard(AppText.Common.OPERATION_STATUS_TITLE, state.message)
-            state.preview?.lines?.forEach { SectionCard(AppText.Common.REVIEW_CHECKLIST_TITLE, it) }
-            state.steps.forEach { SectionCard(it.label, bookingStepLabel(it.phase)) }
-            if (state.phase == BookingPhase.PREVIEW) Button(onClick = { dialog = true }) { Text(AppText.Common.OPEN_FINAL_CONFIRMATION_AFTER_REVIEW) }
+            BookingReceipt(state)
+            if (state.phase == BookingPhase.PREVIEW) BookingPrimaryButton(AppText.Booking.CONFIRM_UPLOAD_ACTION) { dialog = true }
             if (state.phase in setOf(BookingPhase.COMPLETED, BookingPhase.FAILED, BookingPhase.UNCERTAIN)) TextButton(AppText.Booking.QUERY_SERVER_ATTACHMENT_STATUS, onClick = refreshDetail)
         }
         controller?.let { BookingFinalDialog(it, dialog) { dialog = false } }
@@ -188,38 +200,79 @@ internal fun FitnessEnrol(graph: AppGraph, page: Route.Page, open: (Route) -> Un
     var date by remember { mutableStateOf("") }
     var period by remember { mutableStateOf("") }
     var reason by remember { mutableStateOf("") }
+    val sexOptions = listOf("男" to AppText.Booking.SEX_MALE_DISPLAY_LABEL, "女" to AppText.Booking.SEX_FEMALE_DISPLAY_LABEL)
+    val periodOptions = listOf("上午" to AppText.Booking.MORNING_DISPLAY_LABEL, "下午" to AppText.Booking.AFTERNOON_DISPLAY_LABEL)
+    val sexLabel = sexOptions.firstOrNull { it.first == sex }?.second.orEmpty()
+    val periodLabel = periodOptions.firstOrNull { it.first == period }?.second.orEmpty()
     var acknowledged by remember { mutableStateOf(false) }
     var validation by remember { mutableStateOf<List<String>>(emptyList()) }
     var controller by remember { mutableStateOf<BookingConfirmation?>(null) }
     var dialog by remember { mutableStateOf(false) }
     val state = controller?.state?.collectAsState()?.value
     val frozen = state?.phase in setOf(BookingPhase.RUNNING, BookingPhase.FAILED, BookingPhase.UNCERTAIN, BookingPhase.COMPLETED)
+    val cancellationIssue = when {
+        test == null || testState.error != null -> AppText.Booking.REFRESH_CURRENT_SESSION_FIRST
+        else -> fitnessCancellationTiming(test, kotlin.time.Clock.System.now().toEpochMilliseconds()) ?: fitnessCancellationLimit(mine.data)
+    }
     val scope = rememberCoroutineScope()
     val transport = remember(graph) { RepositoryBookingTransport(graph.repositories.venues, graph.repositories.fitness) }
-    fun changed() { if (!frozen) { controller = null; acknowledged = false; validation = emptyList() } }
-    val refresh: () -> Unit = { scope.launch { tests.refresh() }; scope.launch { items.refresh() }; scope.launch { auxCounts.refresh() }; scope.launch { auxMine.refresh() } }
+    fun changed() {
+        val current = controller
+        current?.edit()
+        if (current == null || current.state.value.phase == BookingPhase.EDITING) {
+            controller = null; acknowledged = false; validation = emptyList(); dialog = false
+        }
+    }
+    fun invalidatePreview() {
+        val current = controller
+        if (current?.invalidatePreviewForRefresh() == true) {
+            controller = null; acknowledged = false; validation = emptyList(); dialog = false
+        }
+    }
+    // Also cover independently refreshed eligibility queries, including loading/error/data changes.
+    LaunchedEffect(testState, itemState, counts, mine) { invalidatePreview() }
+    val refresh: () -> Unit = {
+        invalidatePreview()
+        scope.launch { tests.refresh() }; scope.launch { items.refresh() }
+        scope.launch { auxCounts.refresh() }; scope.launch { auxMine.refresh() }
+    }
     Screen(AppText.Booking.REVIEW_FITNESS_REGISTRATION_TITLE, { if (state?.phase != BookingPhase.RUNNING) back() }, actions = { TextButton(AppText.Common.REFRESH, enabled = !frozen, onClick = refresh) }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item("fitness-test") { SectionCard(test?.bookingLabel(AppText.Booking.FITNESS_SESSION_TITLE) ?: AppText.Booking.FITNESS_SESSION_TITLE, AppText.Booking.fitnessSessionId((selection.physicalId))) }
-            bookingQueryFeedback(testState, { scope.launch { tests.refresh() } }, "enrol-test")
-            bookingFieldsItems(test, keyPrefix = "enrol-test-field")
-            item("items-heading") { SmallTitle(AppText.Booking.SESSION_ITEMS_REVIEW_ONLY_TITLE) }
-            item { Text(AppText.Booking.REGISTRATION_ITEMS_LOCAL_REVIEW_HINT) }
-            bookingQueryFeedback(itemState, { scope.launch { items.refresh() } }, "enrol-items")
-            itemsIndexed(rows.filter { selection.itemIds.isEmpty() || it.bookingId() in selection.itemIds }, key = { index, _ -> "enrol-item:$index" }) { index, row -> BookingRecordCard(row, row.bookingLabel(AppText.Booking.itemOrdinal((index + 1)))) }
-            item("enrol-form-title") { SmallTitle(AppText.Booking.REGISTRATION_DETAILS_TITLE) }
-            item("card") { TextField(card, { changed(); card = it }, label = AppText.Booking.IDENTITY_CARD_FINAL_CONFIRMATION_FIELD, visualTransformation = PasswordVisualTransformation(), enabled = !frozen, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-            item("sex") { Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TextButton(if (sex == "男") AppText.Booking.SEX_MALE_SELECTED_LABEL else AppText.Booking.SEX_MALE_DISPLAY_LABEL, enabled = !frozen, onClick = { changed(); sex = "男" })
-                TextButton(if (sex == "女") AppText.Booking.SEX_FEMALE_SELECTED_LABEL else AppText.Booking.SEX_FEMALE_DISPLAY_LABEL, enabled = !frozen, onClick = { changed(); sex = "女" })
+        LazyColumn(Modifier.fillMaxSize().consumeWindowInsets(padding), contentPadding = bookingContentPadding(padding, form = true), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item("fitness-help") { InfoBanner(AppText.Booking.REGISTRATION_SUBMISSION_SCOPE_HINT) }
+            item("fitness-test") { BookingPanel(test?.bookingLabel(AppText.Booking.FITNESS_SESSION_TITLE) ?: AppText.Booking.FITNESS_SESSION_TITLE) {
+                BookingDetailLine(AppText.Booking.REGISTRANT_LABEL, bookingMasked(session?.userInfo?.bookingText("name").orEmpty()).ifBlank { AppText.Booking.REVIEW_CURRENT_ACCOUNT_HINT })
+                BookingDetailLine(AppText.Booking.CURRENT_ARRANGEMENT_LABEL, AppText.Booking.fitnessArrangement(bookingDateLabel(date), periodLabel, sexLabel))
+                BookingDetailLine(AppText.Booking.REGISTRATION_SCOPE_LABEL, AppText.Booking.REGISTRATION_SCOPE_HINT)
             } }
-            item("date") { TextField(date, { changed(); date = it }, label = AppText.Booking.BOOKING_DATE_FIELD, enabled = !frozen, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-            item("period") { Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                listOf("上午" to AppText.Booking.MORNING_DISPLAY_LABEL, "下午" to AppText.Booking.AFTERNOON_DISPLAY_LABEL).forEach { (value, label) -> TextButton(if (period == value) AppText.Booking.selectedPeriod(label) else label, enabled = !frozen, onClick = { changed(); period = value }) }
+            bookingQueryFeedback(testState, { invalidatePreview(); scope.launch { tests.refresh() } }, "enrol-test")
+            test?.let { data -> item("enrol-test-source") { BookingRawDetails(data) } }
+            item("items-heading") { SectionTitle(AppText.Booking.SELECTED_REVIEW_ITEMS_TITLE) }
+            bookingQueryFeedback(itemState, { invalidatePreview(); scope.launch { items.refresh() } }, "enrol-items")
+            itemsIndexed(rows.filter { selection.itemIds.isEmpty() || it.bookingId() in selection.itemIds }, key = { index, _ -> "enrol-item:$index" }) { index, row -> BookingRecordCard(row, row.bookingLabel(AppText.Booking.itemOrdinal((index + 1)))) }
+            item("registration-identity") { BookingPanel(AppText.Booking.REGISTRATION_DETAILS_TITLE) {
+                TextField(card, { changed(); card = it }, label = AppText.Booking.IDENTITY_CARD_FINAL_CONFIRMATION_FIELD,
+                    visualTransformation = PasswordVisualTransformation(), enabled = !frozen, singleLine = true,
+                    cornerRadius = AppUiTokens.FieldRadius, modifier = Modifier.fillMaxWidth())
+                Text(AppText.Booking.SEX_FIELD_LABEL, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    sexOptions.forEach { (wire, label) -> BookingChoice(label, selected = sex == wire, enabled = !frozen) { changed(); sex = wire } }
+                }
+            } }
+            item("registration-schedule") { BookingPanel(AppText.Booking.REGISTRATION_SCHEDULE_TITLE) {
+                val firstDate = test?.bookingText("testStart").orEmpty().take(10)
+                val tomorrow = bookingSchoolDate(1)
+                BookingDateChoices(date, enabled = !frozen, from = if (validBookingDate(firstDate) && firstDate > tomorrow) firstDate else tomorrow) { changed(); date = it }
+                TextField(date, { changed(); date = it }, label = AppText.Booking.BOOKING_DATE_FIELD, enabled = !frozen,
+                    singleLine = true, cornerRadius = AppUiTokens.FieldRadius, modifier = Modifier.fillMaxWidth())
+                Text(AppText.Booking.SELECT_SLOT_TITLE, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    periodOptions.forEach { (wire, label) -> BookingChoice(label, selected = period == wire, enabled = !frozen) { changed(); period = wire } }
+                }
+                Text(AppText.Booking.REGISTRATION_ELIGIBILITY_REVIEW_HINT, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             } }
             item("enrol-ack") { BookingCheck(acknowledged, AppText.Booking.REGISTRATION_DETAILS_ACKNOWLEDGEMENT, !frozen) { acknowledged = it; controller = null } }
             if (validation.isNotEmpty()) item("enrol-validation") { SectionCard(AppText.Common.REVIEW_REQUIRED, validation.joinToString("\n")) }
-            item("preview-enrol") { Button(enabled = !frozen && !testState.loading, onClick = {
+            item("preview-enrol") { Button(modifier = Modifier.fillMaxWidth(), minHeight = AppUiTokens.ButtonHeight, cornerRadius = AppUiTokens.ButtonRadius, colors = ButtonDefaults.buttonColorsPrimary(), enabled = !frozen && !testState.loading, onClick = {
                 val form = FitnessEnrolmentForm(selection.physicalId, rId, userId, session?.userInfo?.bookingText("name").orEmpty(),
                     session?.userInfo?.bookingText("account").orEmpty(), card.trim(), sex, date.trim(), period)
                 validation = form.validation() + buildList {
@@ -234,16 +287,18 @@ internal fun FitnessEnrol(graph: AppGraph, page: Route.Page, open: (Route) -> Un
                 }
                 if (validation.isEmpty()) {
                     val next = fitnessEnrolmentConfirmation(transport, form)
-                    next.preview(BookingPreview(AppText.Booking.FITNESS_REGISTRATION_TITLE, listOf(AppText.Booking.fitnessSessionLine((test?.bookingLabel(AppText.Booking.FITNESS_TEST_FALLBACK_LABEL))), AppText.Booking.fitnessDateLine((form.date), (form.period)), AppText.Booking.genderLine((form.sex)),
+                    next.preview(BookingPreview(AppText.Booking.FITNESS_REGISTRATION_TITLE, listOf(AppText.Booking.fitnessSessionLine((test?.bookingLabel(AppText.Booking.FITNESS_TEST_FALLBACK_LABEL))), AppText.Booking.fitnessDateLine(form.date, periodLabel), AppText.Booking.genderLine(sexLabel),
                         AppText.Booking.nameLine((bookingMasked(form.userName))), AppText.Booking.studentNumberLine((bookingMasked(form.studentId))), AppText.Booking.identityCardLine((bookingMasked(form.identityCard))),
                         AppText.Booking.REGISTRATION_SUBMISSION_SCOPE_HINT)))
                     controller = next
                 }
             }) { Text(AppText.Booking.GENERATE_REGISTRATION_PREVIEW) } }
             if (rId.isNotBlank()) {
-                item("cancel-title") { SmallTitle(AppText.Booking.CANCEL_CURRENT_FITNESS_REGISTRATION) }
-                item("cancel-reason") { TextField(reason, { changed(); reason = it }, label = AppText.Booking.CANCELLATION_REASON_FIELD, enabled = !frozen, modifier = Modifier.fillMaxWidth(), maxLines = 4) }
-                item("cancel-preview") { TextButton(AppText.Booking.GENERATE_CANCELLATION_PREVIEW, enabled = !frozen, onClick = {
+                item("cancel-title") { SectionTitle(AppText.Booking.CANCEL_CURRENT_FITNESS_REGISTRATION) }
+                item("cancel-help") { InfoBanner(cancellationIssue ?: AppText.Booking.CANCELLATION_REVIEW_HINT, tone = UiTone.Warning) }
+                item("cancel-reason") { TextField(reason, { changed(); reason = it }, label = AppText.Booking.CANCELLATION_REASON_FIELD,
+                    cornerRadius = AppUiTokens.FieldRadius, enabled = !frozen, modifier = Modifier.fillMaxWidth(), maxLines = 4) }
+                item("cancel-preview") { TextButton(AppText.Booking.GENERATE_CANCELLATION_PREVIEW, enabled = !frozen && cancellationIssue == null, onClick = {
                     val form = FitnessCancellation(rId, reason.trim())
                     validation = form.validation() + buildList {
                         if (test == null || testState.error != null) add(AppText.Booking.REFRESH_CURRENT_SESSION_FIRST)
@@ -259,15 +314,18 @@ internal fun FitnessEnrol(graph: AppGraph, page: Route.Page, open: (Route) -> Un
             }
             if (state != null) {
                 bookingConfirmationItems(state, { controller = null })
-                if (state.phase == BookingPhase.PREVIEW) item("fitness-final") { Button(onClick = { dialog = true }) { Text(AppText.Common.OPEN_FINAL_CONFIRMATION_AFTER_REVIEW) } }
+                if (state.phase == BookingPhase.PREVIEW) item("fitness-final") { BookingPrimaryButton(
+                    if (state.preview?.title == AppText.Booking.CANCEL_FITNESS_REGISTRATION_TITLE) AppText.Booking.CONFIRM_CANCELLATION_ACTION else AppText.Booking.SUBMIT_REGISTRATION_ACTION) { dialog = true } }
                 if (state.phase in setOf(BookingPhase.COMPLETED, BookingPhase.FAILED, BookingPhase.UNCERTAIN)) item("query-after-write") { TextButton(AppText.Booking.QUERY_LATEST_REGISTRATION_STATUS, onClick = refresh) }
             }
-            item("mine-title") { SmallTitle(AppText.Booking.RAW_CANCELLATION_COUNTS_TITLE) }
-            bookingQueryFeedback(mine, { scope.launch { auxMine.refresh() } }, "fitness-mine")
+            if (rId.isBlank()) item("cancel-unavailable") { InfoBanner(AppText.Booking.NO_ACTIVE_REGISTRATION_FOR_CANCELLATION_HINT, tone = UiTone.Neutral) }
+            item("mine-title") { SectionTitle(AppText.Booking.REGISTRATION_CANCELLATION_COUNTS_TITLE) }
+            bookingQueryFeedback(mine, { invalidatePreview(); scope.launch { auxMine.refresh() } }, "fitness-mine")
             bookingFieldsItems(mine.data, keyPrefix = "fitness-mine-field")
-            item("count-title") { SmallTitle(AppText.Booking.CURRENT_SESSION_DAILY_COUNTS_TITLE) }
-            bookingQueryFeedback(counts, { scope.launch { auxCounts.refresh() } }, "fitness-count")
-            bookingFieldsItems(counts.data, keyPrefix = "fitness-count-field")
+            item("count-title") { SectionTitle(AppText.Booking.COUNTS_REVIEW_TITLE) }
+            bookingQueryFeedback(counts, { invalidatePreview(); scope.launch { auxCounts.refresh() } }, "fitness-count")
+            item("fitness-count-summary") { BookingCounts(counts.data, date = date.takeIf(::validBookingDate) ?: bookingSchoolDate()) }
+            counts.data?.let { data -> item("fitness-count-source") { BookingRawDetails(data) } }
             item("back-items") { ArrowPreference(AppText.Booking.REVIEW_FITNESS_ITEMS_AGAIN, onClick = { open(Route.Page("fitnessitems", BookingSelection(physicalId = selection.physicalId).encode(), AppText.Booking.FITNESS_ITEMS_TITLE)) }) }
         }
         controller?.let { BookingFinalDialog(it, dialog) { dialog = false } }

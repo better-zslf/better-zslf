@@ -26,6 +26,13 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
+import io.github.betterzslf.ui.AppUiTokens
+import io.github.betterzslf.ui.InfoBanner
+import io.github.betterzslf.ui.UiTone
 import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.feature.runui.RunManualDraft
 import io.github.betterzslf.feature.runui.RunManualDraftCommit
@@ -78,13 +85,11 @@ internal fun RunManualDraftSheet(
             end = navigationPadding.calculateEndPadding(layoutDirection),
             bottom = navigationPadding.calculateBottomPadding()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // Keep title and actions on separate rows; the library's three header slots overlap at narrow widths.
-            Text(AppText.ManualRoute.TITLE)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TextButton(AppText.ManualRoute.CANCEL, onClick = cancel,
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp))
-                TextButton(AppText.ManualRoute.SAVE_PREVIEW, enabled = state.canSave,
-                    onClick = { session.takeCommit()?.let(onCommit) },
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp))
+            Text(AppText.ManualRoute.TITLE, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
+                RunAction(AppText.ManualRoute.CANCEL, onClick = cancel, modifier = Modifier.weight(1f))
+                RunAction(AppText.ManualRoute.SAVE_PREVIEW, enabled = state.canSave, primary = true,
+                    onClick = { session.takeCommit()?.let(onCommit) }, modifier = Modifier.weight(1f))
             }
             // Allocate only the measured remainder after the sticky title/actions, never a guessed control budget.
             Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -93,7 +98,7 @@ internal fun RunManualDraftSheet(
                     val identity = session.identity
                     val mount = session.mount
                     RunMapPanel(session.mapModel(dark), { event -> session.onEvent(identity, mount, event) },
-                        Modifier.fillMaxWidth().weight(0.6f))
+                        Modifier.fillMaxWidth().weight(0.6f).clip(RoundedCornerShape(AppUiTokens.CardRadius)))
                 }
                 Column(Modifier.fillMaxWidth().weight(0.4f).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -106,12 +111,12 @@ internal fun RunManualDraftSheet(
                         RunMapCoordinateSystem.WGS84 -> AppText.ManualRoute.WGS84_LABEL
                         RunMapCoordinateSystem.UNKNOWN -> AppText.Common.UNKNOWN
                     }
-                    Text(AppText.ManualRoute.draftSummary(state.pointCount, frameLabel))
-                    Text(manualDraftMessage(state))
-                    Text(AppText.ManualRoute.LOCAL_ONLY_WARNING)
-                    if (state.pointCount == 0) Text(AppText.ManualRoute.DEFAULT_VIEW_HINT)
-                    else if (state.pointCount == 1) Text(AppText.ManualRoute.FIRST_POINT_HINT)
-                    Text(AppText.ManualRoute.pointBudget(state.pointCount, RunManualDraft.MAX_POINTS))
+                    RunStatus(AppText.ManualRoute.draftSummary(state.pointCount, frameLabel), UiTone.Info)
+                    Text(manualDraftMessage(state), fontSize = 13.sp)
+                    InfoBanner(AppText.ManualRoute.LOCAL_ONLY_WARNING, tone = UiTone.Neutral)
+                    if (state.pointCount == 0) Text(AppText.ManualRoute.DEFAULT_VIEW_HINT, fontSize = 12.sp)
+                    else if (state.pointCount == 1) Text(AppText.ManualRoute.FIRST_POINT_HINT, fontSize = 12.sp)
+                    Text(AppText.ManualRoute.pointBudget(state.pointCount, RunManualDraft.MAX_POINTS), fontSize = 12.sp)
                 }
             }
         }

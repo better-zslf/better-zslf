@@ -90,7 +90,7 @@ class EditionAccessTest {
 
     @Test fun newEditionCopyIsPureAndHasIndependentGoldenExpectations() {
         assertEquals("当前版本未包含此功能", AppText.Edition.FEATURE_UNAVAILABLE_TITLE)
-        assertEquals("请返回当前版本的功能入口。", AppText.Edition.REOPEN_AVAILABLE_ENTRY_HINT)
-        assertEquals("无广告、无统计和崩溃上报。校园功能直连学校服务；跑步仅记录真实定位并由你手动确认。", AppText.Edition.STANDARD_PRIVACY_HINT)
+        assertEquals("请返回，选择当前版本提供的功能。", AppText.Edition.REOPEN_AVAILABLE_ENTRY_HINT)
+        assertEquals("无广告、无统计和崩溃上报。校园服务直连学校；真实 GPS 记录只保存在本机，当前版本未启用上传。", AppText.Edition.STANDARD_PRIVACY_HINT)
     }
 }

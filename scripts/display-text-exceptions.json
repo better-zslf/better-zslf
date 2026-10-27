@@ -6,14 +6,14 @@
       "kind": "string",
       "source": "\"新生攻略\"",
       "context": {
-        "before": "Y_LABEL, onClick = { open(Route.Page(\"columns\", ",
+        "before": "IDE_DISPLAY_LABEL) { open(Route.Page(\"columns\", ",
         "after": ", AppText.Content.FRESHMAN_GUIDE_DISPLAY_LABEL))"
       },
       "position": {
-        "start": 13426,
-        "end": 13432,
-        "line": 196,
-        "column": 121
+        "start": 23336,
+        "end": 23342,
+        "line": 360,
+        "column": 115
       },
       "category": "lookup",
       "reason": "Exact content column lookup id; third argument is display title",
@@ -24,32 +24,14 @@
       "kind": "string",
       "source": "\"男\"",
       "context": {
-        "before": "12.dp)) {\n                TextButton(if (sex == ",
-        "after": ") AppText.Booking.SEX_MALE_SELECTED_LABEL else A"
+        "before": "utableStateOf(\"\") }\n    val sexOptions = listOf(",
+        "after": " to AppText.Booking.SEX_MALE_DISPLAY_LABEL, \"女\" "
       },
       "position": {
-        "start": 17702,
-        "end": 17705,
-        "line": 213,
-        "column": 39
-      },
-      "category": "protocol",
-      "reason": "Exact sex comparison/request state value; display label is independent",
-      "owner": "task38/build-ci"
-    },
-    {
-      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingForms.kt",
-      "kind": "string",
-      "source": "\"男\"",
-      "context": {
-        "before": "enabled = !frozen, onClick = { changed(); sex = ",
-        "after": " })\n                TextButton(if (sex == \"女\") A"
-      },
-      "position": {
-        "start": 17840,
-        "end": 17843,
-        "line": 213,
-        "column": 177
+        "start": 15943,
+        "end": 15946,
+        "line": 203,
+        "column": 29
       },
       "category": "protocol",
       "reason": "Exact sex comparison/request state value; display label is independent",
@@ -60,32 +42,14 @@
       "kind": "string",
       "source": "\"女\"",
       "context": {
-        "before": " = \"男\" })\n                TextButton(if (sex == ",
-        "after": ") AppText.Booking.SEX_FEMALE_SELECTED_LABEL else"
+        "before": "(\"男\" to AppText.Booking.SEX_MALE_DISPLAY_LABEL, ",
+        "after": " to AppText.Booking.SEX_FEMALE_DISPLAY_LABEL)\n  "
       },
       "position": {
-        "start": 17885,
-        "end": 17888,
-        "line": 214,
-        "column": 39
-      },
-      "category": "protocol",
-      "reason": "Exact sex comparison/request state value; display label is independent",
-      "owner": "task38/build-ci"
-    },
-    {
-      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingForms.kt",
-      "kind": "string",
-      "source": "\"女\"",
-      "context": {
-        "before": "enabled = !frozen, onClick = { changed(); sex = ",
-        "after": " })\n            } }\n            item(\"date\") { T"
-      },
-      "position": {
-        "start": 18027,
-        "end": 18030,
-        "line": 214,
-        "column": 181
+        "start": 15990,
+        "end": 15993,
+        "line": 203,
+        "column": 76
       },
       "category": "protocol",
       "reason": "Exact sex comparison/request state value; display label is independent",
@@ -96,14 +60,14 @@
       "kind": "string",
       "source": "\"上午\"",
       "context": {
-        "before": "ement.spacedBy(12.dp)) {\n                listOf(",
+        "before": "E_DISPLAY_LABEL)\n    val periodOptions = listOf(",
         "after": " to AppText.Booking.MORNING_DISPLAY_LABEL, \"下午\" "
       },
       "position": {
-        "start": 18350,
-        "end": 18354,
-        "line": 218,
-        "column": 24
+        "start": 16070,
+        "end": 16074,
+        "line": 204,
+        "column": 32
       },
       "category": "protocol",
       "reason": "Exact period request state value retained in approved wire/display pair",
@@ -115,13 +79,13 @@
       "source": "\"下午\"",
       "context": {
         "before": "(\"上午\" to AppText.Booking.MORNING_DISPLAY_LABEL, ",
-        "after": " to AppText.Booking.AFTERNOON_DISPLAY_LABEL).for"
+        "after": " to AppText.Booking.AFTERNOON_DISPLAY_LABEL)\n   "
       },
       "position": {
-        "start": 18397,
-        "end": 18401,
-        "line": 218,
-        "column": 71
+        "start": 16117,
+        "end": 16121,
+        "line": 204,
+        "column": 79
       },
       "category": "protocol",
       "reason": "Exact period request state value retained in approved wire/display pair",
@@ -132,14 +96,14 @@
       "kind": "string",
       "source": "\"学校动态\"",
       "context": {
-        "before": "t(refresh, { graph.repositories.content.columns(",
+        "before": "o refresh, { graph.repositories.content.columns(",
         "after": ") }) { columns ->\n                    val column"
       },
       "position": {
-        "start": 3278,
-        "end": 3284,
-        "line": 46,
-        "column": 76
+        "start": 4079,
+        "end": 4085,
+        "line": 67,
+        "column": 94
       },
       "category": "lookup",
       "reason": "Exact school content column name, not the visible title",
@@ -150,14 +114,14 @@
       "kind": "string",
       "source": "\"学校动态\"",
       "context": {
-        "before": "FORMATION_SUMMARY, { open(Route.Page(\"columns\", ",
+        "before": "Y_LABEL, onClick = { open(Route.Page(\"columns\", ",
         "after": ", AppText.Content.SCHOOL_NEWS_DISPLAY_LABEL)) })"
       },
       "position": {
-        "start": 4467,
-        "end": 4473,
-        "line": 67,
-        "column": 157
+        "start": 10661,
+        "end": 10667,
+        "line": 156,
+        "column": 115
       },
       "category": "lookup",
       "reason": "Exact school content column name, not the visible title",
@@ -168,14 +132,14 @@
       "kind": "string",
       "source": "\"新生攻略\"",
       "context": {
-        "before": "CE_CAMPUS_SUMMARY, { open(Route.Page(\"columns\", ",
+        "before": "Y_LABEL, onClick = { open(Route.Page(\"columns\", ",
         "after": ", AppText.Content.FRESHMAN_GUIDE_DISPLAY_LABEL))"
       },
       "position": {
-        "start": 4672,
-        "end": 4678,
-        "line": 68,
-        "column": 149
+        "start": 10833,
+        "end": 10839,
+        "line": 157,
+        "column": 118
       },
       "category": "lookup",
       "reason": "Exact second Route.Page argument remains backend/document lookup id; display title is independent",
@@ -187,13 +151,13 @@
       "source": "\"使用帮助\"",
       "context": {
         "before": "_LABEL, onClick = { open(Route.Page(\"document\", ",
-        "after": ", AppText.App.USER_GUIDE_DISPLAY_LABEL)) }) }\n  "
+        "after": ", AppText.App.USER_GUIDE_DISPLAY_LABEL)) })\n    "
       },
       "position": {
-        "start": 6056,
-        "end": 6062,
-        "line": 78,
-        "column": 110
+        "start": 11155,
+        "end": 11161,
+        "line": 159,
+        "column": 111
       },
       "category": "lookup",
       "reason": "Exact second Route.Page argument remains backend/document lookup id; display title is independent",
@@ -205,13 +169,13 @@
       "source": "\"用户协议\"",
       "context": {
         "before": "AGREEMENT_DISPLAY_LABEL, onClick = { onDocument(",
-        "after": ") })\n                TextButton(AppText.App.PRIV"
+        "after": ") })\n                    TextButton(AppText.App."
       },
       "position": {
-        "start": 4291,
-        "end": 4297,
-        "line": 65,
-        "column": 93
+        "start": 5962,
+        "end": 5968,
+        "line": 100,
+        "column": 97
       },
       "category": "lookup",
       "reason": "Exact document callback id is forwarded to content.document, not translated button label",
@@ -223,13 +187,13 @@
       "source": "\"隐私政策\"",
       "context": {
         "before": "CY_POLICY_DISPLAY_LABEL, onClick = { onDocument(",
-        "after": ") })\n            } }\n        }\n    }\n}\n"
+        "after": ") })\n                }\n            }\n        }\n "
       },
       "position": {
-        "start": 4394,
-        "end": 4400,
-        "line": 66,
-        "column": 93
+        "start": 6069,
+        "end": 6075,
+        "line": 101,
+        "column": 97
       },
       "category": "lookup",
       "reason": "Exact document callback id is forwarded to content.document, not translated button label",
@@ -240,14 +204,14 @@
       "kind": "string",
       "source": "\"用户协议\"",
       "context": {
-        "before": "TS_AND_HELP_SECTION_TITLE) }\n            listOf(",
+        "before": "Tokens.CardRadius) {\n                    listOf(",
         "after": " to AppText.App.USER_AGREEMENT_DISPLAY_LABEL, \"隐"
       },
       "position": {
-        "start": 6141,
-        "end": 6147,
-        "line": 98,
-        "column": 20
+        "start": 9104,
+        "end": 9110,
+        "line": 152,
+        "column": 28
       },
       "category": "lookup",
       "reason": "Protocol document id retained in approved wire/display pair; visible label is catalog-owned",
@@ -262,10 +226,10 @@
         "after": " to AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, \"使"
       },
       "position": {
-        "start": 6193,
-        "end": 6199,
-        "line": 98,
-        "column": 72
+        "start": 9156,
+        "end": 9162,
+        "line": 152,
+        "column": 80
       },
       "category": "lookup",
       "reason": "Protocol document id retained in approved wire/display pair; visible label is catalog-owned",
@@ -280,10 +244,10 @@
         "after": " to AppText.App.USER_GUIDE_DISPLAY_LABEL).forEac"
       },
       "position": {
-        "start": 6245,
-        "end": 6251,
-        "line": 98,
-        "column": 124
+        "start": 9208,
+        "end": 9214,
+        "line": 152,
+        "column": 132
       },
       "category": "lookup",
       "reason": "Protocol document id retained in approved wire/display pair; visible label is catalog-owned",
@@ -1116,6 +1080,168 @@
       "category": "diagnostic_fixture",
       "reason": "Original exact internal Unicode Keychain roundtrip fixture value, not display or wire; complete Native diagnostic source SHA is independently pinned",
       "owner": "task44/build-ci"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/MainScreens.kt",
+      "kind": "string",
+      "source": "\"学校动态\"",
+      "context": {
+        "before": "E, {\n                open(Route.Page(\"columns\", ",
+        "after": ", AppText.Content.SCHOOL_NEWS_DISPLAY_LABEL))\n  "
+      },
+      "position": {
+        "start": 3898,
+        "end": 3904,
+        "line": 64,
+        "column": 44
+      },
+      "category": "lookup",
+      "reason": "Exact school content column lookup id for the Home More route; visible labels are catalog-owned",
+      "owner": "task82/water-protocol"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingUi.kt",
+      "kind": "string",
+      "source": "\"团体\"",
+      "context": {
+        "before": "\") == true || item.bookingText(\"applicants\") == ",
+        "after": " || item.bookingText(\"uName\").isNotBlank()\n    f"
+      },
+      "position": {
+        "start": 10386,
+        "end": 10390,
+        "line": 189,
+        "column": 123
+      },
+      "category": "protocol",
+      "reason": "Exact applicants request wire value used to identify group application data, not a display label",
+      "owner": "task82/water-protocol"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingUi.kt",
+      "kind": "string",
+      "source": "\"日\"",
+      "context": {
+        "before": "KeyWeekday = bookingWeekday(date)?.let { listOf(",
+        "after": ", \"一\", \"二\", \"三\", \"四\", \"五\", \"六\")[it] }.orEmpty()\n"
+      },
+      "position": {
+        "start": 18160,
+        "end": 18163,
+        "line": 304,
+        "column": 63
+      },
+      "category": "protocol",
+      "reason": "Weekday text constructs the exact school counts dictionary key, not a display weekday",
+      "owner": "task82/water-protocol"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingUi.kt",
+      "kind": "string",
+      "source": "\"一\"",
+      "context": {
+        "before": "ekday = bookingWeekday(date)?.let { listOf(\"日\", ",
+        "after": ", \"二\", \"三\", \"四\", \"五\", \"六\")[it] }.orEmpty()\n    v"
+      },
+      "position": {
+        "start": 18165,
+        "end": 18168,
+        "line": 304,
+        "column": 68
+      },
+      "category": "protocol",
+      "reason": "Weekday text constructs the exact school counts dictionary key, not a display weekday",
+      "owner": "task82/water-protocol"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingUi.kt",
+      "kind": "string",
+      "source": "\"二\"",
+      "context": {
+        "before": " = bookingWeekday(date)?.let { listOf(\"日\", \"一\", ",
+        "after": ", \"三\", \"四\", \"五\", \"六\")[it] }.orEmpty()\n    val da"
+      },
+      "position": {
+        "start": 18170,
+        "end": 18173,
+        "line": 304,
+        "column": 73
+      },
+      "category": "protocol",
+      "reason": "Weekday text constructs the exact school counts dictionary key, not a display weekday",
+      "owner": "task82/water-protocol"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingUi.kt",
+      "kind": "string",
+      "source": "\"三\"",
+      "context": {
+        "before": "okingWeekday(date)?.let { listOf(\"日\", \"一\", \"二\", ",
+        "after": ", \"四\", \"五\", \"六\")[it] }.orEmpty()\n    val day = ("
+      },
+      "position": {
+        "start": 18175,
+        "end": 18178,
+        "line": 304,
+        "column": 78
+      },
+      "category": "protocol",
+      "reason": "Weekday text constructs the exact school counts dictionary key, not a display weekday",
+      "owner": "task82/water-protocol"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingUi.kt",
+      "kind": "string",
+      "source": "\"四\"",
+      "context": {
+        "before": "Weekday(date)?.let { listOf(\"日\", \"一\", \"二\", \"三\", ",
+        "after": ", \"五\", \"六\")[it] }.orEmpty()\n    val day = (data "
+      },
+      "position": {
+        "start": 18180,
+        "end": 18183,
+        "line": 304,
+        "column": 83
+      },
+      "category": "protocol",
+      "reason": "Weekday text constructs the exact school counts dictionary key, not a display weekday",
+      "owner": "task82/water-protocol"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingUi.kt",
+      "kind": "string",
+      "source": "\"五\"",
+      "context": {
+        "before": "ay(date)?.let { listOf(\"日\", \"一\", \"二\", \"三\", \"四\", ",
+        "after": ", \"六\")[it] }.orEmpty()\n    val day = (data as? J"
+      },
+      "position": {
+        "start": 18185,
+        "end": 18188,
+        "line": 304,
+        "column": 88
+      },
+      "category": "protocol",
+      "reason": "Weekday text constructs the exact school counts dictionary key, not a display weekday",
+      "owner": "task82/water-protocol"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/booking/BookingUi.kt",
+      "kind": "string",
+      "source": "\"六\"",
+      "context": {
+        "before": "te)?.let { listOf(\"日\", \"一\", \"二\", \"三\", \"四\", \"五\", ",
+        "after": ")[it] }.orEmpty()\n    val day = (data as? JsonOb"
+      },
+      "position": {
+        "start": 18190,
+        "end": 18193,
+        "line": 304,
+        "column": 93
+      },
+      "category": "protocol",
+      "reason": "Weekday text constructs the exact school counts dictionary key, not a display weekday",
+      "owner": "task82/water-protocol"
     }
   ]
 }

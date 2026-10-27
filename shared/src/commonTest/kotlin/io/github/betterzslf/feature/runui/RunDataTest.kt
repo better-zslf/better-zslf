@@ -100,7 +100,7 @@ class RunDataTest {
             }}""")))
             assertNull(result.task.errandId); assertEquals("display-trid", result.task.trid)
             assertFalse(result.canStart); assertEquals(listOf("errandId"), result.missingFields)
-            has(result.warnings, "errandId")
+            has(result.warnings, "学校未返回任务编号")
         }
     }
 
@@ -161,7 +161,7 @@ class RunDataTest {
             }""")))
             assertNull(result.task.scheduleId); assertFalse(result.canStart)
             assertEquals(listOf("errandScheduleId"), result.missingFields)
-            has(result.warnings, "errandScheduleId"); has(result.warnings, "冲突")
+            has(result.warnings, "学校未返回排期编号"); has(result.warnings, "冲突")
         } }
     }
 
@@ -327,7 +327,7 @@ class RunDataTest {
         assertTrue(rows.recognized); assertEquals(1, rows.rawSize)
         val row = rows.items.single()
         assertNull(row.trid); assertEquals(0.0, row.distanceMeters); assertEquals(0L, row.elapsedMillis); assertEquals("0", row.status)
-        has(row.warnings, "trid")
+        has(row.warnings, "缺少可确认的记录编号")
         assertFalse(RunDataDecoder.records(json("{\"other\":[]}")).recognized)
     }
 

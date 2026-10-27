@@ -1,7 +1,17 @@
 package io.github.betterzslf
 
 import io.github.betterzslf.core.text.AppText
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import top.yukonga.miuix.kmp.blur.BlendColorEntry
+import top.yukonga.miuix.kmp.blur.BlurBlendMode
+import top.yukonga.miuix.kmp.blur.BlurColors
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.blur.textureBlur
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -141,7 +151,7 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
     val initialized = remember(platform, graphProvider, startupAttempt) { runCatching { graphProvider?.invoke() ?: AppGraph(platform) } }
     val graph = initialized.getOrNull()
     if (graph == null) {
-        MiuixTheme(controller = remember { ThemeController(ColorSchemeMode.System) }) {
+        MiuixTheme(controller = remember { ThemeController(ColorSchemeMode.System, lightColors = ardotLightColors(), darkColors = ardotDarkColors()) }) {
             Screen(AppText.App.LOCAL_DATA_TEMPORARILY_UNAVAILABLE_TITLE) { padding ->
                 PageList(padding) {
                     item { SectionCard(AppText.App.SESSION_READ_FAILED_TITLE, AppText.App.UNLOCK_OR_RETRY_ORIGINAL_DATA_RETAINED_HINT) }
@@ -159,7 +169,7 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
         "Dark" -> if (settings.dynamicColor) ColorSchemeMode.MonetDark else ColorSchemeMode.Dark
         else -> if (settings.dynamicColor) ColorSchemeMode.MonetSystem else ColorSchemeMode.System
     }
-    val theme = remember(mode) { ThemeController(mode) }
+    val theme = remember(mode) { ThemeController(mode, lightColors = ardotLightColors(), darkColors = ardotDarkColors()) }
     val root = rememberNavBackStack<Route>(Route.Main)
     // Keep tab navigation outside the login-gated subtree, including across a 401.
     var selected by rememberSaveable { mutableIntStateOf(0) }
@@ -184,7 +194,7 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
             if (root.isEmpty()) root.add(Route.Main)
         }
     }
-    MiuixTheme(controller = theme) {
+    MiuixTheme(controller = theme, textStyles = remember { ardotTextStyles() }) {
         PlatformAppearance(when (settings.theme) { "Dark" -> true; "Light" -> false; else -> null })
         NavDisplay(backStack = root, modifier = Modifier.fillMaxSize().clipToBounds(),
             onBack = { if (root.size > 1 && root.last() != Route.Login) root.removeLastOrNull() },
@@ -214,17 +224,35 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
     }
     val titles = listOf(AppText.Navigation.HOME, AppText.Navigation.CAMPUS_RUN, AppText.Navigation.COMMUNITY, AppText.Navigation.PROFILE)
     val icons = listOf(MiuixIcons.Home, MiuixIcons.Location, MiuixIcons.Community, MiuixIcons.Contacts)
+    val backdrop = rememberLayerBackdrop()
+    val showBottomNavigation = stack.lastOrNull() is Route.TabRoot
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
         val useRail = NavigationLayoutPolicy.useRail(maxWidth.value)
-        Scaffold(contentWindowInsets = WindowInsets(0, 0, 0, 0), bottomBar = {
-            if (!useRail) NavigationBar {
-                titles.forEachIndexed { index, title ->
-                    NavigationBarItem(selected = activeTab == index,
-                        onClick = { onSelect(NavigationLayoutPolicy.selectTab(selected, index)) }, icon = icons[index], label = title)
+        Scaffold(containerColor = MiuixTheme.colorScheme.surface,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0), bottomBar = {
+            if (!useRail && showBottomNavigation) {
+                Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 12.dp)) {
+                    NavigationBar(
+                        modifier = Modifier.clip(RoundedCornerShape(AppUiTokens.NavigationRadius)).textureBlur(
+                            backdrop = backdrop,
+                            shape = RoundedCornerShape(AppUiTokens.NavigationRadius),
+                            colors = BlurColors(blendColors = listOf(BlendColorEntry(MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f), BlurBlendMode.SrcOver))),
+                        ),
+                        color = Color.Transparent,
+                        showDivider = false,
+                        defaultWindowInsetsPadding = false,
+                    ) {
+                        titles.forEachIndexed { index, title ->
+                            NavigationBarItem(selected = activeTab == index,
+                                onClick = { onSelect(NavigationLayoutPolicy.selectTab(selected, index)) }, icon = icons[index], label = title)
+                        }
+                    }
                 }
             }
         }) { padding ->
-            Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).clipToBounds()) {
+            // Content extends below the translucent pill; lists reserve this height at their end.
+            CompositionLocalProvider(LocalNavigationBottomInset provides padding.calculateBottomPadding()) {
+            Row(Modifier.fillMaxSize().consumeWindowInsets(padding).clipToBounds()) {
                 if (useRail) NavigationRail(modifier = Modifier.fillMaxHeight(), defaultWindowInsetsPadding = true) {
                     titles.forEachIndexed { index, title ->
                         NavigationRailItem(selected = activeTab == index,
@@ -235,7 +263,8 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
                 // Top/End/Bottom remain unconsumed for each page's own Scaffold; no double safe area.
                 val railConsumedInsets = if (useRail) WindowInsets.displayCutout.union(WindowInsets.navigationBars).only(WindowInsetsSides.Start)
                     else WindowInsets(0, 0, 0, 0)
-                Box(Modifier.weight(1f).fillMaxHeight().consumeWindowInsets(railConsumedInsets).clipToBounds()) {
+                Box(Modifier.weight(1f).fillMaxHeight().consumeWindowInsets(railConsumedInsets).clipToBounds()
+                    .layerBackdrop(backdrop).background(MiuixTheme.colorScheme.surface)) {
                     // One stable host for both layouts: resizing changes chrome, never the tab's owner.
                     NavDisplay(backStack = stack, modifier = Modifier.fillMaxSize().clipToBounds(),
                         onBack = { if (stack.size > 1) stack.removeLastOrNull() }, transition = NavTransitions.MiuixDefault,
@@ -253,6 +282,7 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
                         }
                     }
                 }
+            }
             }
         }
     }

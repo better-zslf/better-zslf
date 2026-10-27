@@ -5,10 +5,12 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.Route
 import io.github.betterzslf.edition.EditionAccess
@@ -18,21 +20,19 @@ import io.github.betterzslf.feature.runui.*
 import io.github.betterzslf.platform.FilePickResult
 import io.github.betterzslf.platform.rememberFilePicker
 import io.github.betterzslf.platform.runMapProviderFor
-import io.github.betterzslf.ui.Screen
-import io.github.betterzslf.ui.SectionCard
+import io.github.betterzslf.ui.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** Entire draft is route-local and in-memory; this page never changes preferredRunMode/settings. */
+/** Every source/edit/parameter/selection lives only in this route's memory, never the real-run runtime. */
 @Composable
 internal fun RunImportPage(graph: AppGraph, page: Route.Page, open: (Route) -> Unit, back: () -> Unit) {
-    if (!EditionAccess.routeEditorsEnabled) {
-        EditionUnavailablePage(back)
-        return
-    }
+    if (!EditionAccess.routeEditorsEnabled) { EditionUnavailablePage(back); return }
     val settings by graph.settings.settings.collectAsState()
     val account by graph.sessions.session.collectAsState()
     var refresh by remember { mutableIntStateOf(0) }
@@ -45,8 +45,12 @@ internal fun RunImportPage(graph: AppGraph, page: Route.Page, open: (Route) -> U
     var target by remember(detail) { mutableStateOf(detail.minimumDistanceMeters?.toString() ?: "1000") }
     var minutes by remember { mutableStateOf("20") }
     var seed by remember { mutableStateOf("0") }
+    var generatedSeed by remember(controller) { mutableStateOf<Int?>(null) }
     var fileMessage by remember { mutableStateOf<String?>(null) }
     var visible by remember { mutableIntStateOf(40) }
+    var showParameters by remember(controller) { mutableStateOf(false) }
+    var mapStage by remember(controller) { mutableIntStateOf(0) }
+    var chosenPreview by remember(controller) { mutableStateOf<RunImportState?>(null) }
     val sourceBusy = model.busy || query.loading
     val owner = remember(graph, account?.userId, account?.token) { Any() }
     val provider = runMapProviderFor(account?.mapWebType)
@@ -91,7 +95,7 @@ internal fun RunImportPage(graph: AppGraph, page: Route.Page, open: (Route) -> U
             is FilePickResult.Selected -> {
                 manualEditor?.let(::cancelManualEditor)
                 fileMessage = null
-                scope.launch { controller.read(result.file) }
+                scope.launch { if (controller.read(result.file)) { mapStage = 0; visible = 40 } }
             }
         }
     }
@@ -100,110 +104,147 @@ internal fun RunImportPage(graph: AppGraph, page: Route.Page, open: (Route) -> U
     val seedNumber = seed.trim().toIntOrNull()
     val parameterized = distance != null && duration != null
     val changed = model.validation != null && (model.targetDistanceMeters != distance || model.durationMillis != duration)
+    val generatedChanged = model.generated != null && (changed || generatedSeed != seedNumber || model.generationSamplingSeconds != settings.samplingSeconds)
     val busy = sourceBusy || manualEditor != null
     val frame = model.workingCoordinateSystem
     val dark = when (settings.theme) { "Dark" -> true; "Light" -> false; else -> isSystemInDarkTheme() }
-
     val guardedBack: () -> Unit = { manualEditor?.let(::cancelManualEditor) ?: back() }
-    Screen(page.title.ifBlank { AppText.Run.ROUTE_IMPORT_LOCAL_PREVIEW_TITLE }, guardedBack, actions = { TextButton(AppText.Run.CLEAR_DRAFT, enabled = !busy, onClick = { scope.launch { controller.clear() } }) }) { padding ->
+
+    Screen(AppText.Run.ROUTE_IMPORT_PREVIEW_TITLE, guardedBack, actions = {
+        TextButton(AppText.Run.CLEAR_DRAFT, enabled = !busy, onClick = { scope.launch { controller.clear(); chosenPreview = null; mapStage = 0 } })
+    }) { padding ->
         BoxWithConstraints(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item("local-only") { SectionCard(AppText.Run.LOCAL_ROUTE_PREVIEW_ONLY_TITLE, AppText.Run.IMPORT_PREVIEW_ISOLATION_HINT) }
-            runFeedback(query, { refresh++ })
-            runWarnings(model.warnings)
-            item("source-actions") {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TextButton(AppText.Run.SELECT_ROUTE_FILE, enabled = !busy, onClick = picker::launch, modifier = Modifier.weight(1f))
-                    TextButton(AppText.Run.USE_RECOMMENDED_PATH, enabled = !busy && detail.walkPaths.isNotEmpty(), onClick = { scope.launch { controller.useRecommended() } }, modifier = Modifier.weight(1f))
+            LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentPadding = PaddingValues(AppUiTokens.PagePadding), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                item("local-only") { InfoBanner(AppText.Run.IMPORT_PREVIEW_ISOLATION_HINT, AppText.Run.LOCAL_ROUTE_PREVIEW_ONLY_TITLE, UiTone.Neutral) }
+                runFeedback(query, { refresh++ })
+                item("source-picker") { RunCard {
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        RunFileGlyph()
+                        RunAction(AppText.Run.SELECT_ROUTE_FILE, enabled = !busy, primary = true, onClick = picker::launch, modifier = Modifier.fillMaxWidth())
+                        TextButton(AppText.ManualRoute.OPEN_EDITOR, enabled = !busy && identity.configured, onClick = {
+                            if (manualEditor == null) { manualNotice = null; manualEditor = captureManualEditor() }
+                        }, modifier = Modifier.fillMaxWidth())
+                        TextButton(AppText.Run.USE_RECOMMENDED_PATH, enabled = !busy && detail.walkPaths.isNotEmpty(), onClick = {
+                            scope.launch { if (controller.useRecommended()) mapStage = 0 }
+                        }, modifier = Modifier.fillMaxWidth())
+                    }
+                    if (!identity.configured) InfoBanner(AppText.Run.MAP_PROVIDER_AND_PUBLIC_KEY_CONFIGURATION_REQUIRED, tone = UiTone.Neutral)
+                    if (detail.walkPaths.isEmpty()) Text(AppText.Run.SERVER_USABLE_RECOMMENDED_PATH_MISSING, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                } }
+                manualNotice?.let { notice -> item("manual-notice") { InfoBanner(notice, tone = UiTone.Neutral) } }
+                fileMessage?.let { message -> item("file-message") { InfoBanner(message, tone = UiTone.Neutral) } }
+                model.error?.let { message -> item("error") { InfoBanner(message, AppText.Run.LOCAL_PREVIEW_INCOMPLETE, UiTone.Warning) } }
+                if (model.busy) item("busy") { CircularProgressIndicator() }
+                if (model.source != null) {
+                    item("source-summary") { SectionTitle(model.fileName ?: AppText.Run.ROUTE_DRAFT_TITLE, AppText.Run.VALIDATION_PARAMETERS_TITLE, { showParameters = true }) }
+                    item("map-tabs") { TabRow(
+                        tabs = listOf(AppText.Run.ROUTE_DRAFT_TITLE, AppText.Run.PROCESSED_WORKING_COPY_TITLE, AppText.Run.GENERATED_NON_GPS_PREVIEW_TITLE),
+                        selectedTabIndex = mapStage, onTabSelected = { index -> mapStage = index }, height = 44.dp, cornerRadius = AppUiTokens.ButtonRadius,
+                    ) }
+                    item("preview-map") {
+                        val paths = when (mapStage) {
+                            1 -> listOf(AppText.Run.PROCESSED_WORKING_COPY_TITLE to model.workingPoints)
+                            2 -> listOf(AppText.Run.GENERATED_NOT_MEASURED_LABEL to model.generated?.points.orEmpty().map { it.point })
+                            else -> model.originalSegments.mapIndexed { index, points -> AppText.Run.originalSegment(index + 1) to points }
+                        }
+                        RunMapPreview(graph, paths, coordinateSystem = if (mapStage == 0) model.originalCoordinateSystem else frame, height = 220.dp, showDetails = true)
+                    }
+                    item("validation-summary") { RunCard {
+                        SectionTitle(AppText.Run.VALIDATE_ROUTE_GEOMETRY, AppText.Run.VALIDATION_PARAMETERS_TITLE, { showParameters = true })
+                        val report = if (mapStage == 2) model.generatedValidation else model.validation
+                        if (report != null) {
+                            Text(RunDisplay.distance(report.distanceMeters, settings.metricUnits), fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+                            Text(if (report.valid) AppText.Run.LOCAL_GEOMETRY_VALID_NOT_SERVER_ACCEPTANCE else AppText.Run.LOCAL_PREVIEW_INCOMPLETE,
+                                fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                            if (report.issues.isNotEmpty()) InfoBanner(report.issues.joinToString("\n") { it.message }, tone = UiTone.Warning)
+                        } else Text(AppText.Run.VALIDATION_PARAMETERS_TITLE, fontSize = 14.sp)
+                        if (detail.minimumDistanceMeters == null) InfoBanner(AppText.Run.LOCAL_TARGET_VALID_SCHOOL_MINIMUM_UNKNOWN, tone = UiTone.Neutral)
+                        if (detail.checkpoints.isEmpty() || detail.checkpoints.size != detail.checkpointSourceCount) Text(AppText.Run.CHECKPOINT_DATA_INCOMPLETE_HINT, fontSize = 12.sp)
+                        if (changed || generatedChanged) InfoBanner(AppText.Run.REVALIDATE_REPORT_AFTER_PARAMETER_CHANGE_HINT, AppText.Run.TARGET_PARAMETERS_CHANGED, UiTone.Warning)
+                    } }
+                    item("use-preview") { RunAction(AppText.Run.USE_CURRENT_PREVIEW_ACTION, primary = true,
+                        enabled = !busy && !changed && !generatedChanged && model.validation?.valid == true && (model.generated == null || model.generatedValidation?.valid == true),
+                        modifier = Modifier.fillMaxWidth(), onClick = {
+                            // Selection only: no repository, real-run runtime or persistent settings mutation.
+                            chosenPreview = model
+                            mapStage = if (model.generated != null) 2 else 1
+                        }) }
+                    if (chosenPreview === model && !changed && !generatedChanged) item("chosen") { InfoBanner(AppText.Run.IMPORT_PREVIEW_ISOLATION_HINT, AppText.Run.LOCAL_ROUTE_PREVIEW_ONLY_TITLE, UiTone.Neutral) }
+                    item("more-tools") { RunAction(AppText.Run.VALIDATION_PARAMETERS_TITLE, enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = { showParameters = true }) }
+                }
+                runWarnings(model.warnings)
+                if (page.id.isNotBlank()) item("real-mode") { TextButton(AppText.Run.SWITCH_TO_REAL_RECORDING_THIS_TIME, enabled = !busy, onClick = {
+                    open(Route.Page("runtracker", page.id, AppText.Run.REAL_RUN_RECORD_TITLE))
+                }) }
+            }
+            manualEditor?.let { editor ->
+                key(editor.session.mount) {
+                    RunManualDraftSheet(editor.session,
+                        availableHeight = (maxHeight - padding.calculateTopPadding() - padding.calculateBottomPadding()).coerceAtLeast(0.dp),
+                        dark = dark, onCancel = { cancelManualEditor(editor) }, onCommit = { commit ->
+                            val route = commit.route
+                            if (route == null || manualEditor !== editor || !editor.session.refresh()) cancelManualEditor(editor)
+                            else {
+                                editor.saveJob = scope.launch {
+                                    try {
+                                        val accepted = manualEditor === editor && editor.session.refresh() && controller.useManual(route, editor.admission) {
+                                            manualEditor === editor && editor.session.canPublishCommit(commit)
+                                        }
+                                        if (manualEditor === editor && editor.session.finishCommit(commit, accepted) && accepted) {
+                                            editor.session.close(); manualEditor = null; fileMessage = null; mapStage = 0; visible = 40
+                                        }
+                                    } catch (cancelled: CancellationException) { editor.session.close(); throw cancelled }
+                                    catch (_: Exception) { editor.session.finishCommit(commit, accepted = false) }
+                                    finally { editor.saveJob = null }
+                                }
+                            }
+                        })
                 }
             }
-            item("manual-source") {
-                TextButton(AppText.ManualRoute.OPEN_EDITOR, enabled = !busy && identity.configured, modifier = Modifier.fillMaxWidth(), onClick = {
-                    if (manualEditor == null) {
-                        manualNotice = null
-                        manualEditor = captureManualEditor()
-                    }
-                })
-                if (!identity.configured) Text(AppText.Run.MAP_PROVIDER_AND_PUBLIC_KEY_CONFIGURATION_REQUIRED)
-            }
-            manualNotice?.let { notice -> item("manual-notice") { Text(notice) } }
-            item("size-limit") { Text(AppText.Run.ROUTE_FILE_LIMITS_AND_COORDINATES_HINT) }
-            fileMessage?.let { message -> item("file-message") { SectionCard(AppText.Common.FILE_SELECTION_TITLE, message) } }
-            model.error?.let { message -> item("error") { SectionCard(AppText.Run.LOCAL_PREVIEW_INCOMPLETE, message) } }
-            if (model.busy) item("busy") { CircularProgressIndicator() }
-            if (model.source != null) {
-                item("source") { SectionCard(model.fileName ?: AppText.Run.ROUTE_DRAFT_TITLE, AppText.Run.importSourceSummary((if (model.source == RunImportSource.MANUAL_MAP) AppText.ManualRoute.SOURCE_LABEL else model.source.toString()), (model.originalPoints.size), (model.originalSegments.size), (model.workingPoints.size), (if (model.normalized) AppText.Run.DENSITY_ADJUSTED_EXPLICITLY else AppText.Run.DENSITY_NOT_ADJUSTED), (if (model.detoured) AppText.Run.LOCAL_DISTANCE_EXTENSION_APPLIED else AppText.Run.NO_DISTANCE_EXTENSION))) }
-                item("original-map") { RunMapPreview(graph, model.originalSegments.mapIndexed { index, points -> AppText.Run.originalSegment((index + 1)) to points }, coordinateSystem = model.originalCoordinateSystem) }
-            }
+        }
+    }
+
+    OverlayBottomSheet(show = showParameters && manualEditor == null, title = AppText.Run.VALIDATION_PARAMETERS_TITLE, onDismissRequest = { showParameters = false }) {
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 580.dp), verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap), contentPadding = PaddingValues(bottom = 24.dp)) {
             item("target") { TextField(target, { target = it }, enabled = !busy, label = AppText.Run.LOCAL_TARGET_DISTANCE_METERS_FIELD, modifier = Modifier.fillMaxWidth(), singleLine = true) }
             item("duration") { TextField(minutes, { minutes = it }, enabled = !busy, label = AppText.Run.TARGET_DURATION_MINUTES_FIELD, modifier = Modifier.fillMaxWidth(), singleLine = true) }
             item("seed") { TextField(seed, { seed = it }, enabled = !busy, label = AppText.Run.REPRODUCIBLE_GENERATION_SEED_FIELD, modifier = Modifier.fillMaxWidth(), singleLine = true) }
-            item("requirements") { SectionCard(AppText.Run.VALIDATION_PARAMETERS_TITLE, AppText.Run.importDistanceRequirements((RunDisplay.distance(detail.minimumDistanceMeters, settings.metricUnits)), (settings.samplingSeconds)) + if (detail.minimumDistanceMeters == null) AppText.Run.SERVER_MINIMUM_DISTANCE_UNIT_UNKNOWN_NEWLINE_HINT else "") }
-            if (!parameterized) item("bad-input") { Text(AppText.Run.TARGET_DISTANCE_AND_DURATION_VALIDATION_HINT) }
-            if (changed) item("stale-report") { SectionCard(AppText.Run.TARGET_PARAMETERS_CHANGED, AppText.Run.REVALIDATE_REPORT_AFTER_PARAMETER_CHANGE_HINT) }
-            item("geometry-actions") {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TextButton(AppText.Run.ADJUST_WORKING_ROUTE_DENSITY, enabled = !busy && model.originalSegments.isNotEmpty(), onClick = { scope.launch { controller.normalize() } }, modifier = Modifier.fillMaxWidth())
-                    TextButton(AppText.Run.VALIDATE_ROUTE_GEOMETRY, enabled = !busy && parameterized && model.workingPoints.isNotEmpty(), onClick = { scope.launch { controller.validate(distance!!, duration!!) } }, modifier = Modifier.fillMaxWidth())
-                    TextButton(AppText.Run.EXTEND_DISTANCE_ALONG_RECOMMENDED_PATH, enabled = !busy && parameterized && detail.walkPaths.isNotEmpty() && model.workingPoints.isNotEmpty(), onClick = { scope.launch { controller.supplement(distance!!, duration!!) } }, modifier = Modifier.fillMaxWidth())
-                }
-            }
-            model.validation?.let { report ->
-                item("report-parameters") { SectionCard(AppText.Run.GEOMETRY_REPORT_PARAMETERS_TITLE, AppText.Run.importValidationMetrics((RunDisplay.distance(model.targetDistanceMeters, settings.metricUnits)), (RunDisplay.duration(model.durationMillis)), (RunDisplay.distance(report.distanceMeters, settings.metricUnits)), (RunDisplay.decimal(report.averageSpeedMetersPerSecond, 2)))) }
-                routeReportItems(report, detail, "working")
-            }
-            if (model.normalized || model.detoured) item("working-map") { RunMapPreview(graph, listOf(AppText.Run.PROCESSED_WORKING_COPY_TITLE to model.workingPoints), coordinateSystem = frame) }
-            item("generate") { TextButton(AppText.Run.GENERATE_LOCAL_TIMED_PREVIEW, enabled = !busy && parameterized && seedNumber != null && model.workingPoints.size >= 2,
-                onClick = { scope.launch { controller.generate(distance!!, duration!!, seedNumber!!, settings.samplingSeconds) } }, modifier = Modifier.fillMaxWidth()) }
+            item("requirements") { InfoBanner(AppText.Run.importDistanceRequirements(RunDisplay.distance(detail.minimumDistanceMeters, settings.metricUnits), settings.samplingSeconds) +
+                if (detail.minimumDistanceMeters == null) AppText.Run.SERVER_MINIMUM_DISTANCE_UNIT_UNKNOWN_NEWLINE_HINT else "", tone = UiTone.Neutral) }
+            if (!parameterized) item("bad-input") { InfoBanner(AppText.Run.TARGET_DISTANCE_AND_DURATION_VALIDATION_HINT, tone = UiTone.Warning) }
+            if (changed || generatedChanged) item("stale-report") { InfoBanner(AppText.Run.REVALIDATE_REPORT_AFTER_PARAMETER_CHANGE_HINT, tone = UiTone.Warning) }
+            item("geometry-actions") { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                RunAction(AppText.Run.ADJUST_WORKING_ROUTE_DENSITY, enabled = !busy && model.originalSegments.isNotEmpty(), modifier = Modifier.fillMaxWidth(), onClick = {
+                    scope.launch { if (controller.normalize()) mapStage = 1 }
+                })
+                RunAction(AppText.Run.VALIDATE_ROUTE_GEOMETRY, enabled = !busy && parameterized && model.workingPoints.isNotEmpty(), primary = true, modifier = Modifier.fillMaxWidth(), onClick = {
+                    scope.launch { controller.validate(distance!!, duration!!) }
+                })
+                RunAction(AppText.Run.EXTEND_DISTANCE_ALONG_RECOMMENDED_PATH, enabled = !busy && parameterized && detail.walkPaths.isNotEmpty() && model.workingPoints.isNotEmpty(), modifier = Modifier.fillMaxWidth(), onClick = {
+                    scope.launch { if (controller.supplement(distance!!, duration!!)) mapStage = 1 }
+                })
+            } }
+            model.validation?.let { report -> routeReportItems(report, detail, "working") }
+            item("generate") { RunAction(AppText.Run.GENERATE_LOCAL_TIMED_PREVIEW,
+                enabled = !busy && parameterized && seedNumber != null && model.workingPoints.size >= 2, primary = true, modifier = Modifier.fillMaxWidth(), onClick = {
+                    scope.launch { if (controller.generate(distance!!, duration!!, seedNumber!!, settings.samplingSeconds)) { generatedSeed = seedNumber; mapStage = 2; visible = 40 } }
+                }) }
             val generated = model.generated
             if (generated != null) {
-                item("generated") { SectionCard(AppText.Run.GENERATED_NON_GPS_PREVIEW_TITLE, AppText.Run.generatedPreviewSummary((generated.points.size), (RunDisplay.distance(generated.distanceMeters, settings.metricUnits)), (RunDisplay.duration(generated.endTimeMillis - generated.startTimeMillis)), (model.generationSamplingSeconds))) }
-                item("generated-map") { RunMapPreview(graph, listOf(AppText.Run.GENERATED_NOT_MEASURED_LABEL to generated.points.map { it.point }), coordinateSystem = frame) }
+                item("generated") { InfoBanner(AppText.Run.generatedPreviewSummary(generated.points.size, RunDisplay.distance(generated.distanceMeters, settings.metricUnits),
+                    RunDisplay.duration(generated.endTimeMillis - generated.startTimeMillis), model.generationSamplingSeconds), AppText.Run.GENERATED_NON_GPS_PREVIEW_TITLE, UiTone.Neutral) }
                 model.generatedValidation?.let { routeReportItems(it, detail, "generated") }
-                itemsIndexed(generated.points.take(visible), key = { index, _ -> "generated:$index" }) { index, point ->
-                    SectionCard(AppText.Run.generatedPointOrdinal((index + 1)), AppText.Run.generatedPointDetails((coordinate(point.point)), (point.locatetime), (RunDisplay.distance(point.dis, settings.metricUnits)), (RunDisplay.decimal(point.count))))
-                }
-                if (visible < generated.points.size) item("more-generated") { TextButton(AppText.Run.EXPAND_MORE_GENERATED_POINTS, onClick = { visible += 40 }) }
-            } else {
-                itemsIndexed(model.originalPoints.take(visible), key = { index, _ -> "original:$index" }) { index, point -> SectionCard(AppText.Run.importedCoordinateOrdinal((index + 1)), coordinate(point)) }
-                if (visible < model.originalPoints.size) item("more-original") { TextButton(AppText.Run.EXPAND_MORE_ORIGINAL_COORDINATES, onClick = { visible += 40 }) }
-            }
-            if (page.id.isNotBlank()) item("real-mode") { TextButton(AppText.Run.SWITCH_TO_REAL_RECORDING_THIS_TIME, enabled = !busy, onClick = { open(Route.Page("runtracker", page.id, AppText.Run.REAL_RUN_RECORD_TITLE)) }) }
-        }
-        manualEditor?.let { editor ->
-            key(editor.session.mount) {
-                RunManualDraftSheet(editor.session,
-                    availableHeight = (maxHeight - padding.calculateTopPadding() - padding.calculateBottomPadding()).coerceAtLeast(0.dp),
-                    dark = dark, onCancel = { cancelManualEditor(editor) }, onCommit = { commit ->
-                        val route = commit.route
-                        if (route == null || manualEditor !== editor || !editor.session.refresh()) {
-                            cancelManualEditor(editor)
-                        } else {
-                            editor.saveJob = scope.launch {
-                                try {
-                                    val accepted = manualEditor === editor && editor.session.refresh() &&
-                                        controller.useManual(route, editor.admission) {
-                                            manualEditor === editor && editor.session.canPublishCommit(commit)
-                                        }
-                                    if (manualEditor === editor && editor.session.finishCommit(commit, accepted) && accepted) {
-                                        // Do not apply the old admission check after our own successful replacement.
-                                        editor.session.close()
-                                        manualEditor = null
-                                        fileMessage = null
-                                    }
-                                } catch (cancelled: CancellationException) {
-                                    editor.session.close()
-                                    throw cancelled
-                                } catch (_: Exception) {
-                                    editor.session.finishCommit(commit, accepted = false)
-                                } finally {
-                                    editor.saveJob = null
-                                }
-                            }
-                        }
-                    })
-            }
-        }
+                item("generated-points") { RunDisclosure(AppText.Run.GENERATED_NOT_MEASURED_LABEL) {
+                    generated.points.take(visible).forEachIndexed { index, point ->
+                        Text("${AppText.Run.generatedPointOrdinal(index + 1)}\n${AppText.Run.generatedPointDetails(coordinate(point.point), point.locatetime, RunDisplay.distance(point.dis, settings.metricUnits), RunDisplay.decimal(point.count))}", fontSize = 12.sp)
+                    }
+                    if (visible < generated.points.size) TextButton(AppText.Run.EXPAND_MORE_GENERATED_POINTS, onClick = { visible += 40 })
+                } }
+            } else if (model.originalPoints.isNotEmpty()) item("original-points") { RunDisclosure(AppText.Run.ROUTE_DRAFT_TITLE) {
+                model.originalPoints.take(visible).forEachIndexed { index, point -> Text("${AppText.Run.importedCoordinateOrdinal(index + 1)} · ${coordinate(point)}", fontSize = 12.sp) }
+                if (visible < model.originalPoints.size) TextButton(AppText.Run.EXPAND_MORE_ORIGINAL_COORDINATES, onClick = { visible += 40 })
+            } }
+            item("limits") { InfoBanner(AppText.Run.ROUTE_FILE_LIMITS_AND_COORDINATES_HINT, tone = UiTone.Neutral) }
         }
     }
 }
@@ -211,11 +252,7 @@ internal fun RunImportPage(graph: AppGraph, page: Route.Page, open: (Route) -> U
 /** Page-scope job ownership is separate from the native document's event admission. */
 private class RunManualImportEditor(val session: RunManualDraftSession, val admission: RunManualImportAdmission) {
     var saveJob: Job? = null
-    fun close() {
-        session.close()
-        saveJob?.cancel()
-        saveJob = null
-    }
+    fun close() { session.close(); saveJob?.cancel(); saveJob = null }
     override fun toString(): String = "RunManualImportEditor(redacted)"
 }
 
@@ -231,15 +268,18 @@ private fun LazyListScope.routeReportItems(report: RouteValidationReport, detail
         AppText.Run.TARGET_SPEED_LIMIT_LABEL to setOf(RouteIssueCode.SPEED),
         AppText.Run.POINT_DENSITY_RANGE_LABEL to setOf(RouteIssueCode.SPARSE, RouteIssueCode.DENSE),
     )
-    groups.forEachIndexed { index, (label, codes) ->
-        val issues = report.issues.filter { it.code in codes }
-        val unknown = index == 0 && (detail.checkpoints.isEmpty() || detail.checkpoints.size != detail.checkpointSourceCount)
-        val text = when {
-            unknown -> AppText.Run.CHECKPOINT_DATA_INCOMPLETE_HINT
-            issues.isNotEmpty() -> issues.joinToString("\n") { it.message + (it.index?.let { position -> AppText.Run.issueIndex((position)) } ?: "") }
-            index == 1 && detail.minimumDistanceMeters == null -> AppText.Run.LOCAL_TARGET_VALID_SCHOOL_MINIMUM_UNKNOWN
-            else -> AppText.Run.LOCAL_GEOMETRY_VALID_NOT_SERVER_ACCEPTANCE
+    item("$prefix:report") { RunDisclosure(AppText.Run.GEOMETRY_REPORT_PARAMETERS_TITLE) {
+        groups.forEachIndexed { index, (label, codes) ->
+            val issues = report.issues.filter { it.code in codes }
+            val unknown = index == 0 && (detail.checkpoints.isEmpty() || detail.checkpoints.size != detail.checkpointSourceCount)
+            Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            val text = when {
+                unknown -> AppText.Run.CHECKPOINT_DATA_INCOMPLETE_HINT
+                issues.isNotEmpty() -> issues.joinToString("\n") { it.message + (it.index?.let { position -> AppText.Run.issueIndex(position) } ?: "") }
+                index == 1 && detail.minimumDistanceMeters == null -> AppText.Run.LOCAL_TARGET_VALID_SCHOOL_MINIMUM_UNKNOWN
+                else -> AppText.Run.LOCAL_GEOMETRY_VALID_NOT_SERVER_ACCEPTANCE
+            }
+            InfoBanner(text, tone = if (issues.isNotEmpty()) UiTone.Warning else UiTone.Neutral)
         }
-        item("$prefix:report:$index") { SectionCard(label, text) }
-    }
+    } }
 }

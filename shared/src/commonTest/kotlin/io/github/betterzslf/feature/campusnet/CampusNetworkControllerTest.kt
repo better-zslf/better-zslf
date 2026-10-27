@@ -223,7 +223,7 @@ class CampusNetworkControllerTest {
         assertTrue(controller.confirm(assertNotNull(controller.state.value.preview).id, true))
         assertEquals(CampusPasswordPhase.COMPLETED, controller.state.value.phase)
         assertNotNull(controller.state.value.queryMessage)
-        assertTrue(controller.state.value.formMessage.orEmpty().contains("回查失败"))
+        assertEquals("服务已返回改密成功，但暂未查到最新账号。可以刷新查询，不要重复修改密码。", controller.state.value.formMessage)
         assertEquals(1, source.calls.count { it == "write" })
     }
 

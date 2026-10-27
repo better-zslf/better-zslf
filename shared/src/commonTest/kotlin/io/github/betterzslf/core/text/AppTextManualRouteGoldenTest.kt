@@ -4,18 +4,18 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
-/** Independent literals for the new group only; no old AppText/golden baseline is rewritten. */
+/** Independent literal expectations for reviewed manual-route copy, not AppText-derived values. */
 class AppTextManualRouteGoldenTest {
     @Test fun controllerContractCopyIsExact() {
         assertEquals("地图点选草稿", AppText.ManualRoute.SOURCE_LABEL)
-        assertEquals("地图点选不是 GPS 实测，仅保留本机预览；不进入真实跑步记录，也不会上传。", AppText.ManualRoute.LOCAL_ONLY_WARNING)
-        assertEquals("保留地图点选的原始坐标系，工作副本转换为 WGS84；不会修改原始点。", AppText.ManualRoute.WORKING_COPY_WGS84_HINT)
-        assertEquals("请在地图上点选至少两个不同的点，再保存本机预览。", AppText.ManualRoute.AT_LEAST_TWO_POINTS_REQUIRED)
-        assertEquals("地图草稿无效，原有本机预览保持不变。", AppText.ManualRoute.INVALID_DRAFT)
+        assertEquals("手绘路线只在本页内存中预览，离开后不保存。不是 GPS 实测，不进入真实跑步记录，不会上传，也不代表学校认可。", AppText.ManualRoute.LOCAL_ONLY_WARNING)
+        assertEquals("保留原始地图坐标，处理后路线使用 WGS84，不修改原始点。", AppText.ManualRoute.WORKING_COPY_WGS84_HINT)
+        assertEquals("请在地图上选择至少两个不同的点，再使用此预览。", AppText.ManualRoute.AT_LEAST_TWO_POINTS_REQUIRED)
+        assertEquals("这份草稿暂不可用，原有预览保持不变。", AppText.ManualRoute.INVALID_DRAFT)
     }
 
     @Test fun editorActionsHaveIndependentLabels() {
-        assertEquals(listOf("在地图上绘制本机路线", "绘制本机路线", "取消绘制", "替换本机预览", "撤销末点", "清空绘制"),
+        assertEquals(listOf("打开手绘路线编辑器", "手绘路线（仅本页预览）", "取消绘制", "使用此预览", "撤销末点", "清空绘制"),
             listOf(AppText.ManualRoute.OPEN_EDITOR, AppText.ManualRoute.TITLE, AppText.ManualRoute.CANCEL,
                 AppText.ManualRoute.SAVE_PREVIEW, AppText.ManualRoute.UNDO, AppText.ManualRoute.CLEAR))
     }

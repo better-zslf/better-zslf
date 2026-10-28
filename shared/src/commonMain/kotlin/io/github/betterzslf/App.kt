@@ -178,6 +178,28 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
     val community = rememberNavBackStack<Route>(Route.TabRoot(2))
     val profile = rememberNavBackStack<Route>(Route.TabRoot(3))
     val tabStacks = listOf(home, run, community, profile)
+    // The root stack owns a single route while a tab is open, so the platform back gesture must
+    // first pop the active tab's stack and then let the system background the task.
+    DisposableEffect(root, tabStacks, selected) {
+        AppBackDispatcher.register {
+            val top = root.lastOrNull()
+            when {
+                top is Route.Page -> {
+                    root.removeLastOrNull()
+                    true
+                }
+                top is Route.Login -> false
+                else -> {
+                    val stack = NavigationLayoutPolicy.stackFor(tabStacks, selected)
+                    if (stack.size > 1) {
+                        stack.removeLastOrNull()
+                        true
+                    } else false
+                }
+            }
+        }
+        onDispose { AppBackDispatcher.register(null) }
+    }
     var previousOwner by rememberSaveable { mutableStateOf(session?.userId) }
     LaunchedEffect(session?.token) {
         if (session == null) {

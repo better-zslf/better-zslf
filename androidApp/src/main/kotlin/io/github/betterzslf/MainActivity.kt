@@ -23,6 +23,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Screen-level back handling runs first; returning false keeps the platform behaviour.
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (!AppBackDispatcher.dispatch()) {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
         val app = application as BetterZslfApplication
         setContent {
             val provider = remember(app) { app::applicationGraph }

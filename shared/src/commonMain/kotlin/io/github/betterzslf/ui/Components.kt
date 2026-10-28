@@ -85,7 +85,9 @@ internal fun pageContentPadding(padding: PaddingValues, overlayInset: Dp, direct
     start = padding.calculateStartPadding(direction) + horizontal,
     end = padding.calculateEndPadding(direction) + horizontal,
     top = padding.calculateTopPadding() + AppUiTokens.Gap,
-    bottom = padding.calculateBottomPadding() + overlayInset + AppUiTokens.SectionGap,
+    // The floating pill covers the bottom of the viewport, so the last row needs its measured
+    // height plus breathing room; without the measured value the tail row sits under the bar.
+    bottom = maxOf(padding.calculateBottomPadding(), overlayInset) + AppUiTokens.SectionGap,
 )
 
 @Composable

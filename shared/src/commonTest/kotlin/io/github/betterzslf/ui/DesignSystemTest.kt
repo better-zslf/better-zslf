@@ -71,7 +71,9 @@ class DesignSystemTest {
             assertEquals(50.dp, result.calculateLeftPadding(direction))
             assertEquals(27.dp, result.calculateRightPadding(direction))
             assertEquals(92.dp, result.calculateTopPadding())
-            assertEquals(126.dp, result.calculateBottomPadding())
+            // The floating bar is an overlay: its measured height wins over the scaffold inset, so
+            // the tail row is not covered. Section gap keeps a little breathing room below it.
+            assertEquals(116.dp, result.calculateBottomPadding())
         }
         val rtl = pageContentPadding(native, 0.dp, LayoutDirection.Rtl)
         assertEquals(27.dp, rtl.calculateStartPadding(LayoutDirection.Rtl))

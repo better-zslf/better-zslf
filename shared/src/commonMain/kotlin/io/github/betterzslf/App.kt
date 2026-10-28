@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import top.yukonga.miuix.kmp.blur.BlendColorEntry
 import top.yukonga.miuix.kmp.blur.BlurBlendMode
 import top.yukonga.miuix.kmp.blur.BlurColors
@@ -16,8 +15,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import io.github.betterzslf.core.net.ApiClient
 import io.github.betterzslf.core.storage.SessionStore
@@ -250,26 +247,22 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
     val icons = listOf(MiuixIcons.Home, MiuixIcons.Location, MiuixIcons.Community, MiuixIcons.Contacts)
     val backdrop = rememberLayerBackdrop()
     val showBottomNavigation = stack.lastOrNull() is Route.TabRoot
-    // Measured height of the floating pill (including its margins), so lists can reserve exactly
-    // that much space. Scaffold padding cannot supply this: it is already used by the page's own
-    // insets, and the pill floats over the content instead of pushing it.
-    var overlayInset by remember { mutableStateOf(0.dp) }
-    val density = LocalDensity.current
+    // Miuix measures the whole bottomBar before composing its body. Its padding includes the
+    // pill, outer spacing and system navigation area, unlike measuring inside padding modifiers.
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
         val useRail = NavigationLayoutPolicy.useRail(maxWidth.value)
         Scaffold(containerColor = MiuixTheme.colorScheme.surface,
             contentWindowInsets = WindowInsets(0, 0, 0, 0), bottomBar = {
             if (!useRail && showBottomNavigation) {
-                Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 12.dp)
-                    .onSizeChanged { overlayInset = with(density) { it.height.toDp() } }
-                ) {
+                Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 12.dp)) {
                     NavigationBar(
                         modifier = Modifier.clip(RoundedCornerShape(AppUiTokens.NavigationRadius)).textureBlur(
                             backdrop = backdrop,
                             shape = RoundedCornerShape(AppUiTokens.NavigationRadius),
                             colors = BlurColors(blendColors = listOf(BlendColorEntry(MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f), BlurBlendMode.SrcOver))),
                         ),
-                        color = Color.Transparent,
+                        // Keep the pill legible even when the platform's backdrop blur is unavailable.
+                        color = MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f),
                         showDivider = false,
                         defaultWindowInsetsPadding = false,
                     ) {
@@ -281,9 +274,11 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
                 }
             }
         }) { padding ->
-            // Content extends below the translucent pill; lists reserve the measured height at their end.
+            // Reserve the complete measured bar only on tab roots. Overlay padding is not applied
+            // to this pane, so do not mark its safe areas consumed before a child actually uses them.
+            val overlayInset = navigationOverlayInset(padding, showBottomNavigation && !useRail)
             CompositionLocalProvider(LocalNavigationBottomInset provides overlayInset) {
-            Row(Modifier.fillMaxSize().consumeWindowInsets(padding).clipToBounds()) {
+            Row(Modifier.fillMaxSize().clipToBounds()) {
                 if (useRail) NavigationRail(modifier = Modifier.fillMaxHeight(), defaultWindowInsetsPadding = true) {
                     titles.forEachIndexed { index, title ->
                         NavigationRailItem(selected = activeTab == index,

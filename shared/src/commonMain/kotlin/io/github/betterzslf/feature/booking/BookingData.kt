@@ -129,13 +129,27 @@ data class BookingQueryState(
     val loading: Boolean = false,
     val error: ApiError? = null,
     val message: String = "",
-)
+) {
+    // Read responses may carry routine success messages; they are not persistent page notices.
+    val feedback: BookingQueryFeedback get() = when {
+        loading -> BookingQueryFeedback.LOADING
+        error != null -> BookingQueryFeedback.ERROR
+        else -> BookingQueryFeedback.NONE
+    }
+}
+
+enum class BookingQueryFeedback { NONE, LOADING, ERROR }
 
 /** Coalesces refresh taps, retains last successful data on failure and never retries by itself. */
 class BookingQuery(private val loader: suspend () -> ApiResult<JsonElement>) {
     private val mutableState = MutableStateFlow(BookingQueryState())
     val state = mutableState.asStateFlow()
     private val mutex = Mutex()
+
+    /** An unrequested date is idle: no loader call, spinner, failure or implicit retry. */
+    suspend fun refreshIfReady(ready: Boolean) {
+        if (ready) refresh()
+    }
 
     suspend fun refresh() {
         if (!mutex.tryLock()) return

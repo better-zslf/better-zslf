@@ -461,7 +461,7 @@ object AppText {
         fun accountLine(maskedAccount: String): String = "宽带账号：${maskedAccount}"
         fun passwordPreview(maskedAccount: String, maskedPhone: String): String = "宽带账号：${maskedAccount}\n手机号：${maskedPhone}\n操作：修改运营商宽带密码\n不显示、不保存新密码。这不是学校登录密码；提交后本页不会重复发送。"
         fun passwordTarget(maskedAccount: String): String = "将修改宽带账号 ${maskedAccount} 的密码，不是学校登录密码。请先核对上方预览，再确认提交。"
-        fun typeStatus(status: String): String = "账号状态：${status}"
+        fun typeStatus(status: String): String = "账号状态：${status}（服务端原值）"
 
         // Feature/model display copy; protocol values remain at their source.
         const val ACCOUNT_ID_UNVERIFIABLE_QUERY_ONLY: String = "该条目缺少可核验的运营商账号标识，当前仅查询"
@@ -590,6 +590,11 @@ object AppText {
     }
 
     object Content {
+        const val HTML_BODY_LOADING: String = "正在加载正文…"
+        const val HTML_BODY_LOAD_FAILED: String = "正文加载失败，请重试。"
+        const val HTML_BODY_LOAD_TIMEOUT: String = "正文加载超时，请重试。"
+        const val HTML_BODY_UNAVAILABLE: String = "当前平台暂不支持正文网页显示。"
+        const val RELOAD_HTML_BODY: String = "重新加载正文"
         const val ANNOUNCEMENTS_AND_NOTIFICATIONS_TITLE: String = "公告与通知"
         const val ARTICLES_TITLE: String = "文章"
         const val ARTICLE_DETAIL_TITLE: String = "文章详情"
@@ -652,7 +657,7 @@ object AppText {
         const val UPDATING_READ_STATUS: String = "正在更新已读状态…"
         const val VIEW_COLUMN_ARTICLES: String = "查看本栏目文章"
         const val VIEW_INBOX_NOTIFICATIONS: String = "查看站内通知"
-        fun aboutVersion(version: String): String = "${version}\n电子科技大学中山学院第三方校园客户端。与学校及官方客户端无隶属关系。"
+        fun aboutVersion(version: String): String = version
         fun allItemsShown(total: Int?): String = "共 ${total} 条，已全部显示"
         fun articleCounters(reads: String, likes: String): String = "阅读 ${reads} · 赞 ${likes}"
         fun checkInRadius(meters: Int): String = "签到半径配置：${meters} 米（不改变校园跑的轨迹阈值）"
@@ -1511,6 +1516,7 @@ object AppText {
     }
 
     object Water {
+        const val CONNECT_DEVICE_BEFORE_START_HINT: String = "需先连接设备"
         const val DEVICE_LABEL: String = "设备"
         const val PAGE_OBSERVATION_LABEL: String = "本页计时"
         const val START_REQUEST_HINT: String = "点击请求开启用水（需确认）"
@@ -1643,7 +1649,7 @@ object AppText {
         const val LOCAL_ONLY_HINT: String = "日志仅保存在本机，不上传学校服务，也不包含密码或登录凭据。"
         const val LOG_TITLE: String = "运行日志"
         const val FILTER_ALL: String = "全部"
-        const val FILTER_ISSUES: String = "警告与错误"
+        const val FILTER_ISSUES: String = "警告"
         const val FILTER_ERRORS: String = "错误"
         const val FILTER_EMPTY: String = "当前筛选下没有日志。"
         const val LOG_EMPTY: String = "还没有日志。开启调试模式并继续操作应用，日志会出现在这里。"

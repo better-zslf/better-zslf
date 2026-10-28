@@ -61,6 +61,16 @@ data class WaterHeaterModel(
     val observedMillis: Long,
     val notice: String?,
 ) {
+    /** Normal system messages are available in diagnostics, not a persistent access warning. */
+    val showBluetoothAccessCard: Boolean get() = !access.ready()
+    val beginActionLabel: String get() = AppText.Water.CONFIRM_START_ACTION
+    val beginActionHint: String? get() = when {
+        canBegin -> AppText.Water.START_REQUEST_HINT
+        ble.acceptsConnection() -> AppText.Water.CONNECT_DEVICE_BEFORE_START_HINT
+        else -> null
+    }
+    val deviceName: String get() = ble.device?.name ?: AppText.Common.NOT_SELECTED
+
     val title: String get() = if (ble.normalEndCompleted && ble.phase == WaterBlePhase.Disconnected) AppText.Water.NORMAL_END_FLOW_COMPLETED_TITLE else when (ble.phase) {
         WaterBlePhase.Disconnected -> AppText.Water.NOT_CONNECTED_OR_CONNECTION_CLOSED_TITLE
         WaterBlePhase.Connecting -> AppText.Water.CONNECTING_AND_SUBSCRIBING_NOTIFICATIONS_TITLE

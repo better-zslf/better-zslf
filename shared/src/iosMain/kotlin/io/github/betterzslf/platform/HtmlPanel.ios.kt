@@ -3,13 +3,19 @@
 package io.github.betterzslf.platform
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
+import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.readValue
 import platform.CoreGraphics.CGRectZero
+import platform.Foundation.NSError
 import platform.Foundation.NSURL
+import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationAction
 import platform.WebKit.WKNavigationActionPolicy
 import platform.WebKit.WKNavigationDelegateProtocol
@@ -23,23 +29,31 @@ import platform.WebKit.javaScriptEnabled
 import platform.darwin.NSObject
 
 @Composable
-actual fun HtmlPanel(html: String, modifier: Modifier) {
-    // WKWebView holds its navigation delegate weakly; Compose retains the renderer for its lifetime.
-    val renderer = remember { ArticleRenderer() }
-    UIKitView(
-        factory = { renderer.createView() },
-        modifier = modifier,
-        update = { renderer.render(it, html) },
-        onRelease = { renderer.release(it) },
-        properties = UIKitInteropProperties(isNativeAccessibilityEnabled = true),
-    )
+actual fun HtmlPanel(html: String, modifier: Modifier, onLoadState: (HtmlPanelLoadState) -> Unit) {
+    key(html) {
+        // WKWebView holds its navigation delegate weakly; retain it within this document's lifetime.
+        val callback = rememberUpdatedState(onLoadState)
+        val renderer = remember { ArticleRenderer { callback.value(it) } }
+        DisposableEffect(renderer) { onDispose { renderer.invalidate() } }
+        UIKitView(
+            factory = { renderer.createView() },
+            modifier = modifier,
+            update = { renderer.render(it, html) },
+            onRelease = { renderer.release(it) },
+            properties = UIKitInteropProperties(isNativeAccessibilityEnabled = true),
+        )
+    }
 }
 
 private const val ARTICLE_BASE_URL = "https://zslf.zsc.edu.cn/"
 
-private class ArticleRenderer : NSObject(), WKNavigationDelegateProtocol {
+private class ArticleRenderer(private var onLoadState: ((HtmlPanelLoadState) -> Unit)?) : NSObject(), WKNavigationDelegateProtocol {
     private var renderedHtml: String? = null
     private var awaitingLocalDocument = false
+    private var ownedView: WKWebView? = null
+    private var activeNavigation: WKNavigation? = null
+    private var disposed = false
+    private var failed = false
 
     @Suppress("DEPRECATION") // Also disable the legacy switch for early iOS 14 WebKit releases.
     fun createView(): WKWebView {
@@ -52,24 +66,69 @@ private class ArticleRenderer : NSObject(), WKNavigationDelegateProtocol {
             userContentController = WKUserContentController()
         }
         return WKWebView(frame = CGRectZero.readValue(), configuration = configuration).apply {
+            ownedView = this
             navigationDelegate = this@ArticleRenderer
             allowsBackForwardNavigationGestures = false
         }
     }
 
     fun render(view: WKWebView, html: String) {
-        if (renderedHtml == html) return
+        if (disposed || view !== ownedView || renderedHtml == html) return
         renderedHtml = html
         awaitingLocalDocument = true
+        onLoadState?.invoke(HtmlPanelLoadState.LOADING)
         // This loads a local HTML string, not an authenticated URL request. No token/cookie is passed.
-        view.loadHTMLString(articleDocument(html), baseURL = NSURL(string = ARTICLE_BASE_URL))
+        activeNavigation = runCatching { view.loadHTMLString(articleDocument(html), baseURL = NSURL(string = ARTICLE_BASE_URL)) }.getOrNull()
+        if (activeNavigation == null) {
+            awaitingLocalDocument = false
+            failed = true
+            onLoadState?.invoke(HtmlPanelLoadState.FAILED)
+        }
     }
 
+    fun invalidate() { disposed = true; onLoadState = null }
     fun release(view: WKWebView) {
+        if (view !== ownedView) return
+        invalidate()
+        activeNavigation = null
+        ownedView = null
         view.stopLoading()
         view.navigationDelegate = null
         renderedHtml = null
         awaitingLocalDocument = false
+    }
+
+    private fun ownsNavigation(view: WKWebView, navigation: WKNavigation?): Boolean =
+        !disposed && view === ownedView && navigation != null && navigation === activeNavigation
+
+    override fun webView(webView: WKWebView, didFinishNavigation: WKNavigation?) {
+        if (!ownsNavigation(webView, didFinishNavigation) || failed) return
+        awaitingLocalDocument = false
+        onLoadState?.invoke(HtmlPanelLoadState.READY)
+    }
+
+    @ObjCSignatureOverride
+    override fun webView(webView: WKWebView, didFailNavigation: WKNavigation?, withError: NSError) {
+        navigationFailed(webView, didFailNavigation)
+    }
+
+    @ObjCSignatureOverride
+    override fun webView(webView: WKWebView, didFailProvisionalNavigation: WKNavigation?, withError: NSError) {
+        navigationFailed(webView, didFailProvisionalNavigation)
+    }
+
+    private fun navigationFailed(view: WKWebView, navigation: WKNavigation?) {
+        if (!ownsNavigation(view, navigation)) return
+        awaitingLocalDocument = false
+        failed = true
+        onLoadState?.invoke(HtmlPanelLoadState.FAILED)
+    }
+
+    override fun webViewWebContentProcessDidTerminate(webView: WKWebView) {
+        if (disposed || webView !== ownedView) return
+        awaitingLocalDocument = false
+        failed = true
+        onLoadState?.invoke(HtmlPanelLoadState.FAILED)
     }
 
     override fun webView(
@@ -77,6 +136,10 @@ private class ArticleRenderer : NSObject(), WKNavigationDelegateProtocol {
         decidePolicyForNavigationAction: WKNavigationAction,
         decisionHandler: (WKNavigationActionPolicy) -> Unit,
     ) {
+        if (disposed || webView !== ownedView) {
+            decisionHandler(WKNavigationActionPolicy.WKNavigationActionPolicyCancel)
+            return
+        }
         val action = decidePolicyForNavigationAction
         val url = action.request.URL
         val absoluteUrl = url?.absoluteString

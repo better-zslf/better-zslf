@@ -9,7 +9,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
@@ -47,6 +46,10 @@ class NavigationResults {
 /** The floating tab bar overlays content; only scroll content reserves its measured height. */
 val LocalNavigationBottomInset = staticCompositionLocalOf { 0.dp }
 
+/** Scaffold supplies the complete bottomBar measurement, including all outside/safe-area padding. */
+internal fun navigationOverlayInset(padding: PaddingValues, barVisible: Boolean): Dp =
+    if (barVisible) padding.calculateBottomPadding().coerceAtLeast(0.dp) else 0.dp
+
 @Composable
 fun Screen(title: String, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}, content: @Composable (PaddingValues) -> Unit) {
     val behavior = MiuixScrollBehavior()
@@ -57,14 +60,18 @@ fun Screen(title: String, onBack: (() -> Unit)? = null, actions: @Composable Row
         colors = BlurColors(blendColors = listOf(BlendColorEntry(MiuixTheme.colorScheme.background.copy(alpha = 0.88f), BlurBlendMode.SrcOver))),
     )
     Scaffold(
-        modifier = Modifier.nestedScroll(behavior.nestedScrollConnection),
+        // Scroll/blur may extend behind the toolbar, never behind the OS status area. Applying
+        // and consuming the top inset here also prevents nested top bars from adding it twice.
+        modifier = Modifier.background(MiuixTheme.colorScheme.surface)
+            .windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top))
+            .nestedScroll(behavior.nestedScrollConnection),
         containerColor = MiuixTheme.colorScheme.surface,
         topBar = {
             if (onBack == null) {
-                TopAppBar(title = title, color = Color.Transparent, modifier = barModifier,
+                TopAppBar(title = title, color = MiuixTheme.colorScheme.surface, modifier = barModifier,
                     titlePadding = AppUiTokens.PagePadding, scrollBehavior = behavior, actions = actions)
             } else {
-                SmallTopAppBar(title = title, color = Color.Transparent, modifier = barModifier,
+                SmallTopAppBar(title = title, color = MiuixTheme.colorScheme.surface, modifier = barModifier,
                     scrollBehavior = behavior,
                     navigationIcon = {
                         IconButton(onClick = onBack) {

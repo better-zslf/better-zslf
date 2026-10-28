@@ -22,7 +22,6 @@ import androidx.compose.ui.unit.sp
 import io.github.betterzslf.feature.water.WaterBleController
 import io.github.betterzslf.feature.water.WaterBleDevice
 import io.github.betterzslf.feature.water.WaterFailureGuard
-import io.github.betterzslf.feature.water.WaterBlePhase
 import io.github.betterzslf.ui.AppUiTokens
 import io.github.betterzslf.ui.InfoBanner
 import io.github.betterzslf.ui.PageList
@@ -61,7 +60,7 @@ fun WaterHeaterScreen(controller: WaterBleController, onBack: () -> Unit) {
     )
     Screen(AppText.Water.DORMITORY_HEATER_TITLE, onBack = presenter::requestBack) { padding ->
         PageList(padding) {
-            if (!model.access.available || !model.access.granted || !model.access.enabled || !model.access.message.isNullOrBlank()) {
+            if (model.showBluetoothAccessCard) {
                 item(key = "access") { BluetoothAccessCard(model, access) }
             }
             item(key = "session") { WaterSessionCard(model) }
@@ -71,11 +70,12 @@ fun WaterHeaterScreen(controller: WaterBleController, onBack: () -> Unit) {
                     Button(onClick = presenter::requestBegin, enabled = model.canBegin,
                         modifier = Modifier.size(140.dp), minHeight = 140.dp, cornerRadius = 70.dp,
                         colors = ButtonDefaults.buttonColorsPrimary()) {
-                        Text(if (model.ble.phase == WaterBlePhase.Active) AppText.Water.DEVICE_CONFIRMED_STARTED_TITLE
-                            else AppText.Water.CONFIRM_START_ACTION, textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold)
+                        Text(model.beginActionLabel, textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold)
                     }
-                    Text(if (model.canBegin) AppText.Water.START_REQUEST_HINT else model.title,
-                        textAlign = TextAlign.Center, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    model.beginActionHint?.let { hint ->
+                        Text(hint, textAlign = TextAlign.Center, fontSize = 13.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    }
                 }
             }
             item(key = "device-details") { WaterDeviceDetailsCard(model, presenter) }
@@ -134,7 +134,7 @@ fun WaterHeaterScreen(controller: WaterBleController, onBack: () -> Unit) {
             if (diagnosticsExpanded) item(key = "debug") {
                 InfoBanner(AppText.Water.connectionDiagnostics(model.ble.phase.toString(), model.ble.protocolState.toString(), model.ble.retryStatus.recentFailures),
                     title = AppText.Water.NO_CUSTOM_COMMANDS_HINT, tone = UiTone.Neutral)
-                BluetoothAccessCard(model, access)
+                if (!model.showBluetoothAccessCard) BluetoothAccessCard(model, access)
             }
         }
         // Miuix overlays require the Scaffold-provided popup/dialog host.
@@ -199,7 +199,7 @@ private fun WaterDeviceDetailsCard(model: WaterHeaterModel, presenter: WaterHeat
             verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(AppText.Water.DEVICE_LABEL, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                Text(model.ble.device?.name ?: AppText.Water.DISCONNECTED, fontSize = 16.sp,
+                Text(model.deviceName, fontSize = 16.sp,
                     fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 model.ble.device?.rssi?.let { Text(AppText.Water.signalDbm(it), fontSize = 12.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }

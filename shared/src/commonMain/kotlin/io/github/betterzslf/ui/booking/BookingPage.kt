@@ -103,7 +103,8 @@ private fun VenueTimes(graph: AppGraph, page: Route.Page, open: (Route) -> Unit,
     val selection = remember(page.id) { BookingSelection.decode(page.id) }
     var dateInput by remember { mutableStateOf(selection.dateTime) }
     var requestedDate by remember { mutableStateOf(selection.dateTime) }
-    val query = rememberBookingQuery(Triple(graph, selection.siteId, requestedDate)) {
+    val hasRequestedDate = requestedDate.isNotBlank()
+    val query = rememberBookingQuery(Triple(graph, selection.siteId, requestedDate), enabled = hasRequestedDate) {
         if (selection.siteId.isBlank()) ApiResult.Failure(ApiError.Validation(listOf("siteId"), AppText.Booking.VENUE_ID_MISSING))
         else if (!validBookingDate(requestedDate)) ApiResult.Failure(ApiError.Validation(listOf("dateTime"), AppText.Booking.ENTER_DATE_BEFORE_SLOT_QUERY))
         else graph.repositories.venues.times(selection.siteId, requestedDate)
@@ -115,11 +116,14 @@ private fun VenueTimes(graph: AppGraph, page: Route.Page, open: (Route) -> Unit,
     val selectable = rows.filter { bookingAvailability(it) != SlotAvailability.FULL && it.bookingId() !in occupied }.map { it.bookingId() }.filter(String::isNotBlank).toSet()
     val scope = rememberCoroutineScope()
     Screen(page.title.ifBlank { AppText.Booking.BOOKING_SLOTS_TITLE }, back, actions = {
-        TextButton(AppText.Common.REFRESH, enabled = !state.loading, onClick = { scope.launch { query.refresh() } })
+        TextButton(AppText.Common.REFRESH, enabled = hasRequestedDate && !state.loading,
+            onClick = { scope.launch { query.refreshIfReady(hasRequestedDate) } })
     }) { padding ->
-        BookingLazyList(padding, state, { scope.launch { query.refresh() } }, rows, AppText.Booking.NO_AVAILABLE_SLOTS,
+        BookingLazyList(padding, state, { scope.launch { query.refreshIfReady(hasRequestedDate) } }, rows,
+            if (hasRequestedDate) AppText.Booking.NO_AVAILABLE_SLOTS else AppText.Booking.ENTER_DATE_BEFORE_SLOT_QUERY,
             header = {
-                item("slot-explanation") { InfoBanner(AppText.Booking.SLOT_SELECTION_QUERY_HINT) }
+                item("slot-explanation") { InfoBanner(AppText.Booking.SLOT_SELECTION_QUERY_HINT,
+                    tone = if (hasRequestedDate) UiTone.Info else UiTone.Neutral) }
                 item("slot-date") {
                     BookingPanel(AppText.Booking.SELECT_DATE_TITLE) {
                         BookingDateChoices(requestedDate, enabled = !state.loading, from = bookingSchoolDate(1)) { date ->

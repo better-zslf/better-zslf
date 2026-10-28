@@ -32,6 +32,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private val uiDevice = WaterBleDevice("offline-water-ui", "Water33982", -45)
@@ -144,6 +145,8 @@ class WaterHeaterPresenterTest {
     @Test fun constructingOrGrantingPermissionsNeverStartsRadioOperations() = runTest {
         val f = fixture(BluetoothAccessState())
         runCurrent()
+        assertTrue(f.presenter.state.value.showBluetoothAccessCard)
+        assertEquals("需先连接设备", f.presenter.state.value.beginActionHint)
         f.presenter.startScan()
         f.presenter.connect(uiDevice.id)
         f.presenter.requestBegin()
@@ -152,6 +155,7 @@ class WaterHeaterPresenterTest {
         assertEquals(0, f.transport.creations)
         f.access.value = grantedAccess
         runCurrent()
+        assertFalse(f.presenter.state.value.showBluetoothAccessCard)
         assertTrue(f.presenter.state.value.canScan)
         assertEquals(0, f.transport.scans)
         assertEquals(0, f.transport.creations)
@@ -163,6 +167,8 @@ class WaterHeaterPresenterTest {
             grantedAccess.copy(enabled = false))) {
             val f = fixture(access)
             f.presenter.startScan(); f.presenter.connect(uiDevice.id); runCurrent()
+            assertTrue(f.presenter.state.value.showBluetoothAccessCard)
+            assertEquals("需先连接设备", f.presenter.state.value.beginActionHint)
             assertFalse(f.presenter.state.value.canScan)
             assertFalse(f.presenter.state.value.canConnect)
             assertEquals(0, f.transport.scans)
@@ -190,9 +196,14 @@ class WaterHeaterPresenterTest {
         assertTrue(f.presenter.state.value.canBegin)
         assertFalse(f.presenter.state.value.canEnd)
         assertEquals("已连接，尚未开启", f.presenter.state.value.title)
+        assertFalse(f.presenter.state.value.showBluetoothAccessCard)
+        assertEquals("开启", f.presenter.state.value.beginActionLabel)
+        assertEquals("点击请求开启用水（需确认）", f.presenter.state.value.beginActionHint)
         f.presenter.requestBegin(); runCurrent()
+        assertNull(f.presenter.state.value.beginActionHint)
         assertTrue(connection.writes.isEmpty())
         f.presenter.dismissConfirmation(); runCurrent()
+        assertEquals("点击请求开启用水（需确认）", f.presenter.state.value.beginActionHint)
         assertTrue(connection.writes.isEmpty())
         f.controller.close()
     }
@@ -203,6 +214,8 @@ class WaterHeaterPresenterTest {
         f.presenter.requestBegin(); runCurrent(); f.presenter.confirm(); runCurrent()
         assertEquals(listOf(0xb0), connection.writes)
         assertEquals(WaterBlePhase.Authenticating, f.presenter.state.value.ble.phase)
+        assertEquals("开启", f.presenter.state.value.beginActionLabel)
+        assertNull(f.presenter.state.value.beginActionHint)
         assertFalse(f.presenter.state.value.canEnd)
         assertFalse(f.presenter.state.value.title.contains("已确认开启"))
         f.presenter.requestBegin(); f.presenter.confirm(); runCurrent()
@@ -260,6 +273,9 @@ class WaterHeaterPresenterTest {
         val f = fixture()
         val connection = connect(f)
         activate(f, connection)
+        assertEquals("开启", f.presenter.state.value.beginActionLabel)
+        assertNull(f.presenter.state.value.beginActionHint)
+        assertTrue(f.presenter.state.value.canEnd)
         f.presenter.requestBack(); runCurrent()
         assertEquals(WaterConfirmation.Leave, f.presenter.state.value.confirmation)
         assertTrue(f.backs.isEmpty())
@@ -301,6 +317,8 @@ class WaterHeaterPresenterTest {
         assertEquals(WaterBlePhase.Disconnected, f.presenter.state.value.ble.phase)
         assertTrue(f.presenter.state.value.ble.normalEndCompleted)
         assertEquals("正常结束流程已完成", f.presenter.state.value.title)
+        assertEquals("开启", f.presenter.state.value.beginActionLabel)
+        assertEquals("需先连接设备", f.presenter.state.value.beginActionHint)
         f.controller.close()
     }
 

@@ -21,6 +21,13 @@ expect fun createPlatformServices(): PlatformServices
 @Composable
 expect fun PlatformAppearance(dark: Boolean?)
 
-/** Article rendering does not execute JavaScript or expose a native bridge. */
+/** Native document status only; READY is emitted from a real page-finished callback, never a timer. */
+enum class HtmlPanelLoadState { LOADING, READY, FAILED, UNAVAILABLE }
+
+/** Article rendering does not execute JavaScript or expose a native bridge. No native error text is exported. */
 @Composable
-expect fun HtmlPanel(html: String, modifier: Modifier = Modifier)
+expect fun HtmlPanel(
+    html: String,
+    modifier: Modifier = Modifier,
+    onLoadState: (HtmlPanelLoadState) -> Unit = {},
+)

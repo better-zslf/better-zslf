@@ -116,6 +116,17 @@ private fun ProfileOwnerScreen(graph: AppGraph, open: (Route) -> Unit) {
             state.photoIssue?.let { issue -> item("photo-issue") {
                 InfoBanner(AppText.Profile.avatarReadIssue(profileReadMessage(issue)), tone = UiTone.Neutral)
             } }
+            // Keep the two frequently used app destinations above the longer account/help groups.
+            // They stay reachable on a fresh 390dp-wide profile without scrolling under the pill.
+            item("app-heading") { SectionTitle(AppText.App.ABOUT_TITLE) }
+            item("app-actions") {
+                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
+                    ArrowPreference(AppText.App.ABOUT_APP_TITLE,
+                        onClick = { open(Route.Page("about", title = AppText.App.ABOUT_APP_TITLE)) })
+                    ArrowPreference(AppText.Updates.VERSION_UPDATE_TITLE, summary = graph.platform.versionName,
+                        onClick = { open(Route.Page("updates", title = AppText.Updates.VERSION_UPDATE_TITLE)) })
+                }
+            }
             item("account-heading") { SectionTitle(AppText.Profile.ACCOUNT_SECTION_TITLE) }
             item("account-actions") {
                 Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
@@ -136,15 +147,6 @@ private fun ProfileOwnerScreen(graph: AppGraph, open: (Route) -> Unit) {
                     fields?.schoolName ?: AppText.Common.NOT_PROVIDED, fields?.studentNumber ?: AppText.Common.NOT_PROVIDED,
                     fields?.account ?: AppText.Common.NOT_PROVIDED, fields?.identity ?: AppText.Common.NOT_PROVIDED,
                     fields?.gender ?: AppText.Common.NOT_PROVIDED), title = AppText.Profile.PERSONAL_PROFILE_TITLE, tone = UiTone.Neutral)
-            }
-            item("app-heading") { SectionTitle(AppText.App.ABOUT_TITLE) }
-            item("app-actions") {
-                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
-                    ArrowPreference(AppText.App.ABOUT_APP_TITLE,
-                        onClick = { open(Route.Page("about", title = AppText.App.ABOUT_APP_TITLE)) })
-                    ArrowPreference(AppText.Updates.VERSION_UPDATE_TITLE, summary = graph.platform.versionName,
-                        onClick = { open(Route.Page("updates", title = AppText.Updates.VERSION_UPDATE_TITLE)) })
-                }
             }
             item("help-heading") { SectionTitle(AppText.App.AGREEMENTS_AND_HELP_SECTION_TITLE) }
             item("help-actions") {

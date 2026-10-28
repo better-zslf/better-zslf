@@ -97,8 +97,8 @@ private fun CampusNetworkPage(controller: CampusNetworkController, onBack: () ->
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(account.maskedAccount, fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
                                 maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            if (account.typeStatus.isNotBlank()) {
-                                Text(AppText.CampusNetwork.typeStatus(account.typeStatus), fontSize = 13.sp,
+                            if (account.typeStatusLabel.isNotBlank()) {
+                                Text(account.typeStatusLabel, fontSize = 13.sp,
                                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                             }
                             if (!account.canChangePassword) {

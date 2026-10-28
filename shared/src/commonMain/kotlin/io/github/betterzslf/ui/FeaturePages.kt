@@ -2,6 +2,8 @@ package io.github.betterzslf.ui
 
 import io.github.betterzslf.core.text.AppText
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -239,8 +241,10 @@ private fun AboutScreen(graph: AppGraph, back: () -> Unit, openUpdates: () -> Un
             Text("better-zslf · ${if (BuildEdition.isPro) "Pro" else "Standard"}", color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
             // Five taps on the version string toggle the local developer option; nothing is sent anywhere.
             Text(AppText.Content.aboutVersion(graph.platform.versionName),
-                color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                modifier = Modifier.clickable {
+                color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.primary,
+                modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(AppUiTokens.FieldRadius))
+                    .background(top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.primary.copy(alpha = 0.09f))
+                    .clickable {
                     if (!settings.debugMode) {
                         versionTaps++
                         tapNotice = if (versionTaps >= DEVELOPER_TAP_COUNT) "" else AppText.DevTools.tapHint(DEVELOPER_TAP_COUNT - versionTaps)
@@ -252,7 +256,7 @@ private fun AboutScreen(graph: AppGraph, back: () -> Unit, openUpdates: () -> Un
                     } else {
                         tapNotice = AppText.DevTools.ALREADY_ENABLED_HINT
                     }
-                })
+                }.padding(horizontal = 14.dp, vertical = 8.dp))
             if (tapNotice.isNotBlank()) Text(tapNotice, color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
         } }
         item { InfoBanner(AppText.App.INDEPENDENT_CLIENT_DESCRIPTION, tone = UiTone.Neutral) }

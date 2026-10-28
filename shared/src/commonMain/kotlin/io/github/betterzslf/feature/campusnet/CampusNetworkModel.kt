@@ -28,7 +28,10 @@ class RepositoryCampusNetworkSource private constructor(private val repository: 
 }
 
 /** These are presentation records, not raw backend rows. Neither account ids nor full accounts are exposed. */
-data class CampusAccount(val key: String, val maskedAccount: String, val typeStatus: String, val canChangePassword: Boolean)
+data class CampusAccount(val key: String, val maskedAccount: String, val typeStatus: String, val canChangePassword: Boolean) {
+    /** Presentation only: preserve unknown server codes instead of guessing an operator or state. */
+    val typeStatusLabel: String get() = if (typeStatus.isBlank()) "" else AppText.CampusNetwork.typeStatus(typeStatus)
+}
 data class CampusPasswordPreview(val id: Long, val maskedAccount: String, val maskedPhone: String)
 enum class CampusPasswordPhase { EDITING, PREVIEW, SUBMITTING, COMPLETED, FAILED, UNCERTAIN, SESSION_CHANGED }
 

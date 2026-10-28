@@ -15,12 +15,19 @@ import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.Modifier
@@ -113,30 +120,94 @@ private class EncryptedStore(context: Context) : KeyValueStore {
     override fun clear() { preferences.edit().clear().commit() }
 }
 
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
-actual fun HtmlPanel(html: String, modifier: Modifier) {
-    AndroidView(modifier = modifier, factory = { context ->
-        WebView(context).apply {
-            settings.javaScriptEnabled = false
-            settings.allowFileAccess = false
-            settings.allowContentAccess = false
-            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                    if (request.isForMainFrame && request.url.scheme == "https") {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, request.url))
-                    }
-                    return true
+actual fun HtmlPanel(html: String, modifier: Modifier, onLoadState: (HtmlPanelLoadState) -> Unit) {
+    // Changing HTML owns a new native document. A common retry also remounts this whole key group.
+    key(html) {
+        val callback = rememberUpdatedState(onLoadState)
+        val renderer = remember { AndroidArticleRenderer { callback.value(it) } }
+        DisposableEffect(renderer) { onDispose { renderer.invalidate() } }
+        AndroidView(modifier = modifier, factory = renderer::createView,
+            update = { renderer.render(it, html) }, onRelease = renderer::release)
+    }
+}
+
+private const val ARTICLE_BASE_URL = "https://zslf.zsc.edu.cn/"
+
+private class AndroidArticleRenderer(private var onLoadState: ((HtmlPanelLoadState) -> Unit)?) {
+    private var ownedView: WebView? = null
+    private var started = false
+    private var failed = false
+    private var disposed = false
+
+    @SuppressLint("SetJavaScriptEnabled")
+    fun createView(context: Context): WebView = WebView(context).apply {
+        ownedView = this
+        settings.javaScriptEnabled = false
+        settings.allowFileAccess = false
+        settings.allowContentAccess = false
+        settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                if (owns(view) && request.isForMainFrame && request.url.scheme == "https") {
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, request.url)) }
                 }
+                return true
+            }
+
+            override fun onPageFinished(view: WebView, url: String?) {
+                if (started && !failed && (url == ARTICLE_BASE_URL || url == "about:blank")) report(view, HtmlPanelLoadState.READY)
+            }
+
+            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                if (request.isForMainFrame) reportFailure(view)
+            }
+
+            override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, errorResponse: WebResourceResponse) {
+                if (request.isForMainFrame) reportFailure(view)
+            }
+
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                reportFailure(view) // Only an owned, live document may notify its session.
+                return true // Also consume late callbacks for an already disposed view.
             }
         }
-    }, update = { view ->
-        if (view.tag != html) {
-            view.tag = html
-            view.loadDataWithBaseURL("https://zslf.zsc.edu.cn/", articleDocument(html), "text/html", "UTF-8", null)
-        }
-    }, onRelease = { it.destroy() })
+    }
+
+    fun render(view: WebView, html: String) {
+        if (!owns(view) || started) return
+        started = true
+        report(view, HtmlPanelLoadState.LOADING)
+        runCatching { view.loadDataWithBaseURL(ARTICLE_BASE_URL, articleDocument(html), "text/html", "UTF-8", null) }
+            .onFailure { reportFailure(view) }
+    }
+
+    private fun owns(view: WebView) = !disposed && view === ownedView
+    private fun report(view: WebView, state: HtmlPanelLoadState) {
+        if (owns(view)) onLoadState?.invoke(state)
+    }
+    private fun reportFailure(view: WebView) {
+        if (!owns(view)) return
+        failed = true
+        report(view, HtmlPanelLoadState.FAILED)
+    }
+
+    fun invalidate() { disposed = true; onLoadState = null }
+    fun release(view: WebView) {
+        if (view !== ownedView) return
+        invalidate()
+        ownedView = null
+        view.stopLoading()
+        view.webViewClient = ReleasedArticleClient
+        view.tag = null
+        view.destroy()
+    }
+}
+
+/** A detached/destroyed view must not return WebViewClient's default false for a late renderer exit. */
+private object ReleasedArticleClient : WebViewClient() {
+    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = true
+    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean = true
 }
 
 private fun articleDocument(html: String) = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><style>body{font:16px/1.8 sans-serif;padding:16px;overflow-wrap:anywhere}img,video,table{max-width:100%;height:auto}</style></head><body>$html</body></html>"""

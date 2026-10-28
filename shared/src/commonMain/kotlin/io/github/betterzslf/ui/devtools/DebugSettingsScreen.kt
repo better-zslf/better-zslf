@@ -1,6 +1,5 @@
 package io.github.betterzslf.ui.devtools
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -26,7 +25,7 @@ import io.github.betterzslf.ui.UiTone
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
-import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -78,15 +77,20 @@ fun DebugSettingsScreen(
                         checked = enabled,
                         onCheckedChange = onEnabledChange,
                     )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = AppUiTokens.CardPadding))
-                    Box(Modifier.fillMaxWidth().padding(horizontal = AppUiTokens.CardPadding, vertical = 8.dp)) {
-                        TabRow(
-                            tabs = listOf(AppText.DevTools.FILTER_ALL, AppText.DevTools.FILTER_ISSUES, AppText.DevTools.FILTER_ERRORS),
-                            selectedTabIndex = levelFilter,
-                            onTabSelected = { levelFilter = it.coerceIn(0, 2) },
-                        )
-                    }
                 }
+            }
+            item("debug-filter") {
+                // A separate Miuix segmented control, as in P36: no card clipping or competing
+                // inside margins. Let all three tabs share narrow layouts instead of overflowing.
+                TabRowWithContour(
+                    tabs = listOf(AppText.DevTools.FILTER_ALL, AppText.DevTools.FILTER_ISSUES, AppText.DevTools.FILTER_ERRORS),
+                    selectedTabIndex = levelFilter,
+                    onTabSelected = { levelFilter = it.coerceIn(0, 2) },
+                    minWidth = 0.dp,
+                    itemSpacing = 4.dp,
+                    height = 44.dp,
+                    cornerRadius = 18.dp,
+                )
             }
             item("debug-local-only") { InfoBanner(AppText.DevTools.LOCAL_ONLY_HINT, tone = UiTone.Neutral) }
             item("debug-export") {

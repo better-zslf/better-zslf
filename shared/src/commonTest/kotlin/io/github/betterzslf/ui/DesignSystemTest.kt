@@ -80,6 +80,28 @@ class DesignSystemTest {
         assertEquals(50.dp, rtl.calculateEndPadding(LayoutDirection.Rtl))
     }
 
+    @Test fun overlayUsesTheWholeScaffoldMeasurementAndClearsForSubpagesAndRail() {
+        // 64dp pill + 12dp outside gap + 24dp system navigation area.
+        val measured = PaddingValues(bottom = 100.dp)
+        assertEquals(100.dp, navigationOverlayInset(measured, barVisible = true))
+        assertEquals(0.dp, navigationOverlayInset(measured, barVisible = false))
+        assertEquals(0.dp, navigationOverlayInset(PaddingValues(0.dp), barVisible = true))
+        kotlin.test.assertFailsWith<IllegalArgumentException> { PaddingValues(bottom = (-1).dp) }
+        val list = pageContentPadding(PaddingValues(bottom = 24.dp), navigationOverlayInset(measured, true), LayoutDirection.Ltr)
+        assertEquals(120.dp, list.calculateBottomPadding())
+        val detail = pageContentPadding(PaddingValues(bottom = 24.dp), navigationOverlayInset(measured, false), LayoutDirection.Ltr)
+        assertEquals(44.dp, detail.calculateBottomPadding())
+    }
+
+    @Test fun aboutVersionIsOnlyAVersionAndDebugFilterLabelsStayCompact() {
+        assertEquals("1.0.0-rc4-pro", io.github.betterzslf.core.text.AppText.Content.aboutVersion("1.0.0-rc4-pro"))
+        assertEquals(listOf("全部", "警告", "错误"), listOf(
+            io.github.betterzslf.core.text.AppText.DevTools.FILTER_ALL,
+            io.github.betterzslf.core.text.AppText.DevTools.FILTER_ISSUES,
+            io.github.betterzslf.core.text.AppText.DevTools.FILTER_ERRORS,
+        ))
+    }
+
     @Test fun samplingMenuDoesNotMisrepresentAnExistingPreference() {
         assertEquals(listOf(10, 15, 30, 60), samplingChoices(10))
         assertEquals(listOf(10, 15, 30, 42, 60), samplingChoices(42))

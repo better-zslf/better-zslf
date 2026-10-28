@@ -18,7 +18,6 @@ import io.github.betterzslf.AppGraph
 import io.github.betterzslf.Route
 import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.feature.content.*
-import io.github.betterzslf.platform.HtmlPanel
 import io.github.betterzslf.ui.AppUiTokens
 import io.github.betterzslf.ui.ConfirmDialog
 import io.github.betterzslf.ui.EmptyCard
@@ -115,7 +114,7 @@ private fun FeedPage(graph: AppGraph, source: ContentSource, owner: String, page
             LazyColumn(Modifier.fillMaxSize().overScrollVertical(), state = lazyState, overscrollEffect = null,
                 contentPadding = pageContentPadding(padding, LocalNavigationBottomInset.current, LocalLayoutDirection.current), verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                 if (notices && readState.unread != null) item {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(if (readState.unread == 0) AppText.Content.NO_UNREAD_MESSAGES else AppText.Content.unreadMessages(readState.unread),
                             fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
@@ -244,7 +243,7 @@ private fun NoticeCard(item: ContentItem, marked: Boolean, expanded: Boolean, sy
             HorizontalDivider()
             Spacer(Modifier.height(AppUiTokens.Gap))
             if (item.html.isBlank()) Text(AppText.Content.NOTIFICATION_BODY_MISSING, fontSize = 13.sp)
-            else HtmlPanel(item.html, Modifier.fillMaxWidth().height(500.dp))
+            else HtmlBodyPanel(item.html, Modifier.fillMaxWidth().height(500.dp))
             if (pending) Text(AppText.Content.UPDATING_READ_STATUS, fontSize = 12.sp, color = MiuixTheme.colorScheme.primary)
             error?.let { ContentError(AppText.Content.READ_STATUS_NOT_UPDATED, it, onRetryRead) }
         }
@@ -284,7 +283,7 @@ private fun ArticlePage(source: ContentSource, owner: String, page: Route.Page, 
                         // Article AND document bodies are the server response; never substitute design sample text.
                         if (detail.html.isBlank()) EmptyCard(AppText.Content.NO_BODY_CONTENT)
                         else Card(Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
-                            HtmlPanel(detail.html, Modifier.fillMaxWidth().height(580.dp))
+                            HtmlBodyPanel(detail.html, Modifier.fillMaxWidth().height(580.dp))
                         }
                     }
                     if (!document) {

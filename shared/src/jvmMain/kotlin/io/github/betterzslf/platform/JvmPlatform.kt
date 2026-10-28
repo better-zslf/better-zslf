@@ -1,6 +1,7 @@
 package io.github.betterzslf.platform
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import io.github.betterzslf.core.storage.KeyValueStore
 import io.ktor.client.HttpClient
@@ -28,4 +29,8 @@ actual fun createPlatformServices(): PlatformServices = object : PlatformService
 actual fun PlatformAppearance(dark: Boolean?) = Unit
 
 @Composable
-actual fun HtmlPanel(html: String, modifier: Modifier) { Text(html, modifier = modifier) }
+actual fun HtmlPanel(html: String, modifier: Modifier, onLoadState: (HtmlPanelLoadState) -> Unit) {
+    Text(html, modifier = modifier)
+    // This host fallback is plain text, not a native HTML document; never invent a page-finished event.
+    SideEffect { onLoadState(HtmlPanelLoadState.UNAVAILABLE) }
+}

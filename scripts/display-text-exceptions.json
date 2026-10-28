@@ -10,9 +10,9 @@
         "after": ", AppText.Content.FRESHMAN_GUIDE_DISPLAY_LABEL))"
       },
       "position": {
-        "start": 23336,
-        "end": 23342,
-        "line": 360,
+        "start": 23317,
+        "end": 23323,
+        "line": 359,
         "column": 115
       },
       "category": "lookup",
@@ -208,9 +208,9 @@
         "after": " to AppText.App.USER_AGREEMENT_DISPLAY_LABEL, \"隐"
       },
       "position": {
-        "start": 9104,
-        "end": 9110,
-        "line": 152,
+        "start": 9302,
+        "end": 9308,
+        "line": 154,
         "column": 28
       },
       "category": "lookup",
@@ -226,9 +226,9 @@
         "after": " to AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, \"使"
       },
       "position": {
-        "start": 9156,
-        "end": 9162,
-        "line": 152,
+        "start": 9354,
+        "end": 9360,
+        "line": 154,
         "column": 80
       },
       "category": "lookup",
@@ -244,9 +244,9 @@
         "after": " to AppText.App.USER_GUIDE_DISPLAY_LABEL).forEac"
       },
       "position": {
-        "start": 9208,
-        "end": 9214,
-        "line": 152,
+        "start": 9406,
+        "end": 9412,
+        "line": 154,
         "column": 132
       },
       "category": "lookup",
@@ -1108,9 +1108,9 @@
         "after": " || item.bookingText(\"uName\").isNotBlank()\n    f"
       },
       "position": {
-        "start": 10386,
-        "end": 10390,
-        "line": 189,
+        "start": 10767,
+        "end": 10771,
+        "line": 201,
         "column": 123
       },
       "category": "protocol",
@@ -1126,9 +1126,9 @@
         "after": ", \"一\", \"二\", \"三\", \"四\", \"五\", \"六\")[it] }.orEmpty()\n"
       },
       "position": {
-        "start": 18160,
-        "end": 18163,
-        "line": 304,
+        "start": 18541,
+        "end": 18544,
+        "line": 316,
         "column": 63
       },
       "category": "protocol",
@@ -1144,9 +1144,9 @@
         "after": ", \"二\", \"三\", \"四\", \"五\", \"六\")[it] }.orEmpty()\n    v"
       },
       "position": {
-        "start": 18165,
-        "end": 18168,
-        "line": 304,
+        "start": 18546,
+        "end": 18549,
+        "line": 316,
         "column": 68
       },
       "category": "protocol",
@@ -1162,9 +1162,9 @@
         "after": ", \"三\", \"四\", \"五\", \"六\")[it] }.orEmpty()\n    val da"
       },
       "position": {
-        "start": 18170,
-        "end": 18173,
-        "line": 304,
+        "start": 18551,
+        "end": 18554,
+        "line": 316,
         "column": 73
       },
       "category": "protocol",
@@ -1180,9 +1180,9 @@
         "after": ", \"四\", \"五\", \"六\")[it] }.orEmpty()\n    val day = ("
       },
       "position": {
-        "start": 18175,
-        "end": 18178,
-        "line": 304,
+        "start": 18556,
+        "end": 18559,
+        "line": 316,
         "column": 78
       },
       "category": "protocol",
@@ -1198,9 +1198,9 @@
         "after": ", \"五\", \"六\")[it] }.orEmpty()\n    val day = (data "
       },
       "position": {
-        "start": 18180,
-        "end": 18183,
-        "line": 304,
+        "start": 18561,
+        "end": 18564,
+        "line": 316,
         "column": 83
       },
       "category": "protocol",
@@ -1216,9 +1216,9 @@
         "after": ", \"六\")[it] }.orEmpty()\n    val day = (data as? J"
       },
       "position": {
-        "start": 18185,
-        "end": 18188,
-        "line": 304,
+        "start": 18566,
+        "end": 18569,
+        "line": 316,
         "column": 88
       },
       "category": "protocol",
@@ -1234,9 +1234,9 @@
         "after": ")[it] }.orEmpty()\n    val day = (data as? JsonOb"
       },
       "position": {
-        "start": 18190,
-        "end": 18193,
-        "line": 304,
+        "start": 18571,
+        "end": 18574,
+        "line": 316,
         "column": 93
       },
       "category": "protocol",

@@ -18,6 +18,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -42,36 +43,47 @@ internal fun rememberBookingPager(key: Any?, container: String, load: suspend (I
 }
 
 @Composable
-internal fun rememberBookingQuery(key: Any?, load: suspend () -> ApiResult<JsonElement>): BookingQuery {
+internal fun rememberBookingQuery(key: Any?, enabled: Boolean = true, load: suspend () -> ApiResult<JsonElement>): BookingQuery {
     val loader by rememberUpdatedState(load)
     val query = remember(key) { BookingQuery { loader() } }
-    LaunchedEffect(query) { query.refresh() }
+    LaunchedEffect(query, enabled) { query.refreshIfReady(enabled) }
     return query
 }
 
 internal fun LazyListScope.bookingQueryFeedback(state: BookingQueryState, refresh: () -> Unit, prefix: String = "query") {
-    if (state.loading) item("$prefix:loading") {
-        Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() }
-    }
-    if (state.error != null) item("$prefix:error") {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            InfoBanner(state.error.message + AppText.Booking.REQUERY_WITHOUT_WRITE_RETRY_NEWLINE_SUFFIX,
-                title = if (state.data == null) AppText.Common.LOAD_FAILED else AppText.Common.REFRESH_FAILED_PREVIOUS_RESULTS_RETAINED,
-                tone = UiTone.Warning)
-            TextButton(AppText.Common.REFRESH_INFORMATION, onClick = refresh)
+    when (state.feedback) {
+        BookingQueryFeedback.LOADING -> item("$prefix:loading") {
+            Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() }
         }
+        BookingQueryFeedback.ERROR -> {
+            val error = state.error ?: return
+            item("$prefix:error") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    InfoBanner(error.message + AppText.Booking.REQUERY_WITHOUT_WRITE_RETRY_NEWLINE_SUFFIX,
+                        title = if (state.data == null) AppText.Common.LOAD_FAILED else AppText.Common.REFRESH_FAILED_PREVIOUS_RESULTS_RETAINED,
+                        tone = UiTone.Warning)
+                    TextButton(AppText.Common.REFRESH_INFORMATION, onClick = refresh)
+                }
+            }
+        }
+        BookingQueryFeedback.NONE -> Unit
     }
-    if (state.message.isNotBlank()) item("$prefix:message") { InfoBanner(state.message) }
 }
 
 /** Keep the body behind Screen's blur bar; only scroll content reserves native/app-bar/navigation insets. */
 @Composable
-internal fun bookingContentPadding(padding: PaddingValues, form: Boolean = false): PaddingValues = PaddingValues(
-    start = if (form) AppUiTokens.FormPadding else AppUiTokens.PagePadding,
-    end = if (form) AppUiTokens.FormPadding else AppUiTokens.PagePadding,
-    top = padding.calculateTopPadding() + if (form) AppUiTokens.FormPadding else AppUiTokens.Gap,
-    bottom = padding.calculateBottomPadding() + LocalNavigationBottomInset.current + AppUiTokens.SectionGap,
-)
+internal fun bookingContentPadding(padding: PaddingValues, form: Boolean = false): PaddingValues {
+    val direction = LocalLayoutDirection.current
+    val base = pageContentPadding(padding, LocalNavigationBottomInset.current, direction,
+        horizontal = if (form) AppUiTokens.FormPadding else AppUiTokens.PagePadding)
+    if (!form) return base
+    return PaddingValues(
+        start = base.calculateStartPadding(direction),
+        end = base.calculateEndPadding(direction),
+        top = padding.calculateTopPadding() + AppUiTokens.FormPadding,
+        bottom = base.calculateBottomPadding(),
+    )
+}
 
 /** Server paging and the bounded local window are unchanged; search/filter never send new query parameters. */
 @Composable

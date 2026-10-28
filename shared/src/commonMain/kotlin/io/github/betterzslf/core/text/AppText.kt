@@ -1628,6 +1628,35 @@ object AppText {
         const val HOST_TEST_BLUETOOTH_ADAPTER_NOT_CONNECTED: String = "宿主测试目标未连接蓝牙适配器。"
     }
 
+    object DevTools {
+        const val TITLE: String = "开发者选项"
+        const val ENTRY_SUMMARY: String = "调试模式与本机运行日志"
+        const val DEBUG_MODE_TITLE: String = "调试模式"
+        const val DEBUG_MODE_SUMMARY: String = "记录详细的请求与操作日志，只写在这台设备上。"
+        const val RECORDING_LABEL: String = "记录中"
+        const val RECORDING_OFF_LABEL: String = "已关闭"
+        const val DEFAULT_OFF_HINT: String = "开发者选项默认关闭。日志只保留在本机，不会自动上传。"
+        const val ENABLED_NOTICE: String = "调试模式已开启"
+        const val DISABLED_NOTICE: String = "调试模式已关闭"
+        const val TAP_HINT: String = "再点击 {0} 次版本号可开启开发者选项"
+        const val ALREADY_ENABLED_HINT: String = "开发者选项已开启，可在设置最下方进入。"
+        const val LOCAL_ONLY_HINT: String = "日志仅保存在本机，不上传学校服务，也不包含密码或登录凭据。"
+        const val LOG_TITLE: String = "运行日志"
+        const val FILTER_ALL: String = "全部"
+        const val FILTER_ISSUES: String = "警告与错误"
+        const val FILTER_ERRORS: String = "错误"
+        const val FILTER_EMPTY: String = "当前筛选下没有日志。"
+        const val LOG_EMPTY: String = "还没有日志。开启调试模式并继续操作应用，日志会出现在这里。"
+        const val CLEAR: String = "清空日志"
+        const val CLEAR_CONFIRM_TITLE: String = "清空本机日志？"
+        const val CLEAR_CONFIRM_DESCRIPTION: String = "只删除这台设备上的调试日志，不影响账号、设置与业务数据。"
+        const val EXPORT: String = "导出日志"
+        const val EXPORT_READY: String = "已生成日志文本，可复制后反馈。"
+        const val TRUNCATED_HINT: String = "为保证流畅，这里最多显示最近 {0} 条匹配日志；导出包含全部保留记录。"
+        fun logSummary(entries: Int, characters: Int): String = "$entries 条记录 · $characters 字符"
+        fun tapHint(remaining: Int): String = "再点击 $remaining 次版本号可开启开发者选项"
+    }
+
     object ManualRoute {
         const val SOURCE_LABEL: String = "地图点选草稿"
         const val LOCAL_ONLY_WARNING: String = "手绘路线只在本页内存中预览，离开后不保存。不是 GPS 实测，不进入真实跑步记录，不会上传，也不代表学校认可。"

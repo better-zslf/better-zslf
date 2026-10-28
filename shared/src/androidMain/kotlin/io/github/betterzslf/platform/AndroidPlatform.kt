@@ -3,6 +3,8 @@ package io.github.betterzslf.platform
 import io.github.betterzslf.core.text.AppText
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ContextWrapper
 import android.content.res.Configuration
 import android.view.WindowInsetsController
@@ -53,6 +55,13 @@ actual fun createPlatformServices(): PlatformServices = object : PlatformService
             AndroidPlatform.context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }
+
+    override fun copyToClipboard(text: String): Boolean = runCatching {
+        val manager = AndroidPlatform.context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            ?: return@runCatching false
+        manager.setPrimaryClip(ClipData.newPlainText(AndroidPlatform.context.getString(android.R.string.ok), text))
+        true
+    }.getOrDefault(false)
 }
 
 @Composable

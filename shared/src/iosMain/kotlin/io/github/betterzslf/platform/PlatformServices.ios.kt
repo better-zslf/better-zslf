@@ -51,6 +51,11 @@ private object IosPlatformServices : PlatformServices {
     }
 
     override fun openUrl(url: String) = openExternalHttpsUrl(url)
+
+    override fun copyToClipboard(text: String): Boolean = runCatching {
+        platform.UIKit.UIPasteboard.generalPasteboard.string = text
+        true
+    }.getOrDefault(false)
 }
 
 /** Only ordinary HTTPS links without embedded credentials leave the app. No URL is logged. */

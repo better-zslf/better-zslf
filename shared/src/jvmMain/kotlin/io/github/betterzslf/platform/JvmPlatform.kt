@@ -19,6 +19,9 @@ actual fun createPlatformServices(): PlatformServices = object : PlatformService
     override val description = "JVM host tests"
     override fun httpClient() = HttpClient(CIO)
     override fun openUrl(url: String) = Unit
+
+    /** Host tests have no clipboard; the caller only shows its own notice. */
+    override fun copyToClipboard(text: String): Boolean = false
 }
 
 @Composable

@@ -191,6 +191,7 @@ class ApiClient(
             return ApiResult.Failure(ApiError.Authentication())
         }
         return try {
+            val startedAt = kotlin.time.Clock.System.now().toEpochMilliseconds()
             val response = client.request(config.url(endpoint)) {
                 method = endpoint.method
                 timeout {
@@ -205,6 +206,11 @@ class ApiClient(
                 configure()
             }
             val status = response.status.value
+            // Local debug log only: method, path without query, status and timing. No body, no token.
+            io.github.betterzslf.core.log.AppLog.http(
+                endpoint.method.value, endpoint.path, status,
+                kotlin.time.Clock.System.now().toEpochMilliseconds() - startedAt,
+            )
             when {
                 status == 401 -> {
                     response.bodyAsChannel().cancel(null)
@@ -226,6 +232,7 @@ class ApiClient(
             ApiResult.Failure(ApiError.Timeout())
         } catch (_: Exception) {
             // Do not propagate exception messages: Ktor includes the credential-bearing URL.
+            io.github.betterzslf.core.log.AppLog.warn("http", "${endpoint.method.value} ${endpoint.path} -> network error")
             ApiResult.Failure(ApiError.Network())
         }
     }

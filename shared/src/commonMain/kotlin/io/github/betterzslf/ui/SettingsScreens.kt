@@ -63,6 +63,11 @@ fun SettingsScreen(graph: AppGraph, open: (Route) -> Unit, back: () -> Unit) {
                 ArrowPreference(AppText.Settings.ABOUT_AND_VERSION_TITLE, summary = graph.platform.versionName,
                     onClick = { open(Route.Page("about", title = AppText.App.ABOUT_APP_TITLE)) })
             } }
+            // The developer option is only reachable after five taps on the version string in About.
+            if (settings.debugMode) item { Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
+                ArrowPreference(AppText.DevTools.TITLE, summary = AppText.DevTools.ENTRY_SUMMARY,
+                    onClick = { open(Route.Page("devtools", title = AppText.DevTools.TITLE)) })
+            } }
         }
         ConfirmDialog(clear, AppText.Settings.CLEAR_LOCAL_DATA_CONFIRM_TITLE, AppText.Settings.CLEAR_LOCAL_DATA_CONFIRM_DESCRIPTION, { clear = false }) {
             if (!graph.clearingLocalData) graph.clearLocalData()

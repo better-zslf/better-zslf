@@ -15,6 +15,8 @@ data class AppSettings(
     val samplingSeconds: Int = 10,
     val metricUnits: Boolean = true,
     val skipImportWarning: Boolean = false,
+    /** Developer option. Off by default and never enabled by server data or saved preferences alone. */
+    val debugMode: Boolean = false,
 )
 
 class SettingsStore(private val store: KeyValueStore) {
@@ -49,6 +51,7 @@ class SettingsStore(private val store: KeyValueStore) {
         false
     } finally {
         current.value = AppSettings()
+        io.github.betterzslf.core.log.AppLog.setEnabled(false)
     }
     private companion object { const val KEY = "settings.v1" }
 }

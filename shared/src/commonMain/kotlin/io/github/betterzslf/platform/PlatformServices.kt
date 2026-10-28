@@ -11,6 +11,8 @@ interface PlatformServices {
     val description: String
     fun httpClient(): HttpClient
     fun openUrl(url: String)
+    /** Copies local debug text to the system clipboard; returns false when the platform cannot. */
+    fun copyToClipboard(text: String): Boolean
 }
 
 expect fun createPlatformServices(): PlatformServices

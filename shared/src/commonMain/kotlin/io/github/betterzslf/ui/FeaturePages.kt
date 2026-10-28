@@ -18,6 +18,7 @@ import io.github.betterzslf.ui.run.RunFeaturePage
 import io.github.betterzslf.ui.run.RunTaskList
 import io.github.betterzslf.ui.campusnet.CampusNetworkFeaturePage
 import io.github.betterzslf.ui.update.AppUpdatePage
+import androidx.compose.foundation.clickable
 import io.ktor.http.encodeURLParameter
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
@@ -55,6 +56,7 @@ fun FeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBa
         "feedback" -> FeedbackScreen(graph, onBack)
         "updates" -> AppUpdatePage(graph.platform.versionName, graph.githubUpdates, graph.appUpdater, graph.platform::openUrl, onBack)
         "about" -> AboutScreen(graph, onBack) { onOpen(Route.Page("updates", title = AppText.Updates.VERSION_UPDATE_TITLE)) }
+        "devtools" -> DebugSettingsPage(graph, onBack)
         else -> DataPage(graph, page, onOpen, onBack)
     }
 }
@@ -226,13 +228,32 @@ private fun FeedbackScreen(graph: AppGraph, back: () -> Unit) {
 
 @Composable
 private fun AboutScreen(graph: AppGraph, back: () -> Unit, openUpdates: () -> Unit) {
+    val settings by graph.settings.settings.collectAsState()
+    var versionTaps by remember { mutableIntStateOf(0) }
+    var tapNotice by remember { mutableStateOf("") }
     Screen(AppText.App.ABOUT_APP_TITLE, back) { padding -> PageList(padding) {
         item { Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             AppBrandMark()
             Text(AppText.App.CAMPUS_LIFE_WELCOME_TITLE, style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title2)
             Text("better-zslf · ${if (BuildEdition.isPro) "Pro" else "Standard"}", color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
-            Text(AppText.Content.aboutVersion(graph.platform.versionName), color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            // Five taps on the version string toggle the local developer option; nothing is sent anywhere.
+            Text(AppText.Content.aboutVersion(graph.platform.versionName),
+                color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.clickable {
+                    if (!settings.debugMode) {
+                        versionTaps++
+                        tapNotice = if (versionTaps >= DEVELOPER_TAP_COUNT) "" else AppText.DevTools.tapHint(DEVELOPER_TAP_COUNT - versionTaps)
+                        if (versionTaps >= DEVELOPER_TAP_COUNT) {
+                            versionTaps = 0
+                            graph.settings.update { it.copy(debugMode = true) }
+                            tapNotice = AppText.DevTools.ENABLED_NOTICE
+                        }
+                    } else {
+                        tapNotice = AppText.DevTools.ALREADY_ENABLED_HINT
+                    }
+                })
+            if (tapNotice.isNotBlank()) Text(tapNotice, color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
         } }
         item { InfoBanner(AppText.App.INDEPENDENT_CLIENT_DESCRIPTION, tone = UiTone.Neutral) }
         item { InfoBanner(if (BuildEdition.isPro) AppText.App.PRIVACY_AND_OFFLINE_WATER_PROTOCOL_HINT else AppText.Edition.STANDARD_PRIVACY_HINT,
@@ -243,6 +264,9 @@ private fun AboutScreen(graph: AppGraph, back: () -> Unit, openUpdates: () -> Un
         } }
     } }
 }
+
+/** Consecutive taps on the version string required before the developer option appears. */
+internal const val DEVELOPER_TAP_COUNT: Int = 5
 
 @Composable
 fun RunTasksScreen(graph: AppGraph, open: (Route) -> Unit, back: (() -> Unit)? = null) = RunTaskList(graph, open, back)

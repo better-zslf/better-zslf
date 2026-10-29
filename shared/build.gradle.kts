@@ -85,6 +85,8 @@ kotlin {
             implementation(libs.ktor.core)
             implementation(libs.coroutines.core)
             implementation(libs.serialization.json)
+            implementation(libs.kotlinx.datetime)
+            implementation(libs.ksoup)
             if (isProEdition) implementation(libs.kable)
             implementation(libs.lifecycle.compose)
         }

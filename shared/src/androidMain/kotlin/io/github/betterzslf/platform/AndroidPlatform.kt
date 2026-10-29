@@ -107,7 +107,7 @@ private class EncryptedStore(context: Context) : KeyValueStore {
             cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, raw.copyOfRange(0, 12)))
             cipher.updateAAD(key.toByteArray(Charsets.UTF_8))
             String(cipher.doFinal(raw.copyOfRange(12, raw.size)), Charsets.UTF_8)
-        }.getOrElse { preferences.edit().remove(key).apply(); null }
+        }.getOrElse { throw IllegalStateException(AppText.App.LOCAL_DATA_TEMPORARILY_UNAVAILABLE_TITLE) }
     }
     override fun put(key: String, value: String) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -116,8 +116,8 @@ private class EncryptedStore(context: Context) : KeyValueStore {
         val encoded = Base64.encodeToString(cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
         check(preferences.edit().putString(key, encoded).commit()) { AppText.Common.LOCAL_DATA_SAVE_FAILED }
     }
-    override fun remove(key: String) { preferences.edit().remove(key).commit() }
-    override fun clear() { preferences.edit().clear().commit() }
+    override fun remove(key: String) { check(preferences.edit().remove(key).commit()) { AppText.App.PARTIAL_LOCAL_DATA_CLEAR_FAILED } }
+    override fun clear() { check(preferences.edit().clear().commit()) { AppText.App.PARTIAL_LOCAL_DATA_CLEAR_FAILED } }
 }
 
 @Composable

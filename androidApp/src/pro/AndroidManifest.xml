@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
@@ -24,5 +26,28 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name="io.github.betterzslf.schedule.ScheduleNotificationPermissionActivity"
+            android:exported="false" android:excludeFromRecents="true"
+            android:theme="@style/schedule_permission_activity_theme" />
+        <receiver android:name="io.github.betterzslf.schedule.ScheduleAlarmReceiver" android:exported="false" />
+        <receiver android:name="io.github.betterzslf.schedule.ScheduleReconcileReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        <receiver android:name="io.github.betterzslf.schedule.ScheduleTodayWidgetProvider"
+            android:exported="false" android:label="@string/schedule_widget_today_label">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/schedule_widget_today_info" />
+        </receiver>
+        <receiver android:name="io.github.betterzslf.schedule.ScheduleNextWidgetProvider"
+            android:exported="false" android:label="@string/schedule_widget_next_label">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/schedule_widget_next_info" />
+        </receiver>
     </application>
 </manifest>

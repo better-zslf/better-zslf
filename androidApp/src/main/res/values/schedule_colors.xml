@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="schedule_surface">#FFFFFFFF</color>
+    <color name="schedule_text">#FF202124</color>
+    <color name="schedule_secondary">#FF62666D</color>
+    <color name="schedule_accent">#FF356DF3</color>
+    <color name="schedule_outline">#14000000</color>
+</resources>

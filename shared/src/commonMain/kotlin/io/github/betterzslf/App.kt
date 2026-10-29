@@ -20,6 +20,12 @@ import io.github.betterzslf.core.net.ApiClient
 import io.github.betterzslf.core.storage.SessionStore
 import io.github.betterzslf.data.AppRepositories
 import io.github.betterzslf.feature.settings.SettingsStore
+import io.github.betterzslf.feature.schedule.createAcademicSource
+import io.github.betterzslf.feature.schedule.runtime.ScheduleRuntime
+import io.github.betterzslf.ui.schedule.ScheduleBindingPrompt
+import io.github.betterzslf.ui.schedule.ScheduleRootPage
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import io.github.betterzslf.feature.runui.RunRuntime
 import io.github.betterzslf.feature.update.GithubReleaseRepository
 import io.github.betterzslf.platform.NativeAppUpdater
@@ -28,6 +34,7 @@ import io.github.betterzslf.platform.createLocationTracker
 import io.github.betterzslf.ui.run.RunTaskList
 import kotlin.time.Clock
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import io.github.betterzslf.edition.EditionAccess
 import io.github.betterzslf.edition.EditionFeatures
 import io.github.betterzslf.edition.createEditionFeatures
@@ -55,6 +62,18 @@ class AppGraph(val platform: PlatformServices) {
     val api = ApiClient(http, sessions)
     val repositories = AppRepositories(api, sessions)
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val schedule = ScheduleRuntime(applicationScope, platform.storage, { createAcademicSource(platform.httpClient()) })
+    init {
+        applicationScope.launch {
+            sessions.session.collect { session ->
+                schedule.setOwner(session?.userId)
+                if (session != null) onForeground()
+            }
+        }
+    }
+    fun onForeground() {
+        applicationScope.launch { schedule.onForeground() }
+    }
     // The selected facade contains no Pro implementation in standard compiler inputs.
     val editionFeatures: EditionFeatures by lazy { createEditionFeatures(applicationScope) }
     private var runRuntimeInstance: RunRuntime? = null
@@ -83,7 +102,9 @@ class AppGraph(val platform: PlatformServices) {
         private set
     fun clearStorageNotice() { storageNotice = null }
     fun logout() {
-        if (runCatching { repositories.auth.logout() }.isFailure) {
+        val timetableOk = schedule.clearForLogout()
+        val sessionOk = runCatching { repositories.auth.logout() }.isSuccess
+        if (!timetableOk || !sessionOk) {
             storageNotice = AppText.App.SESSION_CLEANUP_FAILED_OLD_SESSION_MAY_REAPPEAR_HINT
         }
     }
@@ -103,17 +124,18 @@ class AppGraph(val platform: PlatformServices) {
                     storageNotice = AppText.App.LOCAL_DATA_CLEAR_BLOCKED_BY_UPDATE_HINT
                     return@launch
                 }
+                val scheduleOk = schedule.clearForLogout()
                 val sessionOk = runCatching { sessions.clear() }.isSuccess
                 val storageOk = runCatching { platform.storage.clear() }.isSuccess
                 val settingsOk = settings.reset()
                 runRuntimeInstance = null
-                storageNotice = if (sessionOk && storageOk && settingsOk) null else AppText.App.PARTIAL_LOCAL_DATA_CLEAR_FAILED
+                storageNotice = if (scheduleOk && sessionOk && storageOk && settingsOk) null else AppText.App.PARTIAL_LOCAL_DATA_CLEAR_FAILED
             } finally {
                 clearingLocalData = false
             }
         }
     }
-    fun close() { closeUpdateOwners(); applicationScope.cancel(); api.close(); http.close() }
+    fun close() { schedule.close(); closeUpdateOwners(); applicationScope.cancel(); api.close(); http.close() }
 }
 
 @Serializable
@@ -169,14 +191,34 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
         else -> if (settings.dynamicColor) ColorSchemeMode.MonetSystem else ColorSchemeMode.System
     }
     val theme = remember(mode) { ThemeController(mode, lightColors = ardotLightColors(), darkColors = ardotDarkColors()) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { graph.onForeground() }
+    // Invalidate old four-tab saved indices once; v2 then retains all five stacks on recreation.
+    key(NavigationLayoutPolicy.SAVED_STATE_SCHEMA) {
     val root = rememberNavBackStack<Route>(Route.Main)
     // Keep tab navigation outside the login-gated subtree, including across a 401.
     var selected by rememberSaveable { mutableIntStateOf(0) }
     val home = rememberNavBackStack<Route>(Route.TabRoot(0))
     val run = rememberNavBackStack<Route>(Route.TabRoot(1))
-    val community = rememberNavBackStack<Route>(Route.TabRoot(2))
-    val profile = rememberNavBackStack<Route>(Route.TabRoot(3))
-    val tabStacks = listOf(home, run, community, profile)
+    val timetable = rememberNavBackStack<Route>(Route.TabRoot(2))
+    val community = rememberNavBackStack<Route>(Route.TabRoot(3))
+    val profile = rememberNavBackStack<Route>(Route.TabRoot(4))
+    val tabStacks = listOf(home, run, timetable, community, profile)
+    val nativeOpenRequest by graph.schedule.native.openRequests.collectAsState()
+    LaunchedEffect(nativeOpenRequest, session?.userId) {
+        val request = nativeOpenRequest ?: return@LaunchedEffect
+        if (session == null) return@LaunchedEffect // Keep the request while the campus login is visible.
+        graph.schedule.native.consumeOpenRequest()
+        if (request.ownerRevision != null && request.ownerRevision != graph.schedule.ownerRevision) return@LaunchedEffect
+        if (graph.schedule.state.value.owner != session?.userId) return@LaunchedEffect
+        val courseId = request.occurrenceId?.let(graph.schedule::courseIdForOccurrence)
+        graph.schedule.state.value.sourceTermId?.let { graph.schedule.selectTerm(it) }
+        selected = 2
+        root.removeAll { it != Route.Main }
+        if (root.isEmpty()) root.add(Route.Main)
+        timetable.clear()
+        timetable.add(Route.TabRoot(2))
+        if (courseId != null) timetable.pushUnique(Route.Page("scheduledetail", courseId, AppText.Schedule.DETAILS_TITLE))
+    }
     // The root stack owns a single route while a tab is open, so the platform back gesture must
     // first pop the active tab's stack and then let the system background the task.
     DisposableEffect(root, tabStacks, selected) {
@@ -233,6 +275,13 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
                 FeaturePage(graph, it, onOpen = root::pushUnique, onBack = { root.removeLastOrNull() })
             }
         }
+        if (session != null && root.lastOrNull() == Route.Main) {
+            ScheduleBindingPrompt(graph) {
+                selected = 2
+                timetable.pushUnique(Route.Page("schedulebind", title = AppText.Schedule.BIND_TITLE))
+            }
+        }
+    }
     }
 }
 
@@ -243,8 +292,8 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
     val open: (Route) -> Unit = { route ->
         if (route is Route.Page && route.kind == "resetpassword") onAccountRecovery() else stack.pushUnique(route)
     }
-    val titles = listOf(AppText.Navigation.HOME, AppText.Navigation.CAMPUS_RUN, AppText.Navigation.COMMUNITY, AppText.Navigation.PROFILE)
-    val icons = listOf(MiuixIcons.Home, MiuixIcons.Location, MiuixIcons.Community, MiuixIcons.Contacts)
+    val titles = listOf(AppText.Navigation.HOME, AppText.Navigation.CAMPUS_RUN, AppText.Navigation.SCHEDULE, AppText.Navigation.COMMUNITY, AppText.Navigation.PROFILE)
+    val icons = listOf(MiuixIcons.Home, MiuixIcons.Location, MiuixIcons.Notes, MiuixIcons.Community, MiuixIcons.Contacts)
     val backdrop = rememberLayerBackdrop()
     val showBottomNavigation = stack.lastOrNull() is Route.TabRoot
     // Miuix measures the whole bottomBar before composing its body. Its padding includes the
@@ -299,8 +348,9 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
                             when (route.index) {
                                 0 -> HomeScreen(graph, open)
                                 1 -> RunTaskList(graph, open)
-                                2 -> CommunityScreen(graph, open)
-                                3 -> ProfileScreen(graph, open)
+                                2 -> ScheduleRootPage(graph, open)
+                                3 -> CommunityScreen(graph, open)
+                                4 -> ProfileScreen(graph, open)
                             }
                         }
                         entry<Route.Page>(swipeDismiss = if ((stack.lastOrNull() as? Route.Page)?.kind in setOf("water", "runtracker", "resetpassword")) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) { route ->

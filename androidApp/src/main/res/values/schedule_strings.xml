@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="schedule_widget_today_label">课表 · 今日</string>
+    <string name="schedule_widget_next_label">课表 · 下一节</string>
+    <string name="schedule_widget_today_description">本机已同步的今日课程；支持较宽尺寸与浅深色。</string>
+    <string name="schedule_widget_next_description">下一次尚未开始的连续课程；适合紧凑尺寸。</string>
+    <string name="schedule_widget_not_synced">尚未同步课表</string>
+    <string name="schedule_widget_open_app">打开 App 完成登录、绑定与同步</string>
+    <string name="schedule_widget_private_cache">仅显示本机已同步数据</string>
+</resources>

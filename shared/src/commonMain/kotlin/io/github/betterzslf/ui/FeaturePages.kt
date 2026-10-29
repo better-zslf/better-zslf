@@ -46,6 +46,7 @@ fun FeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBa
         return
     }
     when (page.kind) {
+        "schedule", "schedulebind", "scheduleterms", "scheduledetail", "schedulemanage", "schedulereminders", "schedulewidget", "scheduleperiods" -> io.github.betterzslf.ui.schedule.SchedulePage(graph, page, onOpen, onBack)
         "settings" -> SettingsScreen(graph, onOpen, onBack)
         "password" -> PasswordScreen(graph, onBack)
         "resetpassword" -> io.github.betterzslf.ui.accountrecovery.AccountRecoveryPage(graph, onBack)

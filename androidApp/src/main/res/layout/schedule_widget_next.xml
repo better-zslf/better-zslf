@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/schedule_widget_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="12dp" android:background="@drawable/schedule_widget_background">
+    <TextView android:id="@+id/schedule_widget_header" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="@string/schedule_widget_next_label" android:textColor="@color/schedule_accent" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/schedule_widget_headline" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="4dp" android:text="@string/schedule_widget_not_synced" android:textColor="@color/schedule_text" android:textStyle="bold" android:textSize="15sp" android:maxLines="2" android:ellipsize="end" />
+    <TextView android:id="@+id/schedule_widget_body" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:layout_marginTop="6dp" android:text="@string/schedule_widget_open_app" android:textColor="@color/schedule_text" android:textSize="12sp" android:maxLines="3" android:ellipsize="end" />
+    <TextView android:id="@+id/schedule_widget_footer" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="4dp" android:text="@string/schedule_widget_private_cache" android:textColor="@color/schedule_secondary" android:textSize="10sp" android:maxLines="1" android:ellipsize="end" />
+</LinearLayout>

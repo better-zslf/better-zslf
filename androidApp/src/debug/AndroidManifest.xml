@@ -4,5 +4,8 @@
         <!-- Debug-only, explicit UI actions. Absent from release APKs. -->
         <activity android:name=".CapabilityProbeActivity" android:exported="true"
             android:launchMode="singleTask" android:label="Local capability probe" />
+        <activity android:name=".ScheduleProbeActivity" android:exported="true"
+            android:enableOnBackInvokedCallback="true" android:windowSoftInputMode="adjustResize"
+            android:label="Offline synthetic schedule probe" />
     </application>
 </manifest>

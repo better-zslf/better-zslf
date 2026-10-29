@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@layout/schedule_*,@id/schedule_*,@drawable/schedule_*,@xml/schedule_*,@string/schedule_*,@color/schedule_*,@style/schedule_*" />

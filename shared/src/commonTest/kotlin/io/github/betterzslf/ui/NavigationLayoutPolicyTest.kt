@@ -2,93 +2,78 @@ package io.github.betterzslf.ui
 
 import kotlin.test.*
 
-/** Pure policy only; real Compose resize/rotation and inset rendering require later native UI checks. */
+/** Pure policy only; Compose recreation, insets and resize are also checked on native Android. */
 class NavigationLayoutPolicyTest {
-    private fun stacks(): List<MutableList<String>> = List(4) { index -> mutableListOf("tab-$index", "detail-$index") }
+    private fun stacks() = List(5) { index -> mutableListOf("tab-$index", "detail-$index") }
 
-    @Test fun belowSixHundredUsesTheExistingBottomBar() {
-        for (width in listOf(0f, -0f, Float.MIN_VALUE, 320f, 390f, 599f, 599.999f)) {
+    @Test fun compactAndUnknownWidthsKeepTheBottomBar() {
+        for (width in listOf(0f, -0f, Float.MIN_VALUE, 320f, 390f, 599.999f,
+            -1f, -600f, Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY)) {
             assertFalse(NavigationLayoutPolicy.useRail(width))
         }
     }
-
-    @Test fun exactlySixHundredUsesRailWithoutAnOffByOneGap() {
+    @Test fun exactlySixHundredAndLargerFiniteWidthsUseRail() {
         assertEquals(600f, NavigationLayoutPolicy.RAIL_MIN_WIDTH_DP)
-        assertTrue(NavigationLayoutPolicy.useRail(600f))
-    }
-
-    @Test fun largerFiniteWidthsUseRail() {
-        for (width in listOf(600.001f, 640f, 834f, 1280f, Float.MAX_VALUE)) {
+        for (width in listOf(600f, 600.001f, 834f, 1280f, Float.MAX_VALUE)) {
             assertTrue(NavigationLayoutPolicy.useRail(width))
         }
     }
-
-    @Test fun negativeUnknownAndUnboundedWidthsStayConservativelyCompact() {
-        for (width in listOf(-1f, -600f, -Float.MAX_VALUE, Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY)) {
-            assertFalse(NavigationLayoutPolicy.useRail(width))
-        }
-    }
-
-    @Test fun invalidSavedSelectionFallsBackWithoutChangingAnyStack() {
+    @Test fun invalidSavedSelectionNeverInventsANewStack() {
         val stacks = stacks()
         val before = stacks.map { it.toList() }
-        for (index in listOf(-1, 4, Int.MIN_VALUE, Int.MAX_VALUE)) {
+        for (index in listOf(-1, 5, Int.MIN_VALUE, Int.MAX_VALUE)) {
             assertEquals(0, NavigationLayoutPolicy.tabIndex(index))
             assertSame(stacks[0], NavigationLayoutPolicy.stackFor(stacks, index))
         }
         assertEquals(before, stacks)
     }
-
-    @Test fun requestedSelectionIsValidatedWithoutImplicitReselectPop() {
-        for (current in 0..3) {
+    @Test fun allFiveSelectionsAndReselectsAreStable() {
+        for (current in 0..4) {
             assertEquals(current, NavigationLayoutPolicy.selectTab(current, current))
             assertEquals(current, NavigationLayoutPolicy.selectTab(current, -1))
-            assertEquals(current, NavigationLayoutPolicy.selectTab(current, 4))
-            for (requested in 0..3) assertEquals(requested, NavigationLayoutPolicy.selectTab(current, requested))
+            assertEquals(current, NavigationLayoutPolicy.selectTab(current, 5))
+            for (requested in 0..4) assertEquals(requested, NavigationLayoutPolicy.selectTab(current, requested))
         }
         assertEquals(0, NavigationLayoutPolicy.selectTab(Int.MAX_VALUE, -1))
-        assertEquals(3, NavigationLayoutPolicy.selectTab(-1, 3))
+        assertEquals(4, NavigationLayoutPolicy.selectTab(-1, 4))
     }
-
-    @Test fun repeatedTabSwitchesReturnExistingIndependentHistories() {
+    @Test fun timetableThirdTabHasItsOwnHistory() {
         val stacks = stacks()
         val before = stacks.map { it.toList() }
         var selected = 0
-        for (requested in listOf(3, 1, 2, 0, 0, 3)) {
+        for (requested in listOf(4, 1, 2, 3, 0, 2, 2, 4)) {
             selected = NavigationLayoutPolicy.selectTab(selected, requested)
             assertSame(stacks[requested], NavigationLayoutPolicy.stackFor(stacks, selected))
             assertEquals(before, stacks)
         }
-        stacks[3].add("profile-child")
-        assertEquals(2, stacks[0].size)
-        assertEquals(3, stacks[3].size)
+        stacks[2].add("schedule-detail")
+        stacks[4].add("profile-child")
+        assertEquals(3, stacks[2].size)
+        assertEquals(3, stacks[4].size)
+        assertEquals(2, stacks[3].size)
     }
-
-    @Test fun foldResizeAndRotationOnlyChangeChromeNotSelectionOrHistoryOwnership() {
+    @Test fun resizingDoesNotChangeProfileOwnership() {
         val stacks = stacks()
+        val profile = stacks[4]
         val before = stacks.map { it.toList() }
-        val selected = 3
-        val profile = NavigationLayoutPolicy.stackFor(stacks, selected)
         for (width in listOf(390f, 600f, 834f, 599.9f, 1280f, Float.NaN, 390f)) {
             NavigationLayoutPolicy.useRail(width)
-            assertEquals(3, NavigationLayoutPolicy.tabIndex(selected))
-            assertSame(profile, NavigationLayoutPolicy.stackFor(stacks, selected))
+            assertEquals(4, NavigationLayoutPolicy.tabIndex(4))
+            assertSame(profile, NavigationLayoutPolicy.stackFor(stacks, 4))
             assertEquals(before, stacks)
         }
     }
-
-    @Test fun reselectKeepsNestedHistoryRatherThanResettingToTheTabRoot() {
+    @Test fun reselectKeepsNestedHistory() {
         val stacks = stacks()
         stacks[1].addAll(listOf("run-task", "run-tracker"))
-        val existing = stacks[1].toList()
-        val selected = NavigationLayoutPolicy.selectTab(1, 1)
-        assertSame(stacks[1], NavigationLayoutPolicy.stackFor(stacks, selected))
-        assertEquals(existing, stacks[1])
+        val before = stacks[1].toList()
+        assertSame(stacks[1], NavigationLayoutPolicy.stackFor(stacks, NavigationLayoutPolicy.selectTab(1, 1)))
+        assertEquals(before, stacks[1])
     }
-
-    @Test fun shellRequiresExactlyFourStacksInsteadOfInventingAnEmptyDetailOwner() {
-        assertEquals(4, NavigationLayoutPolicy.TAB_COUNT)
-        for (size in listOf(0, 1, 3, 5)) {
+    @Test fun requiresExactlyFiveStacksAndHasAnUpgradeStateNamespace() {
+        assertEquals(5, NavigationLayoutPolicy.TAB_COUNT)
+        assertEquals("main-five-tabs-v2", NavigationLayoutPolicy.SAVED_STATE_SCHEMA)
+        for (size in listOf(0, 1, 3, 4, 6)) {
             assertFailsWith<IllegalArgumentException> { NavigationLayoutPolicy.stackFor(List(size) { mutableListOf("root") }, 0) }
         }
     }

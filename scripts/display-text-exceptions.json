@@ -1242,6 +1242,996 @@
       "category": "protocol",
       "reason": "Weekday text constructs the exact school counts dictionary key, not a display weekday",
       "owner": "task82/water-protocol"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"学号\"",
+      "context": {
+        "before": "    if (clean(left.text()).trimEnd(':', '：') == ",
+        "after": ") {\n                val text = clean(right.text("
+      },
+      "position": {
+        "start": 2238,
+        "end": 2242,
+        "line": 41,
+        "column": 57
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"^学号[：:]\\\\s*([A-Za-z0-9_.-]{1,64})$\"",
+      "context": {
+        "before": "}\n        }\n    }\n    val inlineAccount = Regex(",
+        "after": ")\n    for (element in doc.select(\"span,label,li\""
+      },
+      "position": {
+        "start": 2420,
+        "end": 2456,
+        "line": 47,
+        "column": 31
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"^(\\\\d{4})年(\\\\d{1,2})月(\\\\d{1,2})日?$\"",
+      "context": {
+        "before": "var invalid = false\n    val datePattern = Regex(",
+        "after": ")\n    for (row in doc.select(\"tr\")) {\n        va"
+      },
+      "position": {
+        "start": 4553,
+        "end": 4589,
+        "line": 84,
+        "column": 29
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"第\"",
+      "context": {
+        "before": "(it.element.text())\n        if (text.startsWith(",
+        "after": ") && text.endsWith(\"节\")) parseAcademicPeriods(te"
+      },
+      "position": {
+        "start": 7008,
+        "end": 7011,
+        "line": 117,
+        "column": 29
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"节\"",
+      "context": {
+        "before": "      if (text.startsWith(\"第\") && text.endsWith(",
+        "after": ")) parseAcademicPeriods(text).takeIf { result ->"
+      },
+      "position": {
+        "start": 7030,
+        "end": 7033,
+        "line": 117,
+        "column": 51
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"备注\"",
+      "context": {
+        "before": "alues.any { clean(it.element.text()).startsWith(",
+        "after": ") }) {\n            remarks += row.values.distinc"
+      },
+      "position": {
+        "start": 7507,
+        "end": 7511,
+        "line": 125,
+        "column": 66
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"备注\"",
+      "context": {
+        "before": "owIndex && !clean(it.element.text()).startsWith(",
+        "after": ") }\n                .map { clean(it.element.text"
+      },
+      "position": {
+        "start": 7652,
+        "end": 7656,
+        "line": 126,
+        "column": 135
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"课程\"",
+      "context": {
+        "before": "  fonts.firstOrNull { it.attr(\"title\") in setOf(",
+        "after": ", \"课程名称\") }?.let { clean(it.text()) }.orEmpty()\n"
+      },
+      "position": {
+        "start": 9489,
+        "end": 9493,
+        "line": 150,
+        "column": 67
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"课程名称\"",
+      "context": {
+        "before": "s.firstOrNull { it.attr(\"title\") in setOf(\"课程\", ",
+        "after": ") }?.let { clean(it.text()) }.orEmpty()\n        "
+      },
+      "position": {
+        "start": 9495,
+        "end": 9501,
+        "line": 150,
+        "column": 73
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"老师\"",
+      "context": {
+        "before": "cher = fonts.filter { it.attr(\"title\") in setOf(",
+        "after": ", \"教师\") }.map { clean(it.text()) }.distinct().jo"
+      },
+      "position": {
+        "start": 9762,
+        "end": 9766,
+        "line": 153,
+        "column": 72
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"教师\"",
+      "context": {
+        "before": " fonts.filter { it.attr(\"title\") in setOf(\"老师\", ",
+        "after": ") }.map { clean(it.text()) }.distinct().joinToSt"
+      },
+      "position": {
+        "start": 9768,
+        "end": 9772,
+        "line": 153,
+        "column": 78
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"教室\"",
+      "context": {
+        "before": "ation = fonts.firstOrNull { it.attr(\"title\") == ",
+        "after": " }?.let { clean(it.text()) }?.take(256).orEmpty("
+      },
+      "position": {
+        "start": 9913,
+        "end": 9917,
+        "line": 154,
+        "column": 72
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"周次(节次)\"",
+      "context": {
+        "before": "= fonts.firstOrNull { it.attr(\"title\") in setOf(",
+        "after": ", \"周次\", \"上课周次\") }?.let { clean(it.text()) }.orEm"
+      },
+      "position": {
+        "start": 10044,
+        "end": 10052,
+        "line": 155,
+        "column": 78
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"周次\"",
+      "context": {
+        "before": "rstOrNull { it.attr(\"title\") in setOf(\"周次(节次)\", ",
+        "after": ", \"上课周次\") }?.let { clean(it.text()) }.orEmpty()\n"
+      },
+      "position": {
+        "start": 10054,
+        "end": 10058,
+        "line": 155,
+        "column": 88
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"上课周次\"",
+      "context": {
+        "before": "ull { it.attr(\"title\") in setOf(\"周次(节次)\", \"周次\", ",
+        "after": ") }?.let { clean(it.text()) }.orEmpty()\n        "
+      },
+      "position": {
+        "start": 10060,
+        "end": 10066,
+        "line": 155,
+        "column": 94
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"\\\\[([^\\\\]]+)节\\\\]$\"",
+      "context": {
+        "before": "ZED\" }\n                val periodSuffix = Regex(",
+        "after": ").find(weekText)\n                val explicitPer"
+      },
+      "position": {
+        "start": 10299,
+        "end": 10318,
+        "line": 158,
+        "column": 42
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"星期\"",
+      "context": {
+        "before": "(\"\\\\s+\"), \"\").substringBefore('(').removePrefix(",
+        "after": ").removePrefix(\"周\")) {\n    \"一\" -> 1; \"二\" -> 2; \""
+      },
+      "position": {
+        "start": 12783,
+        "end": 12787,
+        "line": 195,
+        "column": 119
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"周\"",
+      "context": {
+        "before": "ringBefore('(').removePrefix(\"星期\").removePrefix(",
+        "after": ")) {\n    \"一\" -> 1; \"二\" -> 2; \"三\" -> 3; \"四\" -> 4;"
+      },
+      "position": {
+        "start": 12802,
+        "end": 12805,
+        "line": 195,
+        "column": 138
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"一\"",
+      "context": {
+        "before": "(').removePrefix(\"星期\").removePrefix(\"周\")) {\n    ",
+        "after": " -> 1; \"二\" -> 2; \"三\" -> 3; \"四\" -> 4; \"五\" -> 5; \""
+      },
+      "position": {
+        "start": 12814,
+        "end": 12817,
+        "line": 196,
+        "column": 5
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"二\"",
+      "context": {
+        "before": "Prefix(\"星期\").removePrefix(\"周\")) {\n    \"一\" -> 1; ",
+        "after": " -> 2; \"三\" -> 3; \"四\" -> 4; \"五\" -> 5; \"六\" -> 6; \""
+      },
+      "position": {
+        "start": 12824,
+        "end": 12827,
+        "line": 196,
+        "column": 15
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"三\"",
+      "context": {
+        "before": "\").removePrefix(\"周\")) {\n    \"一\" -> 1; \"二\" -> 2; ",
+        "after": " -> 3; \"四\" -> 4; \"五\" -> 5; \"六\" -> 6; \"日\", \"天\" ->"
+      },
+      "position": {
+        "start": 12834,
+        "end": 12837,
+        "line": 196,
+        "column": 25
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"四\"",
+      "context": {
+        "before": "refix(\"周\")) {\n    \"一\" -> 1; \"二\" -> 2; \"三\" -> 3; ",
+        "after": " -> 4; \"五\" -> 5; \"六\" -> 6; \"日\", \"天\" -> 7\n    els"
+      },
+      "position": {
+        "start": 12844,
+        "end": 12847,
+        "line": 196,
+        "column": 35
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"五\"",
+      "context": {
+        "before": ") {\n    \"一\" -> 1; \"二\" -> 2; \"三\" -> 3; \"四\" -> 4; ",
+        "after": " -> 5; \"六\" -> 6; \"日\", \"天\" -> 7\n    else -> null\n"
+      },
+      "position": {
+        "start": 12854,
+        "end": 12857,
+        "line": 196,
+        "column": 45
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"六\"",
+      "context": {
+        "before": "\" -> 1; \"二\" -> 2; \"三\" -> 3; \"四\" -> 4; \"五\" -> 5; ",
+        "after": " -> 6; \"日\", \"天\" -> 7\n    else -> null\n}\n\nprivate"
+      },
+      "position": {
+        "start": 12864,
+        "end": 12867,
+        "line": 196,
+        "column": 55
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"日\"",
+      "context": {
+        "before": "\" -> 2; \"三\" -> 3; \"四\" -> 4; \"五\" -> 5; \"六\" -> 6; ",
+        "after": ", \"天\" -> 7\n    else -> null\n}\n\nprivate fun clean"
+      },
+      "position": {
+        "start": 12874,
+        "end": 12877,
+        "line": 196,
+        "column": 65
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/AcademicHtmlParsing.kt",
+      "kind": "string",
+      "source": "\"天\"",
+      "context": {
+        "before": "2; \"三\" -> 3; \"四\" -> 4; \"五\" -> 5; \"六\" -> 6; \"日\", ",
+        "after": " -> 7\n    else -> null\n}\n\nprivate fun clean(valu"
+      },
+      "position": {
+        "start": 12879,
+        "end": 12882,
+        "line": 196,
+        "column": 70
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic HTML field labels, date/header grammar and identity selector values; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"周次:\"",
+      "context": {
+        "before": "eplace(Regex(\"\\\\s+\"), \"\")\n        .removePrefix(",
+        "after": ").removePrefix(\"周次：\").removePrefix(\"第\")\n    val "
+      },
+      "position": {
+        "start": 489,
+        "end": 494,
+        "line": 9,
+        "column": 23
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"周次：\"",
+      "context": {
+        "before": ", \"\")\n        .removePrefix(\"周次:\").removePrefix(",
+        "after": ").removePrefix(\"第\")\n    val periodSuffix = Regex"
+      },
+      "position": {
+        "start": 509,
+        "end": 514,
+        "line": 9,
+        "column": 43
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"第\"",
+      "context": {
+        "before": "ePrefix(\"周次:\").removePrefix(\"周次：\").removePrefix(",
+        "after": ")\n    val periodSuffix = Regex(\"\\\\[([^\\\\]]+)节\\\\]"
+      },
+      "position": {
+        "start": 529,
+        "end": 532,
+        "line": 9,
+        "column": 63
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"\\\\[([^\\\\]]+)节\\\\]$\"",
+      "context": {
+        "before": ".removePrefix(\"第\")\n    val periodSuffix = Regex(",
+        "after": ").find(text)\n    if (periodSuffix != null) text "
+      },
+      "position": {
+        "start": 563,
+        "end": 582,
+        "line": 10,
+        "column": 30
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"\\\\(([单双])周?\\\\)\"",
+      "context": {
+        "before": "riodSuffix.range)\n    text = text.replace(Regex(",
+        "after": "), \"$1\")\n        .replace(\"(周)\", \"\").replace(\"周\""
+      },
+      "position": {
+        "start": 699,
+        "end": 715,
+        "line": 12,
+        "column": 31
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"(周)\"",
+      "context": {
+        "before": "Regex(\"\\\\(([单双])周?\\\\)\"), \"$1\")\n        .replace(",
+        "after": ", \"\").replace(\"周\", \"\")\n    val parityCount = tex"
+      },
+      "position": {
+        "start": 741,
+        "end": 746,
+        "line": 13,
+        "column": 18
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"周\"",
+      "context": {
+        "before": "\\)\"), \"$1\")\n        .replace(\"(周)\", \"\").replace(",
+        "after": ", \"\")\n    val parityCount = text.count { it == '"
+      },
+      "position": {
+        "start": 760,
+        "end": 763,
+        "line": 13,
+        "column": 37
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "char",
+      "source": "'单'",
+      "context": {
+        "before": "\", \"\")\n    val parityCount = text.count { it == ",
+        "after": " || it == '双' }\n    val globalParity = text.last"
+      },
+      "position": {
+        "start": 810,
+        "end": 813,
+        "line": 14,
+        "column": 42
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "char",
+      "source": "'双'",
+      "context": {
+        "before": "l parityCount = text.count { it == '单' || it == ",
+        "after": " }\n    val globalParity = text.lastOrNull()?.tak"
+      },
+      "position": {
+        "start": 823,
+        "end": 826,
+        "line": 14,
+        "column": 55
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "char",
+      "source": "'单'",
+      "context": {
+        "before": "stOrNull()?.takeIf { parityCount == 1 && (it == ",
+        "after": " || it == '双') }\n    if (globalParity != null) t"
+      },
+      "position": {
+        "start": 907,
+        "end": 910,
+        "line": 15,
+        "column": 79
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "char",
+      "source": "'双'",
+      "context": {
+        "before": "akeIf { parityCount == 1 && (it == '单' || it == ",
+        "after": ") }\n    if (globalParity != null) text = text.dr"
+      },
+      "position": {
+        "start": 920,
+        "end": 923,
+        "line": 15,
+        "column": 92
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"^([0-9]{1,2})(?:[-~至]([0-9]{1,2}))?([单双])?$\"",
+      "context": {
+        "before": "r (token in tokens) {\n        val match = Regex(",
+        "after": ").matchEntire(token)\n            ?: return Acade"
+      },
+      "position": {
+        "start": 1226,
+        "end": 1271,
+        "line": 21,
+        "column": 27
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "char",
+      "source": "'单'",
+      "context": {
+        "before": "st..last).filter { parity == null || (parity == ",
+        "after": " && it % 2 == 1) || (parity == '双' && it % 2 == "
+      },
+      "position": {
+        "start": 1778,
+        "end": 1781,
+        "line": 27,
+        "column": 71
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "char",
+      "source": "'双'",
+      "context": {
+        "before": "|| (parity == '单' && it % 2 == 1) || (parity == ",
+        "after": " && it % 2 == 0) }\n    }\n    return AcademicNumb"
+      },
+      "position": {
+        "start": 1812,
+        "end": 1815,
+        "line": 27,
+        "column": 105
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"第\"",
+      "context": {
+        "before": "emovePrefix(\"[\").removeSuffix(\"]\").removePrefix(",
+        "after": ").removeSuffix(\"节\")\n    val result = mutableSetO"
+      },
+      "position": {
+        "start": 2198,
+        "end": 2201,
+        "line": 35,
+        "column": 59
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"节\"",
+      "context": {
+        "before": "emoveSuffix(\"]\").removePrefix(\"第\").removeSuffix(",
+        "after": ")\n    val result = mutableSetOf<Int>()\n    for ("
+      },
+      "position": {
+        "start": 2216,
+        "end": 2219,
+        "line": 35,
+        "column": 77
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"[-~至]\"",
+      "context": {
+        "before": "it(',')) {\n        val ends = token.split(Regex(",
+        "after": "))\n        if (ends.size !in 1..2) return Academ"
+      },
+      "position": {
+        "start": 2332,
+        "end": 2339,
+        "line": 38,
+        "column": 38
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"一\"",
+      "context": {
+        "before": " Int? = text.toIntOrNull() ?: when (text) {\n    ",
+        "after": " -> 1; \"二\" -> 2; \"三\" -> 3; \"四\" -> 4; \"五\" -> 5; \""
+      },
+      "position": {
+        "start": 2932,
+        "end": 2935,
+        "line": 49,
+        "column": 5
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"二\"",
+      "context": {
+        "before": "xt.toIntOrNull() ?: when (text) {\n    \"一\" -> 1; ",
+        "after": " -> 2; \"三\" -> 3; \"四\" -> 4; \"五\" -> 5; \"六\" -> 6\n  "
+      },
+      "position": {
+        "start": 2942,
+        "end": 2945,
+        "line": 49,
+        "column": 15
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"三\"",
+      "context": {
+        "before": "Null() ?: when (text) {\n    \"一\" -> 1; \"二\" -> 2; ",
+        "after": " -> 3; \"四\" -> 4; \"五\" -> 5; \"六\" -> 6\n    \"七\" -> 7"
+      },
+      "position": {
+        "start": 2952,
+        "end": 2955,
+        "line": 49,
+        "column": 25
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"四\"",
+      "context": {
+        "before": "when (text) {\n    \"一\" -> 1; \"二\" -> 2; \"三\" -> 3; ",
+        "after": " -> 4; \"五\" -> 5; \"六\" -> 6\n    \"七\" -> 7; \"八\" -> 8"
+      },
+      "position": {
+        "start": 2962,
+        "end": 2965,
+        "line": 49,
+        "column": 35
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"五\"",
+      "context": {
+        "before": ") {\n    \"一\" -> 1; \"二\" -> 2; \"三\" -> 3; \"四\" -> 4; ",
+        "after": " -> 5; \"六\" -> 6\n    \"七\" -> 7; \"八\" -> 8; \"九\" -> 9"
+      },
+      "position": {
+        "start": 2972,
+        "end": 2975,
+        "line": 49,
+        "column": 45
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"六\"",
+      "context": {
+        "before": "\" -> 1; \"二\" -> 2; \"三\" -> 3; \"四\" -> 4; \"五\" -> 5; ",
+        "after": " -> 6\n    \"七\" -> 7; \"八\" -> 8; \"九\" -> 9; \"十\" -> 1"
+      },
+      "position": {
+        "start": 2982,
+        "end": 2985,
+        "line": 49,
+        "column": 55
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"七\"",
+      "context": {
+        "before": "> 2; \"三\" -> 3; \"四\" -> 4; \"五\" -> 5; \"六\" -> 6\n    ",
+        "after": " -> 7; \"八\" -> 8; \"九\" -> 9; \"十\" -> 10; \"十一\" -> 11"
+      },
+      "position": {
+        "start": 2995,
+        "end": 2998,
+        "line": 50,
+        "column": 5
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"八\"",
+      "context": {
+        "before": "> 3; \"四\" -> 4; \"五\" -> 5; \"六\" -> 6\n    \"七\" -> 7; ",
+        "after": " -> 8; \"九\" -> 9; \"十\" -> 10; \"十一\" -> 11; \"十二\" -> "
+      },
+      "position": {
+        "start": 3005,
+        "end": 3008,
+        "line": 50,
+        "column": 15
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"九\"",
+      "context": {
+        "before": "> 4; \"五\" -> 5; \"六\" -> 6\n    \"七\" -> 7; \"八\" -> 8; ",
+        "after": " -> 9; \"十\" -> 10; \"十一\" -> 11; \"十二\" -> 12\n    els"
+      },
+      "position": {
+        "start": 3015,
+        "end": 3018,
+        "line": 50,
+        "column": 25
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"十\"",
+      "context": {
+        "before": "> 5; \"六\" -> 6\n    \"七\" -> 7; \"八\" -> 8; \"九\" -> 9; ",
+        "after": " -> 10; \"十一\" -> 11; \"十二\" -> 12\n    else -> null\n"
+      },
+      "position": {
+        "start": 3025,
+        "end": 3028,
+        "line": 50,
+        "column": 35
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"十一\"",
+      "context": {
+        "before": " 6\n    \"七\" -> 7; \"八\" -> 8; \"九\" -> 9; \"十\" -> 10; ",
+        "after": " -> 11; \"十二\" -> 12\n    else -> null\n}\n\nprivate f"
+      },
+      "position": {
+        "start": 3036,
+        "end": 3040,
+        "line": 50,
+        "column": 46
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
+    },
+    {
+      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/feature/schedule/ScheduleWeekParsing.kt",
+      "kind": "string",
+      "source": "\"十二\"",
+      "context": {
+        "before": "> 7; \"八\" -> 8; \"九\" -> 9; \"十\" -> 10; \"十一\" -> 11; ",
+        "after": " -> 12\n    else -> null\n}\n\nprivate fun normalize"
+      },
+      "position": {
+        "start": 3048,
+        "end": 3052,
+        "line": 50,
+        "column": 58
+      },
+      "category": "protocol",
+      "reason": "Exact upstream academic week/period grammar, parity and Chinese numerals; never display copy",
+      "owner": "schedule/lead"
     }
   ]
 }

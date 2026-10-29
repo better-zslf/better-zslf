@@ -49,6 +49,10 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // Isolated synthetic acceptance install; never alters normal debug or release identity.
+            if (providers.gradleProperty("scheduleProbe").orNull == "true") applicationIdSuffix = ".scheduleprobe"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -74,4 +78,7 @@ dependencies {
     debugImplementation(libs.compose.ui)
     debugImplementation(libs.compose.runtime)
     debugImplementation(libs.coroutines.core)
+    debugImplementation(libs.ktor.core)
+    debugImplementation(libs.ktor.mock)
+    debugImplementation(libs.serialization.json)
 }

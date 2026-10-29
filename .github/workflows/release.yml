@@ -1,5 +1,9 @@
 name: Standard release and scoped Pro notification
 
+# RC6: Pro is local-only; automatic Pro dispatch is hard-disarmed below.
+# To restore it after explicit review, change notify.if's leading false to true.
+# This latch does not depend on repository variables or secrets; keep the job intact.
+
 on:
   push:
     tags: ['v*']
@@ -214,7 +218,7 @@ jobs:
     # Tag-push publishing therefore notifies HERE after success. A manually
     # published release only notifies; it never builds/publishes a second release.
     if: >-
-      ${{ always() && needs.intent.result == 'success' &&
+      ${{ false && always() && needs.intent.result == 'success' &&
           ((needs.intent.outputs.publish_standard == 'true' && needs.release.result == 'success') ||
            needs.intent.outputs.publish_standard == 'false') }}
     runs-on: ubuntu-24.04

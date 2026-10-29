@@ -94,10 +94,8 @@ private fun ProfileOwnerScreen(graph: AppGraph, open: (Route) -> Unit) {
             item("statistics") {
                 val stats = state.statistics
                 MetricStrip(listOf(
-                    UiMetric(stats?.collected?.toString() ?: AppText.Common.NOT_PROVIDED, AppText.Profile.COLLECTED_ARTICLES_LABEL),
-                    UiMetric(stats?.comments?.toString() ?: AppText.Common.NOT_PROVIDED, AppText.Profile.COMMENTS_LABEL),
                     UiMetric(stats?.history?.toString() ?: AppText.Common.NOT_PROVIDED, AppText.Profile.BROWSING_HISTORY_LABEL),
-                ))
+                ), onClick = { _ -> open(Route.Page("history", title = AppText.Content.BROWSING_HISTORY_TITLE)) })
             }
             if (state.loading) item("loading") {
                 LinearProgressIndicator()

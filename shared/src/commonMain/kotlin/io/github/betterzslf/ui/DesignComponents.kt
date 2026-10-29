@@ -4,10 +4,17 @@ import io.github.betterzslf.core.text.AppText
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.shadow
@@ -22,6 +29,7 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.Dp
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.icon.extended.Home
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -117,15 +125,24 @@ fun InfoBanner(
     modifier: Modifier = Modifier,
 ) {
     val accent = tone.color()
+    val displayedTitle = if (tone == UiTone.Warning && title.isBlank()) AppText.Common.WARNING_NOTICE_TITLE else title
+    val bannerModifier = if (tone == UiTone.Warning) {
+        val description = listOf(displayedTitle, message).filter { it.isNotBlank() }.distinct().joinToString(", ")
+        // Speak one complete warning; the visible Text children must not be announced again.
+        modifier.clearAndSetSemantics {
+            contentDescription = description
+            liveRegion = LiveRegionMode.Polite
+        }
+    } else modifier
     Column(
-        modifier.fillMaxWidth()
+        bannerModifier.fillMaxWidth()
             .clip(RoundedCornerShape(AppUiTokens.FieldRadius))
             .background(accent.copy(alpha = 0.10f))
             .animateContentSize()
             .padding(AppUiTokens.CardPadding),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        if (title.isNotBlank()) Text(title, color = accent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        if (displayedTitle.isNotBlank()) Text(displayedTitle, color = accent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         if (message.isNotBlank()) Text(message, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
     }
 }
@@ -134,14 +151,31 @@ fun InfoBanner(
 data class UiMetric(val value: String, val label: String)
 
 @Composable
-fun MetricStrip(metrics: List<UiMetric>, modifier: Modifier = Modifier) {
+fun MetricStrip(metrics: List<UiMetric>, modifier: Modifier = Modifier, onClick: ((index: Int) -> Unit)? = null) {
     if (metrics.isEmpty()) return
-    Card(modifier = modifier.fillMaxWidth(), insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
+    Card(modifier = modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+        insideMargin = PaddingValues(if (onClick == null) AppUiTokens.CardPadding else 0.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
-            metrics.forEach { metric ->
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(metric.value, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-                    Text(metric.label, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            metrics.forEachIndexed { index, metric ->
+                if (onClick == null) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(metric.value, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                        Text(metric.label, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    }
+                } else {
+                    Row(Modifier.weight(1f).clip(RoundedCornerShape(AppUiTokens.FieldRadius))
+                        .clickable(role = Role.Button) { onClick(index) }
+                        .semantics(mergeDescendants = true) { contentDescription = "${metric.label}, ${metric.value}" }
+                        .padding(AppUiTokens.CardPadding).heightIn(min = AppUiTokens.ButtonHeight),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
+                        Column(Modifier.weight(1f).clearAndSetSemantics { }, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(metric.value, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                            Text(metric.label, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        }
+                        Icon(MiuixIcons.Basic.ArrowRight, contentDescription = null, modifier = Modifier.size(14.dp),
+                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    }
                 }
             }
         }

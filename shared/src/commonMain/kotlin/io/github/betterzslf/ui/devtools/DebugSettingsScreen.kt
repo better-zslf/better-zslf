@@ -89,7 +89,7 @@ fun DebugSettingsScreen(
                     minWidth = 0.dp,
                     itemSpacing = 4.dp,
                     height = 44.dp,
-                    cornerRadius = 18.dp,
+                    cornerRadius = 22.dp,
                 )
             }
             item("debug-local-only") { InfoBanner(AppText.DevTools.LOCAL_ONLY_HINT, tone = UiTone.Neutral) }

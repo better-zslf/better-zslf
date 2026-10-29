@@ -1,16 +1,11 @@
 package io.github.betterzslf
 
 import io.github.betterzslf.core.text.AppText
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
-import top.yukonga.miuix.kmp.blur.BlendColorEntry
-import top.yukonga.miuix.kmp.blur.BlurBlendMode
-import top.yukonga.miuix.kmp.blur.BlurColors
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
-import top.yukonga.miuix.kmp.blur.textureBlur
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -294,7 +289,6 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
     }
     val titles = listOf(AppText.Navigation.HOME, AppText.Navigation.CAMPUS_RUN, AppText.Navigation.SCHEDULE, AppText.Navigation.COMMUNITY, AppText.Navigation.PROFILE)
     val icons = listOf(MiuixIcons.Home, MiuixIcons.Location, MiuixIcons.Notes, MiuixIcons.Community, MiuixIcons.Contacts)
-    val backdrop = rememberLayerBackdrop()
     val showBottomNavigation = stack.lastOrNull() is Route.TabRoot
     // Miuix measures the whole bottomBar before composing its body. Its padding includes the
     // pill, outer spacing and system navigation area, unlike measuring inside padding modifiers.
@@ -305,13 +299,9 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
             if (!useRail && showBottomNavigation) {
                 Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 12.dp)) {
                     NavigationBar(
-                        modifier = Modifier.clip(RoundedCornerShape(AppUiTokens.NavigationRadius)).textureBlur(
-                            backdrop = backdrop,
-                            shape = RoundedCornerShape(AppUiTokens.NavigationRadius),
-                            colors = BlurColors(blendColors = listOf(BlendColorEntry(MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f), BlurBlendMode.SrcOver))),
-                        ),
-                        // Keep the pill legible even when the platform's backdrop blur is unavailable.
-                        color = MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f),
+                        modifier = Modifier.clip(RoundedCornerShape(AppUiTokens.NavigationRadius)),
+                        // An opaque Miuix card surface keeps scrolled content behind the pill.
+                        color = MiuixTheme.colorScheme.surfaceContainer,
                         showDivider = false,
                         defaultWindowInsetsPadding = false,
                     ) {
@@ -328,7 +318,14 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
             val overlayInset = navigationOverlayInset(padding, showBottomNavigation && !useRail)
             CompositionLocalProvider(LocalNavigationBottomInset provides overlayInset) {
             Row(Modifier.fillMaxSize().clipToBounds()) {
-                if (useRail) NavigationRail(modifier = Modifier.fillMaxHeight(), defaultWindowInsetsPadding = true) {
+                if (useRail) NavigationRail(
+                    modifier = Modifier.fillMaxHeight(),
+                    // Miuix 0.9.4 already supplies a default ScrollState for its item column.
+                    // Passing it explicitly only expresses scrolling intent; it is not a
+                    // clipping fix. Keep the rail bounded, without an outer verticalScroll.
+                    scrollState = rememberScrollState(),
+                    defaultWindowInsetsPadding = true,
+                ) {
                     titles.forEachIndexed { index, title ->
                         NavigationRailItem(selected = activeTab == index,
                             onClick = { onSelect(NavigationLayoutPolicy.selectTab(selected, index)) }, icon = icons[index], label = title)
@@ -339,7 +336,7 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
                 val railConsumedInsets = if (useRail) WindowInsets.displayCutout.union(WindowInsets.navigationBars).only(WindowInsetsSides.Start)
                     else WindowInsets(0, 0, 0, 0)
                 Box(Modifier.weight(1f).fillMaxHeight().consumeWindowInsets(railConsumedInsets).clipToBounds()
-                    .layerBackdrop(backdrop).background(MiuixTheme.colorScheme.surface)) {
+                    .background(MiuixTheme.colorScheme.surface)) {
                     // One stable host for both layouts: resizing changes chrome, never the tab's owner.
                     NavDisplay(backStack = stack, modifier = Modifier.fillMaxSize().clipToBounds(),
                         onBack = { if (stack.size > 1) stack.removeLastOrNull() }, transition = NavTransitions.MiuixDefault,

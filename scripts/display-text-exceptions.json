@@ -10,9 +10,9 @@
         "after": ", AppText.Content.FRESHMAN_GUIDE_DISPLAY_LABEL))"
       },
       "position": {
-        "start": 23317,
-        "end": 23323,
-        "line": 359,
+        "start": 23359,
+        "end": 23365,
+        "line": 360,
         "column": 115
       },
       "category": "lookup",
@@ -208,9 +208,9 @@
         "after": " to AppText.App.USER_AGREEMENT_DISPLAY_LABEL, \"隐"
       },
       "position": {
-        "start": 9302,
-        "end": 9308,
-        "line": 154,
+        "start": 9143,
+        "end": 9149,
+        "line": 152,
         "column": 28
       },
       "category": "lookup",
@@ -226,9 +226,9 @@
         "after": " to AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, \"使"
       },
       "position": {
-        "start": 9354,
-        "end": 9360,
-        "line": 154,
+        "start": 9195,
+        "end": 9201,
+        "line": 152,
         "column": 80
       },
       "category": "lookup",
@@ -244,9 +244,9 @@
         "after": " to AppText.App.USER_GUIDE_DISPLAY_LABEL).forEac"
       },
       "position": {
-        "start": 9406,
-        "end": 9412,
-        "line": 154,
+        "start": 9247,
+        "end": 9253,
+        "line": 152,
         "column": 132
       },
       "category": "lookup",

@@ -557,6 +557,7 @@ object AppText {
         const val UNKNOWN_PAGE_TYPE: String = "页面类型未识别"
         const val UNTITLED: String = "无标题"
         const val VIEW: String = "查看"
+        const val WARNING_NOTICE_TITLE: String = "注意"
 
         // Feature/model display copy; protocol values remain at their source.
         const val CHECK_REQUIRED_PARAMETERS: String = "请检查必填参数"

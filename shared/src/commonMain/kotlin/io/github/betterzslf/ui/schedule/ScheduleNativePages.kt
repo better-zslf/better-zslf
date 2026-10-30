@@ -40,6 +40,29 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
         if (!native.supported) item("reminders-unsupported") { InfoBanner(AppText.Schedule.NATIVE_UNSUPPORTED, tone = UiTone.Neutral) }
         else {
             if (state.owner == null) item("reminders-owner") { InfoBanner(AppText.Schedule.OWNER_REQUIRED, tone = UiTone.Warning) }
+            // First item on the page on purpose: this exists to answer "what will my ROM actually
+            // draw", which is independent of reminders being enabled or an account being bound.
+            item("reminders-live-test") { SchedulePanel {
+                InfoBanner(vendorLiveMode(capabilities.vendor),
+                    title = AppText.Schedule.LIVE_MODE_TITLE, tone = UiTone.Neutral)
+                Text(AppText.Schedule.LIVE_TEST_HINT, fontSize = 13.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                PrimaryAction(AppText.Schedule.LIVE_TEST_ACTION, onClick = {
+                    val posted = native.testLiveNotification()
+                    testNotice = if (posted) AppText.Schedule.LIVE_TEST_POSTED else AppText.Schedule.LIVE_TEST_FAILED
+                    native.refreshCapabilities()
+                })
+                if (!capabilities.notificationsGranted) {
+                    InfoBanner(AppText.Schedule.NATIVE_BLOCKED, tone = UiTone.Warning)
+                    TextButton(AppText.Schedule.REQUEST_PERMISSION, onClick = { request(native::requestNotificationPermission) })
+                }
+                testNotice?.let { message -> InfoBanner(message,
+                    tone = if (message == AppText.Schedule.LIVE_TEST_POSTED) UiTone.Positive else UiTone.Warning) }
+            } }
+            if (capabilities.batteryRestricted || capabilities.vendor != ScheduleVendor.AOSP) {
+                item("reminders-vendor") { InfoBanner(vendorHint(capabilities.vendor),
+                    title = AppText.Schedule.BATTERY_OPTIMIZATION, tone = UiTone.Neutral) }
+            }
             item("reminders-switch") { Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues()) {
                 SwitchPreference(checked = state.remindersEnabled,
                     title = AppText.Schedule.REMINDERS_SWITCH, summary = AppText.Schedule.REMINDER_RULES,
@@ -82,22 +105,6 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
             if (!capabilities.exactAlarmsAllowed) item("reminders-not-exact") { InfoBanner(AppText.Schedule.EXACT_DELAYED, tone = UiTone.Warning) }
             // Vendor battery managers are invisible to public APIs, so name the exact menu the user
             // needs instead of leaving a generic "restricted" line they cannot act on.
-            if (capabilities.batteryRestricted || capabilities.vendor != ScheduleVendor.AOSP) {
-                item("reminders-vendor") { InfoBanner(vendorHint(capabilities.vendor),
-                    title = AppText.Schedule.BATTERY_OPTIMIZATION, tone = UiTone.Neutral) }
-            }
-            // Say which mechanism actually draws the live card. The vendor islands rely on
-            // undocumented parameters, so the user needs to know that switching ROM or updating
-            // the system can change what they see.
-            item("reminders-live-mode") { SchedulePanel {
-                InfoBanner(vendorLiveMode(capabilities.vendor),
-                    title = AppText.Schedule.LIVE_MODE_TITLE, tone = UiTone.Neutral)
-                Text(AppText.Schedule.LIVE_TEST_HINT, fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                PrimaryAction(AppText.Schedule.LIVE_TEST_ACTION, enabled = capabilities.notificationsGranted,
-                    onClick = { request { native.testLiveNotification() } })
-                testNotice?.let { notice -> InfoBanner(notice, tone = if (notice == AppText.Schedule.LIVE_TEST_POSTED) UiTone.Positive else UiTone.Warning) }
-            } }
             if (state.pendingReminderCourses > 0) item("reminders-pending") { InfoBanner(AppText.Schedule.pendingReminders(state.pendingReminderCourses), tone = UiTone.Warning) }
             if (state.sourceSnapshot?.complete == false) item("reminders-partial") { InfoBanner(AppText.Schedule.PARTIAL_HINT, tone = UiTone.Warning) }
             item("reminders-source") { SchedulePanel {

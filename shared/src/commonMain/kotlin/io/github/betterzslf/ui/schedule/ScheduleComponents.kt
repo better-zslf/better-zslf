@@ -67,9 +67,20 @@ internal fun ScheduleSyncStamp(millis: Long) {
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
 }
 
-internal fun coursePeriodTimes(course: ScheduleCourse, periods: List<SchedulePeriod>): String =
-    course.periods.distinct().sorted().mapNotNull { number -> periods.firstOrNull { it.number == number } }
-        .joinToString(" · ") { "${it.start}–${it.end}" }
+/**
+ * Continuous time coverage of a course, as Ardot P41/P39b show it: "08:00–09:40".
+ * Adjacent periods overlap in real timetables (period 1 ends 08:45, period 2 starts 08:55),
+ * so the union is reported as first start to last end rather than one range per period.
+ * A gap between non-adjacent periods keeps them as separate ranges -- never a filled span.
+ */
+internal fun coursePeriodTimes(course: ScheduleCourse, periods: List<SchedulePeriod>): String {
+    val ranges = runOfPeriods(course.periods).mapNotNull { (start, span) ->
+        val first = periods.firstOrNull { it.number == start } ?: return@mapNotNull null
+        val last = periods.firstOrNull { it.number == start + span - 1 } ?: first
+        "${first.start}–${last.end}"
+    }
+    return ranges.joinToString(" · ")
+}
 
 internal fun scheduleUiWeeks(snapshot: ScheduleSnapshot?, selectedWeek: Int): List<Int> {
     val known = snapshot?.courses.orEmpty().flatMap { it.weeks } + snapshot?.weekMondays.orEmpty().keys + listOf(selectedWeek)

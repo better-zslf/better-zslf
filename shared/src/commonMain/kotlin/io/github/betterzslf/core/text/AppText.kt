@@ -768,13 +768,10 @@ object AppText {
         const val HISTORY_HINT = "查看历史学期不会改变提醒的数据源学期。"
         const val WEEK_ZERO_HINT = "第0周为开课前一周。"
         const val BACK_THIS_WEEK = "回到本周"
-        const val GRID_VIEW = "周课表"
-        const val DAY_VIEW = "日列表"
         const val DETAILS_TITLE = "课程详情"
         const val DETAIL_UNAVAILABLE = "课表或账号已变化，请返回课表重新选择课程。"
         const val TEACHER = "教师"
         const val LOCATION = "上课地点"
-        const val PERIODS = "节次"
         const val COURSE_WEEKS = "上课周次"
         const val OVERLAP_HINT = "同一时段有多门课，全部保留，可分别查看详情。"
         const val ENCRYPTED_PASSWORD_HINT = "教务口令仅由本机加密存储管理，此处不回显保存的密码。"
@@ -832,6 +829,44 @@ object AppText {
         fun reminderSource(term: String) = "提醒数据源学期：$term"
         fun weekLabel(week: Int) = "第${week}周"
         fun dayLabel(day: Int) = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日").getOrElse(day - 1) { "星期待确认" }
+        /** Single-character column heading, Ardot 14:50 "一" .. 14:76 "日". */
+        fun shortDayLabel(day: Int) = listOf("一", "二", "三", "四", "五", "六", "日").getOrElse(day - 1) { "?" }
+        fun dayOfMonth(day: Int) = day.toString()
+        /** Period-axis numeral, Ardot 14:178 "1" .. 14:189 "12"; the axis already means 节. */
+        fun axisPeriod(number: Int) = number.toString()
+        /** Ardot 14:46 date range plus the highlighted today, e.g. "10月26日 – 11月1日 · 今天 10-28 周三". */
+        fun weekRange(monday: String, sunday: String, todayLabel: String) =
+            "$monday – $sunday · $todayLabel"
+        fun todayLong(dateLabel: String) = "今天：$dateLabel"
+        /** Ardot 14:46 compact today stamp: "10-28 周三". */
+        fun compactTodayStamp(monthDay: String, dayLabel: String) = "$monthDay $dayLabel"
+        fun monthDay(month: Int, day: Int) = "${month}月${day}日"
+        fun monthDayCompact(month: Int, day: Int) = "${month}-${day}"
+        /** P41 status pill: "周三 · 第1-2节 · 08:00–09:40". */
+        fun courseWhen(dayLabel: String, periodLabel: String, timeRange: String) =
+            listOf(dayLabel, periodLabel, timeRange).filter(String::isNotBlank).joinToString(" · ")
+        fun periodRange(periods: String) = "第 $periods 节"
+        /** Ardot P39b card heading suffix: "1-2节" / "9-10节". */
+        fun periodsCompact(periods: String) = "${periods}节"
+        fun weekRangeShort(value: String) = "${value} 周"
+        const val IN_PROGRESS = "进行中"
+        const val TEACHER_FIELD = "教师"
+        const val LOCATION_FIELD = "地点"
+        const val WEEKS_FIELD = "周次"
+        const val REMARK_FIELD = "备注"
+        const val WEEK_TODAY = "今天"
+        const val TODAY_EMPTY = "今天没有课。"
+        /** Ardot P40: a non-selected term pill ends with a muted affordance, not an icon. */
+        const val SERVER_DEFAULT_SUFFIX = " · 教务默认"
+        const val TERM_VIEW_SUFFIX = " · 查看"
+        /** Ardot P42 labels; ACCOUNT_FIELD above already names the field. */
+        const val PASSWORD_STATE_SAVED = "密码状态：已在本机加密保存"
+        const val SYNC_COURSE_TABLE = "同步课程表"
+        const val UNBIND_BUTTON = "解绑（需确认）"
+        fun sameSlotHint(count: Int) = "同一时段还有 ${count} 门课（都保留显示）"
+        fun sameSlotSummary(title: String, teacher: String, location: String, weeks: String) =
+            listOf(title, teacher, location, weeks).filter(String::isNotBlank).joinToString(" · ")
+        const val WEEK_SELECTED_SUFFIX = "· 今天"
         fun periodLabel(number: Int) = "第${number}节"
         fun periodList(value: String) = "节次：$value"
         fun weekList(value: String) = "周次：$value"

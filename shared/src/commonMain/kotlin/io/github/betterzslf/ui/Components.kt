@@ -2,6 +2,8 @@ package io.github.betterzslf.ui
 
 import io.github.betterzslf.core.text.AppText
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -45,6 +47,16 @@ class NavigationResults {
 
 /** The floating tab bar overlays content; only scroll content reserves its measured height. */
 val LocalNavigationBottomInset = staticCompositionLocalOf { 0.dp }
+
+/**
+ * A press target without a ripple, for regions the design draws as flat fills (the week pill,
+ * the day strip). It keeps the click semantics so screen readers and keyboards still work.
+ */
+@Composable
+fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier = this
+    .clickable(role = androidx.compose.ui.semantics.Role.Button, indication = null,
+        interactionSource = remember { MutableInteractionSource() },
+        onClick = onClick)
 
 /** Scaffold supplies the complete bottomBar measurement, including all outside/safe-area padding. */
 internal fun navigationOverlayInset(padding: PaddingValues, barVisible: Boolean): Dp =

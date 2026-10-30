@@ -1,82 +1,188 @@
 package io.github.betterzslf.ui.schedule
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.feature.schedule.*
-import io.github.betterzslf.ui.AppUiTokens
-import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** Exactly one horizontal axis owns both the header and all seven course columns. */
+/** One design row of the body grid: 12 periods of 35dp (Ardot 14:178 lineHeight 35). */
+private val ScheduleRowHeight: Dp = 35.dp
+/** Ardot 14:49 column header is 46x40 with a 1dp inner gap. */
+private val ScheduleHeaderHeight: Dp = 40.dp
+/** Ardot 14:177 axis is 24dp wide; the header row reserves the same gutter. */
+private val ScheduleAxisWidth: Dp = 24.dp
+/** Ardot 14:48 gap between the axis gutter and the first day column. */
+private val ScheduleColumnGap: Dp = 4.dp
+
+/**
+ * The weekly board exactly as Ardot P39 draws it: a 24dp period axis, seven equal day
+ * columns, a date row where today is highlighted, and course blocks laid over the columns
+ * at their period offsets. A three-period lecture is one card, not three.
+ *
+ * Columns always fit the available width -- the design has no horizontal scrolling -- so a
+ * narrow screen shrinks the cards rather than the board; [ScheduleRootPage] switches to the
+ * day list below 360dp, where 46dp columns would no longer fit readable text.
+ */
 @Composable
-internal fun ScheduleWeekBoard(snapshot: ScheduleSnapshot, week: Int, periods: List<SchedulePeriod>, nowMillis: Long,
-    onOpen: (List<ScheduleCourse>) -> Unit) {
-    val rows = remember(snapshot, week) { scheduleGridRows(snapshot, week) }
-    val scroll = rememberScrollState()
-    val axisWidth = 68.dp
-    val columnWidth = 104.dp
-    val today = scheduleSchoolDate(nowMillis)
-    Box(Modifier.fillMaxWidth().horizontalScroll(scroll)) {
-        Column(Modifier.width(axisWidth + columnWidth * 7)) {
-            Row(Modifier.height(IntrinsicSize.Min)) {
-                Box(Modifier.width(axisWidth).padding(8.dp)) { Text(AppText.Schedule.PERIODS, fontSize = 12.sp) }
-                for (day in 1..7) {
-                    val date = scheduleDateForWeek(snapshot, week, day)
-                    Column(Modifier.width(columnWidth).fillMaxHeight()
-                        .background(if (date == today) MiuixTheme.colorScheme.primary.copy(alpha = 0.12f) else MiuixTheme.colorScheme.surface)
-                        .padding(8.dp)) {
-                        Text(AppText.Schedule.dayLabel(day), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        if (date != null) Text(date.toString().takeLast(5), fontSize = 12.sp)
+internal fun ScheduleWeekBoard(
+    snapshot: ScheduleSnapshot,
+    week: Int,
+    periods: List<SchedulePeriod>,
+    nowMillis: Long,
+    onOpen: (List<ScheduleCourse>) -> Unit,
+) {
+    val todayDate = scheduleSchoolDate(nowMillis)
+    val today = (1..7).firstOrNull { scheduleDateForWeek(snapshot, week, it) == todayDate }
+    val nowMinutes = remember(nowMillis) { scheduleSchoolMinutes(nowMillis) }
+    val blocks = remember(snapshot, week, periods, today, nowMinutes) {
+        scheduleBoardBlocks(snapshot, week, periods, today, nowMinutes)
+    }
+    val dark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
+    val todayColumn = MiuixTheme.colorScheme.primary.copy(alpha = if (dark) 0.22f else 0.10f)
+    // Ardot 14:190 draws every non-today column fully transparent inside the white card;
+    // only the today column (14:198 primarySoft) is tinted.
+    val gridSurface = Color.Transparent
+
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ScheduleColumnGap)) {
+            Spacer(Modifier.width(ScheduleAxisWidth))
+            for (day in 1..7) {
+                val date = scheduleDateForWeek(snapshot, week, day)
+                val isToday = day == today
+                Column(
+                    Modifier.weight(1f).height(ScheduleHeaderHeight).clip(RoundedCornerShape(8.dp))
+                        .background(if (isToday) todayColumn else gridSurface),
+                    verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        AppText.Schedule.shortDayLabel(day),
+                        fontSize = 12.sp,
+                        color = if (isToday) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                    if (date != null) {
+                        Text(
+                            AppText.Schedule.dayOfMonth(date.day),
+                            fontSize = 14.sp,
+                            fontWeight = if (isToday) FontWeight.SemiBold else FontWeight.Medium,
+                            color = if (isToday) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
+                        )
                     }
                 }
             }
-            rows.forEach { row ->
-                HorizontalDivider()
-                Row(Modifier.height(IntrinsicSize.Min)) {
-                    Column(Modifier.width(axisWidth).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(AppText.Schedule.periodLabel(row.period), fontSize = 12.sp)
-                        periods.firstOrNull { it.number == row.period }?.let { period ->
-                            Text(period.start, fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                            Text(period.end, fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                        }
-                    }
-                    row.days.forEach { courses ->
-                        Column(Modifier.width(columnWidth).fillMaxHeight().heightIn(min = 76.dp).padding(4.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            // Preview is bounded; the explicit count opens every overlapping course lazily.
-                            courses.take(2).forEach { course ->
-                                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.FieldRadius,
-                                    insideMargin = PaddingValues(8.dp), showIndication = true,
-                                    onClick = { onOpen(listOf(course) + courses.filter { it !== course }) },
-                                    colors = CardDefaults.defaultColors(color = MiuixTheme.colorScheme.primary.copy(alpha = 0.10f))) {
-                                    Text(course.title.ifBlank { AppText.Common.UNTITLED }, maxLines = 3,
-                                        overflow = TextOverflow.Ellipsis, fontSize = 12.sp)
-                                    if (course.location.isNotBlank()) Text(course.location, maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis, fontSize = 11.sp,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                                }
-                            }
-                            scheduleOverlapLabels(courses.size)?.let { labels ->
-                                TextButton(labels.compact, onClick = { onOpen(courses) },
-                                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = labels.accessibility },
-                                    minHeight = 48.dp,
-                                    insideMargin = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
-                                    textStyle = MiuixTheme.textStyles.button.copy(fontSize = 13.sp, lineHeight = 18.sp))
-                            }
-                        }
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth()) {
+            // Period axis: fixed 24dp, one number per 35dp row, Ardot 14:177.
+            Column(Modifier.width(ScheduleAxisWidth)) {
+                for (period in 1..12) {
+                    Box(Modifier.fillMaxWidth().height(ScheduleRowHeight), contentAlignment = Alignment.Center) {
+                        Text(AppText.Schedule.axisPeriod(period), fontSize = 9.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
                 }
+            }
+            Spacer(Modifier.width(ScheduleColumnGap))
+            // Body: seven columns on one shared baseline, blocks absolutely offset by period.
+            BoxWithConstraints(Modifier.weight(1f).height(ScheduleRowHeight * 12)) {
+                val columnWidth = maxWidth / 7
+                Row(Modifier.fillMaxSize()) {
+                    for (day in 1..7) {
+                        Box(
+                            Modifier.weight(1f).fillMaxHeight()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (day == today) todayColumn else gridSurface),
+                        )
+                    }
+                }
+                blocks.forEach { block ->
+                    ScheduleBoardCard(
+                        block = block,
+                        modifier = Modifier
+                            .width(columnWidth)
+                            .height(ScheduleRowHeight * block.spanRows)
+                            .offset(x = columnWidth * (block.day - 1), y = ScheduleRowHeight * (block.startRow - 1))
+                            .padding(horizontal = 1.dp, vertical = 1.dp),
+                        periods = periods,
+                        onOpen = {
+                            onOpen(listOf(block.course) + blocks.filter { it.day == block.day && it.startRow == block.startRow && it.course.id != block.course.id }.map { it.course })
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One course block: fill, title, and the location/room line, matching Ardot 14:191. */
+@Composable
+private fun ScheduleBoardCard(
+    block: ScheduleBoardBlock,
+    modifier: Modifier,
+    periods: List<SchedulePeriod>,
+    onOpen: () -> Unit,
+) {
+    val palette = scheduleCoursePalette(block.course, block.running)
+    val shape = RoundedCornerShape(8.dp)
+    val description = listOf(
+        block.course.title.ifBlank { AppText.Common.UNTITLED },
+        AppText.Schedule.dayLabel(block.day),
+        coursePeriodTimes(block.course, periods),
+        block.course.location,
+        if (block.running) AppText.Schedule.IN_PROGRESS else "",
+    ).filter { it.isNotBlank() }.joinToString(", ")
+
+    Card(
+        modifier = modifier.semantics { contentDescription = description },
+        cornerRadius = 8.dp,
+        insideMargin = PaddingValues(vertical = 4.dp, horizontal = 4.dp),
+        showIndication = true,
+        onClick = onOpen,
+        colors = top.yukonga.miuix.kmp.basic.CardDefaults.defaultColors(color = palette.background),
+    ) {
+        Column(
+            Modifier.fillMaxHeight().clip(shape),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                block.course.title.ifBlank { AppText.Common.UNTITLED },
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 12.sp,
+                maxLines = if (block.spanRows >= 2) 3 else 2,
+                overflow = TextOverflow.Ellipsis,
+                color = palette.title,
+            )
+            if (block.course.location.isNotBlank()) {
+                Text(
+                    block.course.location,
+                    fontSize = 9.sp,
+                    lineHeight = 11.sp,
+                    maxLines = if (block.spanRows >= 3) 2 else 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = palette.meta,
+                )
+            }
+            if (block.running) {
+                Text(AppText.Schedule.IN_PROGRESS, fontSize = 9.sp, lineHeight = 11.sp,
+                    fontWeight = FontWeight.Medium, color = palette.meta, maxLines = 1)
             }
         }
     }

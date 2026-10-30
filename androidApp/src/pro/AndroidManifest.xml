@@ -33,6 +33,8 @@
             android:exported="false" android:excludeFromRecents="true"
             android:theme="@style/schedule_permission_activity_theme" />
         <receiver android:name="io.github.betterzslf.schedule.ScheduleAlarmReceiver" android:exported="false" />
+        <receiver android:name="io.github.betterzslf.schedule.ScheduleLiveDismissReceiver"
+            android:exported="false" />
         <receiver android:name="io.github.betterzslf.schedule.ScheduleReconcileReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

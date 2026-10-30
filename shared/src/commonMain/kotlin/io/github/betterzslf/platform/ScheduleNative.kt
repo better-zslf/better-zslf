@@ -57,7 +57,19 @@ data class ScheduleNativeCapabilities(
     val exactAlarmsAllowed: Boolean = false,
     val batteryRestricted: Boolean = false,
     val pinWidgetsSupported: Boolean = false,
+    /**
+     * Non-AOSP battery manager family, or [ScheduleVendor.AOSP]. Several vendors freeze background
+     * work in ways no public API reports, so the reminder screen names the concrete settings the
+     * user has to change instead of leaving them with a generic "restricted" hint.
+     */
+    val vendor: ScheduleVendor = ScheduleVendor.AOSP,
 )
+
+/**
+ * The vendor battery-management families whose extra restrictions break ongoing notifications and
+ * background refresh. Detected from the manufacturer string because there is no public API.
+ */
+enum class ScheduleVendor { AOSP, XIAOMI, HUAWEI, OPPO, VIVO, MEIZU, SAMSUNG, ONEPLUS }
 
 /** Only local opaque identifiers; the app rechecks the current owner revision before navigating. */
 data class ScheduleNativeOpenRequest(val ownerRevision: String?, val occurrenceId: String? = null)

@@ -31,6 +31,12 @@ import kotlinx.serialization.json.Json
  * the Live Updates surface. That permission is optional to declare, and older versions ignore the
  * style, so the same content renders as an ordinary ongoing notification below API 36.
  */
+/**
+ * Identity of the current live stage: course title plus start instant. Used to remember that the
+ * user dismissed exactly this stage, without persisting anything about the course itself.
+ */
+internal fun ScheduleLiveState.key(): String = "$startsAtMillis:$phase"
+
 internal class ScheduleLiveNotifications(private val context: Context) {
     private val notifications by lazy { context.getSystemService(NotificationManager::class.java) }
     private val json = Json { ignoreUnknownKeys = true }
@@ -72,8 +78,12 @@ internal class ScheduleLiveNotifications(private val context: Context) {
         val state = scheduleLiveState(stored.blocks.map {
             ScheduleLiveBlock(it.id, it.title, it.location, it.startsAtMillis, it.endsAtMillis)
         }, nowMillis)
-        if (!state.active || !notificationsEnabled()) {
-            lastReason = if (!state.active) "inactive" else "disabled"
+        if (!state.active || !notificationsEnabled() || dismissed(state)) {
+            lastReason = when {
+                !state.active -> "inactive"
+                !notificationsEnabled() -> "disabled"
+                else -> "dismissed"
+            }
             runCatching { notifications.cancel(TAG, NOTIFICATION_ID) }
             return
         }
@@ -91,6 +101,16 @@ internal class ScheduleLiveNotifications(private val context: Context) {
     /** Diagnostic for the probe: why the last reconcile did or did not post. */
     var lastReason: String = "never"
         private set
+
+    /**
+     * True when the user swiped this exact stage away. Clearing happens by comparing keys: once a
+     * later stage posts, the remembered key no longer matches and the reminder behaves normally
+     * again, so a dismissal never silences tomorrow's class.
+     */
+    private fun dismissed(state: ScheduleLiveState): Boolean {
+        val prefs = context.getSharedPreferences(TAG, Context.MODE_PRIVATE)
+        return prefs.getString(DISMISSED_KEY, null) == state.key()
+    }
 
     private fun notificationsEnabled(): Boolean {
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -110,30 +130,41 @@ internal class ScheduleLiveNotifications(private val context: Context) {
             .setContentTitle(NativeSchedule.LIVE_TITLE)
             .setContentText(NativeSchedule.OPEN_TIMETABLE)
             .build()
+        val inClass = state.phase == ScheduleLivePhase.IN_CLASS
         val builder = Notification.Builder(context, CHANNEL)
             .setSmallIcon(icon)
             .setContentTitle(state.title)
             .setContentText(state.text)
             .setContentIntent(openIntent(revision))
+            .setDeleteIntent(dismissIntent(state))
             .setCategory(Notification.CATEGORY_PROGRESS)
             .setVisibility(Notification.VISIBILITY_PRIVATE)
             .setPublicVersion(publicVersion)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-        if (state.phase == ScheduleLivePhase.IN_CLASS) {
-            // A real countdown to the end of class. The framework ticks it, so the notification
-            // stays truthful between boundary alarms instead of freezing "剩余 30 分钟".
-            builder.setUsesChronometer(true)
-                .setChronometerCountDown(true)
-                .setShowWhen(true)
-                .setWhen(state.endsAtMillis)
-        } else {
-            // Counting down to a start time is a positive count-up, which the platform does not
-            // offer; show the start time as a static stamp and leave the text as the "in N min"
-            // summary computed at reconcile time (refreshed at each boundary).
-            builder.setShowWhen(true).setWhen(state.startsAtMillis)
+            // The card brings its own ticker to the deadline, so no per-minute re-post is needed
+            // and the value stays truthful even if the process is frozen between boundaries.
+            .setShowWhen(true)
+            .setWhen(if (inClass) state.endsAtMillis else state.startsAtMillis)
+            .setUsesChronometer(true)
+            .setChronometerCountDown(true)
+        // Safety net: if both the boundary alarm and the foreground refresh are missed (frozen
+        // process, vendor battery manager), the system removes the stale card by itself instead
+        // of leaving a countdown that has gone past zero.
+        val deadline = if (inClass) state.endsAtMillis else state.startsAtMillis
+        val remaining = (deadline - System.currentTimeMillis()).coerceAtLeast(1_000L)
+        builder.setTimeoutAfter(remaining)
+        if (Build.VERSION.SDK_INT >= 36) {
+            // API 36: the chip is the status-bar capsule. It has the highest precedence of any
+            // chip content, so an explicit value wins over the chronometer's own rendering.
+            runCatching { builder.setShortCriticalText(state.chip) }
         }
         applyProgressStyle(builder, state)
+        // Promotion is an explicit request, not a side effect of using ProgressStyle: without
+        // this extra the notification stays a plain ongoing one even on Android 16.
+        builder.addExtras(android.os.Bundle().apply {
+            putBoolean(EXTRA_REQUEST_PROMOTED_ONGOING, true)
+        })
         return builder.build()
     }
 
@@ -144,23 +175,43 @@ internal class ScheduleLiveNotifications(private val context: Context) {
      */
     private fun applyProgressStyle(builder: Notification.Builder, state: ScheduleLiveState) {
         if (Build.VERSION.SDK_INT < 36) return
-        val progress = state.progress
-        if (progress == null) return
+        val progress = state.progress ?: return
         runCatching {
+            val percent = (progress * 100f).toInt().coerceIn(0, 100)
+            val done = percent
+            val left = 100 - percent
+            val night = (context.resources.configuration.uiMode and
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                android.content.res.Configuration.UI_MODE_NIGHT_YES
+            // Two segments that always sum to 100: the finished part in the accent colour and the
+            // remainder in a track that is dimmed in dark mode, otherwise a pale track outshines
+            // the progress it is supposed to sit behind.
+            val accent = if (night) 0xFF5B9DFF.toInt() else 0xFF3382FF.toInt()
+            val track = if (night) 0xFF2A3A55.toInt() else 0xFFD6E5FF.toInt()
             val style = Notification.ProgressStyle()
                 .setStyledByProgress(true)
-                .setProgress(100)
-                .setProgressPoints(
-                    listOf(
-                        Notification.ProgressStyle.Point(0),
-                        Notification.ProgressStyle.Point(100),
-                    ),
+                .setProgress(done)
+                .setProgressSegments(
+                    buildList {
+                        if (done > 0) add(Notification.ProgressStyle.Segment(done).setColor(accent))
+                        if (left > 0) add(Notification.ProgressStyle.Segment(left).setColor(track))
+                    },
                 )
-            // ProgressStyle tracks whole percent, so the fraction is converted once, here.
-            val percent = (progress * 100f).toInt().coerceIn(0, 100)
-            style.setProgress(percent)
             builder.setStyle(style)
         }
+    }
+
+    /**
+     * A dismissal is not a timeout. `setTimeoutAfter` also fires the delete intent, so without
+     * telling the two apart a stage change would be recorded as "the user swiped it away" and the
+     * matching class would stay silent for its whole duration.
+     */
+    private fun dismissIntent(state: ScheduleLiveState): PendingIntent {
+        val intent = Intent(context, ScheduleLiveDismissReceiver::class.java)
+            .putExtra(EXTRA_DISMISS_KEY, state.key())
+            .putExtra(EXTRA_DISMISS_DEADLINE, state.endsAtMillis)
+        return PendingIntent.getBroadcast(context, 3, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
     private fun ensureChannel() {
@@ -191,10 +242,42 @@ internal class ScheduleLiveNotifications(private val context: Context) {
     /** True when the feature can post at all; used to decide whether to arm boundary alarms. */
     fun available(): Boolean = Build.VERSION.SDK_INT >= 26
 
-    private companion object {
+    internal companion object {
         const val CHANNEL = "schedule_live_v1"
         const val TAG = "schedule.live"
         const val NOTIFICATION_ID = 1
         const val KEY = "live.v1"
+        const val DISMISSED_KEY = "dismissed.v1"
+        /** Broadcast extras shared with the dismiss receiver. */
+        const val EXTRA_DISMISS_KEY = "better-zslf.live.dismiss_key"
+        const val EXTRA_DISMISS_DEADLINE = "better-zslf.live.dismiss_deadline"
+        /** Android 16 promotion request extra; the platform constant is not public API. */
+        const val EXTRA_REQUEST_PROMOTED_ONGOING = "android.requestPromotedOngoing"
+    }
+}
+
+/**
+ * Records that the user swiped the live card away, but only when it really was a dismissal.
+ *
+ * `setTimeoutAfter` delivers the same delete intent when the stage expires, so the two cases are
+ * separated by comparing the deadline carried in the intent with the clock: an expiry arrives at
+ * (or just after) the deadline, a dismissal arrives well before it. Mid-stage dismissals are
+ * remembered per stage key, so that class does not come back until the next one starts.
+ */
+class ScheduleLiveDismissReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val key = intent.getStringExtra(ScheduleLiveNotifications.EXTRA_DISMISS_KEY) ?: return
+        val deadline = intent.getLongExtra(ScheduleLiveNotifications.EXTRA_DISMISS_DEADLINE, 0L)
+        val timedOut = deadline > 0L && System.currentTimeMillis() >= deadline - TIMEOUT_SLACK_MILLIS
+        if (!timedOut) {
+            context.getSharedPreferences(ScheduleLiveNotifications.TAG, Context.MODE_PRIVATE)
+                .edit().putString(ScheduleLiveNotifications.DISMISSED_KEY, key).apply()
+            ScheduleNativeEngine.from(context).reconcile()
+        }
+    }
+
+    private companion object {
+        /** Anything arriving this close to the deadline is an expiry, not a user action. */
+        const val TIMEOUT_SLACK_MILLIS = 1_500L
     }
 }

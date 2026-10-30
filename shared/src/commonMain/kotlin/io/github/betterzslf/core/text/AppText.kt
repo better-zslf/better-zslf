@@ -791,6 +791,18 @@ object AppText {
         const val NOTIFICATION_PERMISSION = "系统通知许可"
         const val EXACT_ALARM = "精确定时能力"
         const val BATTERY_OPTIMIZATION = "后台与省电限制"
+        /**
+         * Vendor-specific background restrictions, because these managers have no public API and
+         * silently freeze the process that keeps the live card and reminders up to date.
+         * The exact menu paths are the ones users actually see on those ROMs.
+         */
+        const val VENDOR_XIAOMI_HINT = "小米 / Redmi / POCO：设置 → 应用 → 应用管理 → 找到本应用 → 省电策略选「无限制」，并打开「自启动」；最近任务里把本应用下拉锁定。"
+        const val VENDOR_HUAWEI_HINT = "华为 / 荣耀：设置 → 电池 → 应用启动管理 → 找到本应用 → 关闭「自动管理」，勾选「允许自启动」「允许关联启动」「允许后台活动」。"
+        const val VENDOR_OPPO_HINT = "OPPO / realme / 一加：设置 → 电池 → 应用耗电管理 → 本应用 → 允许「后台运行」与「自动启动」；打开「允许深度休眠时继续运行」。"
+        const val VENDOR_VIVO_HINT = "vivo / iQOO：设置 → 电池 → 后台耗电管理 → 本应用 → 选择「允许后台高耗电」；i管家 → 应用管理 → 自启动 → 允许本应用。"
+        const val VENDOR_MEIZU_HINT = "魅族 Flyme：设置 → 辅助功能 → 电池管理 → 性能模式；同一页「待机耗电管理 / 受保护应用」勾选本应用；设置 → 应用 → 本应用 → 电池 → 打开「耗电提醒」与「息屏后保持运行」。Flyme 没有开发者侧的对接接口，这些只能在系统设置里手动开启。"
+        const val VENDOR_SAMSUNG_HINT = "三星：设置 → 电池 → 后台使用限制 → 把本应用加入「从没进入休眠的应用」；设置 → 应用 → 本应用 → 电池 → 选「不受限制」。"
+        const val VENDOR_GENERIC_HINT = "系统若启用了省电或后台限制，上课实况通知和课前提醒可能停在原处不刷新。请把本应用设为不受电池优化限制。"
         const val OPEN_SYSTEM_SETTINGS = "打开系统设置"
         const val REQUEST_PERMISSION = "申请系统通知许可"
         const val WIDGET_TITLE = "桌面课程组件"
@@ -872,6 +884,8 @@ object AppText {
         fun liveInClassTitle(title: String) = "正在上课：$title"
         fun liveNextTitle(title: String) = "下节课：$title"
         fun liveRemaining(minutes: Long) = "剩余 ${minutes.coerceAtLeast(0)} 分钟"
+        /** Status-bar capsule for the promoted-ongoing chip; keep it under ~7 glyphs. */
+        fun liveChipMinutes(minutes: Long) = "${minutes.coerceIn(0L, 99L)}分"
         fun liveUntil(clock: String) = "到 $clock"
         fun liveStartsIn(minutes: Long) = "${minutes.coerceAtLeast(0)} 分钟后开始"
         fun liveAt(clock: String) = "$clock 开始"

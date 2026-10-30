@@ -25,6 +25,7 @@ import io.github.betterzslf.platform.ScheduleNativeOccurrence
 import io.github.betterzslf.platform.ScheduleNativeOpenRequest
 import io.github.betterzslf.platform.ScheduleNativePublication
 import io.github.betterzslf.platform.ScheduleNativeStatus
+import io.github.betterzslf.platform.ScheduleVendor
 import io.github.betterzslf.platform.scheduleNativeCanPublish
 import io.github.betterzslf.platform.scheduleNativeDeliveryDue
 import io.github.betterzslf.platform.scheduleNativeDueArmedIds
@@ -127,7 +128,26 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
             exactAlarmsAllowed = alarms.canScheduleExactAlarms(),
             batteryRestricted = activity.isBackgroundRestricted || power.isPowerSaveMode || !power.isIgnoringBatteryOptimizations(context.packageName),
             pinWidgetsSupported = AppWidgetManager.getInstance(context).isRequestPinAppWidgetSupported,
+            vendor = detectVendor(),
         )
+    }
+
+    /**
+     * Manufacture strings are the only public signal for these battery managers. Matched on the
+     * whole lowercase token set because a device can report e.g. "Xiaomi" under brand and a
+     * chipset codename under manufacturer.
+     */
+    private fun detectVendor(): ScheduleVendor {
+        val brand = (android.os.Build.BRAND + " " + android.os.Build.MANUFACTURER).lowercase()
+        return when {
+            brand.contains("xiaomi") || brand.contains("redmi") || brand.contains("poco") -> ScheduleVendor.XIAOMI
+            brand.contains("huawei") || brand.contains("honor") -> ScheduleVendor.HUAWEI
+            brand.contains("oppo") || brand.contains("realme") || brand.contains("oneplus") -> ScheduleVendor.OPPO
+            brand.contains("vivo") || brand.contains("iqoo") -> ScheduleVendor.VIVO
+            brand.contains("meizu") || brand.contains("mblu") -> ScheduleVendor.MEIZU
+            brand.contains("samsung") -> ScheduleVendor.SAMSUNG
+            else -> ScheduleVendor.AOSP
+        }
     }
 
     @Synchronized fun publish(publication: ScheduleNativePublication): Boolean {

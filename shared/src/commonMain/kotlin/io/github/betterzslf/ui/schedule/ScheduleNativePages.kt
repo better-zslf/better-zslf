@@ -9,6 +9,7 @@ import io.github.betterzslf.Route
 import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.feature.schedule.*
 import io.github.betterzslf.feature.schedule.runtime.ScheduleRuntime
+import io.github.betterzslf.platform.ScheduleVendor
 import io.github.betterzslf.platform.ScheduleWidgetKind
 import io.github.betterzslf.ui.*
 import kotlinx.coroutines.launch
@@ -75,6 +76,12 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                 }
             }
             if (!capabilities.exactAlarmsAllowed) item("reminders-not-exact") { InfoBanner(AppText.Schedule.EXACT_DELAYED, tone = UiTone.Warning) }
+            // Vendor battery managers are invisible to public APIs, so name the exact menu the user
+            // needs instead of leaving a generic "restricted" line they cannot act on.
+            if (capabilities.batteryRestricted || capabilities.vendor != ScheduleVendor.AOSP) {
+                item("reminders-vendor") { InfoBanner(vendorHint(capabilities.vendor),
+                    title = AppText.Schedule.BATTERY_OPTIMIZATION, tone = UiTone.Neutral) }
+            }
             if (state.pendingReminderCourses > 0) item("reminders-pending") { InfoBanner(AppText.Schedule.pendingReminders(state.pendingReminderCourses), tone = UiTone.Warning) }
             if (state.sourceSnapshot?.complete == false) item("reminders-partial") { InfoBanner(AppText.Schedule.PARTIAL_HINT, tone = UiTone.Warning) }
             item("reminders-source") { SchedulePanel {
@@ -161,4 +168,15 @@ internal fun ScheduleWidgetPage(runtime: ScheduleRuntime, onBack: () -> Unit) {
             }
         }
     }
+}
+
+/** The concrete settings path for this vendor's battery manager. */
+private fun vendorHint(vendor: ScheduleVendor): String = when (vendor) {
+    ScheduleVendor.XIAOMI -> AppText.Schedule.VENDOR_XIAOMI_HINT
+    ScheduleVendor.HUAWEI -> AppText.Schedule.VENDOR_HUAWEI_HINT
+    ScheduleVendor.OPPO -> AppText.Schedule.VENDOR_OPPO_HINT
+    ScheduleVendor.VIVO -> AppText.Schedule.VENDOR_VIVO_HINT
+    ScheduleVendor.MEIZU -> AppText.Schedule.VENDOR_MEIZU_HINT
+    ScheduleVendor.SAMSUNG -> AppText.Schedule.VENDOR_SAMSUNG_HINT
+    else -> AppText.Schedule.VENDOR_GENERIC_HINT
 }

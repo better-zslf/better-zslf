@@ -34,9 +34,26 @@ data class ScheduleLiveState(
     val nextTitle: String = "",
     val nextLocation: String = "",
     val nextStartsAtMillis: Long = 0,
+    /** Compact chip text for the promoted-ongoing view; empty means "no chip". */
+    val chip: String = "",
 ) {
     val active: Boolean get() = phase != ScheduleLivePhase.NONE
 }
+
+/**
+ * Whole minutes until [deadline], rounded **up**: with 59 seconds left this is 1, not 0.
+ * Truncating printed "剩余 0 分钟" while the class was still running, which reads as a broken
+ * countdown. Any positive remainder therefore reports at least 1 minute.
+ */
+fun scheduleLiveMinutes(remainingMillis: Long): Long =
+    if (remainingMillis <= 0L) 0L else (remainingMillis - 1L) / 60_000L + 1L
+
+/**
+ * Chip text for the promoted-ongoing compact view. Android suggests <= 7 characters for
+ * `setShortCriticalText`; clamping here keeps the number readable instead of letting the
+ * system clip mid-glyph.
+ */
+fun scheduleLiveChip(minutes: Long): String = AppText.Schedule.liveChipMinutes(minutes)
 
 /**
  * Resolve the live state for [nowMillis] from the day's blocks.
@@ -61,7 +78,7 @@ fun scheduleLiveState(blocks: List<ScheduleLiveBlock>, nowMillis: Long): Schedul
         val title = AppText.Schedule.liveInClassTitle(current.title)
         val text = listOf(
             current.location.takeIf(String::isNotBlank),
-            AppText.Schedule.liveRemaining((current.endsAtMillis - nowMillis) / 60_000L),
+            AppText.Schedule.liveRemaining(scheduleLiveMinutes(current.endsAtMillis - nowMillis)),
             AppText.Schedule.liveUntil(ScheduleLiveClock.format(current.endsAtMillis)),
         ).filterNotNull().joinToString(" · ")
         return ScheduleLiveState(
@@ -71,6 +88,7 @@ fun scheduleLiveState(blocks: List<ScheduleLiveBlock>, nowMillis: Long): Schedul
             progress = done.toFloat() / span.toFloat(),
             startsAtMillis = current.startsAtMillis,
             endsAtMillis = current.endsAtMillis,
+            chip = scheduleLiveChip(scheduleLiveMinutes(current.endsAtMillis - nowMillis)),
         )
     }
     val next = ordered.firstOrNull { it.startsAtMillis > nowMillis }
@@ -81,7 +99,7 @@ fun scheduleLiveState(blocks: List<ScheduleLiveBlock>, nowMillis: Long): Schedul
             title = AppText.Schedule.liveNextTitle(next.title),
             text = listOf(
                 next.location.takeIf(String::isNotBlank),
-                AppText.Schedule.liveStartsIn(gapMillis / 60_000L),
+                AppText.Schedule.liveStartsIn(scheduleLiveMinutes(gapMillis)),
                 AppText.Schedule.liveAt(ScheduleLiveClock.format(next.startsAtMillis)),
             ).filterNotNull().joinToString(" · "),
             // The countdown has no natural denominator (the gap depends on when the day started),
@@ -91,6 +109,7 @@ fun scheduleLiveState(blocks: List<ScheduleLiveBlock>, nowMillis: Long): Schedul
             nextTitle = next.title,
             nextLocation = next.location,
             nextStartsAtMillis = next.startsAtMillis,
+            chip = scheduleLiveChip(scheduleLiveMinutes(gapMillis)),
         )
     }
     return ScheduleLiveState(phase = ScheduleLivePhase.NONE, title = "", text = "", progress = null)

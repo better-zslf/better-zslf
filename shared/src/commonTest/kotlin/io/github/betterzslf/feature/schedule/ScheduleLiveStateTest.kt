@@ -107,4 +107,43 @@ class ScheduleLiveStateTest {
         assertEquals("剩余 0 分钟", io.github.betterzslf.core.text.AppText.Schedule.liveRemaining(-5))
         assertEquals("剩余 30 分钟", io.github.betterzslf.core.text.AppText.Schedule.liveRemaining(30))
     }
+
+    @Test fun minutesRoundUpSoAClassIsNeverReportedAsZeroMinutesLeft() {
+        // Truncating would say "0 minutes left" with 59 seconds still to go.
+        assertEquals(1L, scheduleLiveMinutes(59_000L))
+        assertEquals(1L, scheduleLiveMinutes(1L))
+        assertEquals(2L, scheduleLiveMinutes(60_001L))
+        assertEquals(2L, scheduleLiveMinutes(120_000L))
+        assertEquals(0L, scheduleLiveMinutes(0L))
+        assertEquals(0L, scheduleLiveMinutes(-1L))
+        // A full 40-minute class reads 40 at its start, then 1 for its final minute.
+        assertEquals(40L, scheduleLiveMinutes(40 * 60_000L))
+        assertEquals(1L, scheduleLiveMinutes(1_000L))
+    }
+
+    @Test fun inClassTextNeverShowsZeroMinutes() {
+        val lecture = block(start = at(8), end = at(9))
+        val almostOver = scheduleLiveState(listOf(lecture), at(8, 59) + 30_000L)
+        assertEquals(ScheduleLivePhase.IN_CLASS, almostOver.phase)
+        assertFalse(almostOver.text.contains("剩余 0 分钟"), almostOver.text)
+        assertTrue(almostOver.text.contains("剩余 1 分钟"), almostOver.text)
+    }
+
+    @Test fun chipIsShortEnoughForTheStatusBarCapsule() {
+        // Android suggests <= 7 characters for setShortCriticalText.
+        assertEquals("25分", scheduleLiveChip(25))
+        assertEquals("1分", scheduleLiveChip(1))
+        assertEquals("0分", scheduleLiveChip(0))
+        assertTrue(scheduleLiveChip(999).length <= 7)
+        assertEquals("99分", scheduleLiveChip(999))
+    }
+
+    @Test fun stateCarriesAChipForBothActivePhases() {
+        val lecture = block(start = at(8), end = at(10))
+        val inClass = scheduleLiveState(listOf(lecture), at(9))
+        assertTrue(inClass.chip.isNotBlank())
+        val before = scheduleLiveState(listOf(block(start = at(10), end = at(11))), at(9))
+        assertTrue(before.chip.isNotBlank())
+        assertEquals("", scheduleLiveState(emptyList(), at(9)).chip)
+    }
 }

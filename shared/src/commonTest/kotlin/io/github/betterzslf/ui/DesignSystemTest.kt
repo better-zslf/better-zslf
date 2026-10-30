@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotSame
 import kotlin.test.assertTrue
 
@@ -29,14 +30,22 @@ class DesignSystemTest {
         assertEquals(Color(0xFF3382FF), light.primary)
         assertEquals(Color(0xFF757578), light.onSurfaceVariantSummary)
         assertEquals(Color(0xFF0D0F12), dark.surface)
-        assertEquals(Color(0xFF1A1C21), dark.surfaceContainer)
-        assertEquals(Color(0xFF1A1C21), dark.secondaryContainer)
+        // Dark cards are deliberately one step lighter than the page (#0D0F12 -> card is
+        // #22262D, was #1A1C21). Reusing the background token made card and page identical in
+        // luminance terms (1.13:1 measured on device), so cards read as holes, not surfaces.
+        assertEquals(Color(0xFF22262D), dark.surfaceContainer)
+        assertEquals(Color(0xFF22262D), dark.secondaryContainer)
         assertEquals(Color(0xFF5C94FF), dark.primary)
         assertEquals(Color(0xFF99A1A8), dark.onSurfaceVariantSummary)
         assertEquals(Color(0xFFE5E5EB), light.outline)
         assertEquals(Color(0xFF292E36), dark.outline)
         assertTrue(contrast(light.onSurface, light.surface) >= 7f)
         assertTrue(contrast(dark.onSurface, dark.surface) >= 7f)
+        // A dark card must stay distinguishable from the page it sits on. Merging the two tokens
+        // back together silently makes every card invisible in dark mode.
+        assertNotEquals(dark.surface, dark.surfaceContainer)
+        assertTrue(dark.surfaceContainer.red > dark.surface.red, "dark card must be lighter than the page")
+        assertTrue(contrast(dark.onSurface, dark.surfaceContainer) >= 7f)
         val other = ardotLightColors()
         val customized = light.copy(primary = Color.Magenta)
         assertNotSame(light, other)

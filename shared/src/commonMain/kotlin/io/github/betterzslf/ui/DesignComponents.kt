@@ -87,6 +87,17 @@ object AppUiTokens {
     val BackgroundDark = Color(0xFF0D0F12)
     val Card = Color.White
     val CardDark = Color(0xFF1A1C21)
+    /**
+     * Dark-mode card surface, deliberately lighter than [CardDark].
+     *
+     * [CardDark] is used for `background` in dark mode, so reusing it for `surfaceContainer` put
+     * cards on a page of exactly the same colour: measured on device the card/page contrast was
+     * 1.13:1 (#1A1C21 on #0D0F12), which makes cards read as holes rather than raised surfaces.
+     * #22262D measures 1.26:1 against the page while body text still clears 13.6:1 on it.
+     * Light mode is unchanged (#FFFFFF on #F2F2F5 is already 1.13 -- the same figure, but there
+     * the card is the *lighter* surface, which the eye reads correctly).
+     */
+    val CardDarkRaised = Color(0xFF22262D)
     val Positive = Color(0xFF33C759)
     val PositiveDark = Color(0xFF4DD466)
     val Warning = Color(0xFFFF9400)
@@ -231,7 +242,7 @@ fun ardotLightColors(): Colors = lightColorScheme(
 fun ardotDarkColors(): Colors = darkColorScheme(
     primary = AppUiTokens.PrimaryDark,
     primaryVariant = AppUiTokens.PrimaryDark,
-    secondaryContainer = AppUiTokens.CardDark,
+    secondaryContainer = AppUiTokens.CardDarkRaised,
     onSecondaryContainer = Color(0xFF99A1A8),
     primaryContainer = Color(0xFF1F2940),
     onPrimaryContainer = AppUiTokens.PrimaryDark,
@@ -240,8 +251,8 @@ fun ardotDarkColors(): Colors = darkColorScheme(
     background = AppUiTokens.CardDark,
     onBackground = Color(0xFFF2F2F5),
     surface = AppUiTokens.BackgroundDark,
-    surfaceVariant = AppUiTokens.CardDark,
-    surfaceContainer = AppUiTokens.CardDark,
+    surfaceVariant = AppUiTokens.CardDarkRaised,
+    surfaceContainer = AppUiTokens.CardDarkRaised,
     onSurface = Color(0xFFF2F2F5),
     onSurfaceContainer = Color(0xFFF2F2F5),
     onSurfaceVariantSummary = Color(0xFF99A1A8),

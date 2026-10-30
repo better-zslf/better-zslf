@@ -14,6 +14,8 @@ import io.github.betterzslf.platform.ScheduleWidgetKind
 import io.github.betterzslf.ui.*
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
+import androidx.compose.ui.unit.sp
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 
@@ -25,6 +27,8 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
     val scope = rememberCoroutineScope()
     var applying by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
+    /** Result of the in-app live-card test; cleared whenever the screen is re-entered. */
+    var testNotice by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(native) { native.refreshCapabilities() }
     fun request(action: () -> Boolean) {
         notice = if (action()) null else AppText.Schedule.ACTION_REQUEST_FAILED
@@ -82,6 +86,18 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                 item("reminders-vendor") { InfoBanner(vendorHint(capabilities.vendor),
                     title = AppText.Schedule.BATTERY_OPTIMIZATION, tone = UiTone.Neutral) }
             }
+            // Say which mechanism actually draws the live card. The vendor islands rely on
+            // undocumented parameters, so the user needs to know that switching ROM or updating
+            // the system can change what they see.
+            item("reminders-live-mode") { SchedulePanel {
+                InfoBanner(vendorLiveMode(capabilities.vendor),
+                    title = AppText.Schedule.LIVE_MODE_TITLE, tone = UiTone.Neutral)
+                Text(AppText.Schedule.LIVE_TEST_HINT, fontSize = 13.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                PrimaryAction(AppText.Schedule.LIVE_TEST_ACTION, enabled = capabilities.notificationsGranted,
+                    onClick = { request { native.testLiveNotification() } })
+                testNotice?.let { notice -> InfoBanner(notice, tone = if (notice == AppText.Schedule.LIVE_TEST_POSTED) UiTone.Positive else UiTone.Warning) }
+            } }
             if (state.pendingReminderCourses > 0) item("reminders-pending") { InfoBanner(AppText.Schedule.pendingReminders(state.pendingReminderCourses), tone = UiTone.Warning) }
             if (state.sourceSnapshot?.complete == false) item("reminders-partial") { InfoBanner(AppText.Schedule.PARTIAL_HINT, tone = UiTone.Warning) }
             item("reminders-source") { SchedulePanel {
@@ -179,4 +195,12 @@ private fun vendorHint(vendor: ScheduleVendor): String = when (vendor) {
     ScheduleVendor.MEIZU -> AppText.Schedule.VENDOR_MEIZU_HINT
     ScheduleVendor.SAMSUNG -> AppText.Schedule.VENDOR_SAMSUNG_HINT
     else -> AppText.Schedule.VENDOR_GENERIC_HINT
+}
+
+/** Which live-notification mechanism this ROM will use, in the user's words. */
+private fun vendorLiveMode(vendor: ScheduleVendor): String = when (vendor) {
+    ScheduleVendor.XIAOMI -> AppText.Schedule.VENDOR_MODE_XIAOMI
+    ScheduleVendor.VIVO -> AppText.Schedule.VENDOR_MODE_VIVO
+    ScheduleVendor.MEIZU -> AppText.Schedule.VENDOR_MODE_MEIZU
+    else -> AppText.Schedule.VENDOR_MODE_STANDARD
 }

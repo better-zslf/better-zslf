@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Meizu Flyme live-notification capsule: the pill the system draws next to the status bar.
+
+  Flyme renders this RemoteViews instead of the notification's own title/text, so every visible
+  glyph has to live here. The pill is roughly 60dp wide, hence a single-line TextView with a
+  60dp minimum width and end ellipsis; anything richer is clipped by the system.
+
+  The dark surface / light ink pair is declared here as well as set from code, because the layout
+  is what the system inflates first: if `setTextColor`/`setColorInt` were ever rejected by a Flyme
+  build, the default XML colours still stay legible on the capsule's dark chrome.
+
+  Mechanism note: the capsule and its parameters come from community reverse engineering
+  (no Meizu developer documentation exists) and may silently stop working after a Flyme update.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical">
+
+    <TextView
+        android:id="@+id/schedule_flyme_capsule_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minWidth="60dp"
+        android:minHeight="28dp"
+        android:gravity="center"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:background="#FF1F1F24"
+        android:textColor="#FFFFFFFF"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+</LinearLayout>

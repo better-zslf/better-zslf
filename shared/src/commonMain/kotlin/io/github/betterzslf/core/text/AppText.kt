@@ -890,6 +890,31 @@ object AppText {
         fun liveStartsIn(minutes: Long) = "${minutes.coerceAtLeast(0)} 分钟后开始"
         fun liveAt(clock: String) = "$clock 开始"
         const val LIVE_CHANNEL_DESCRIPTION = "上课期间的常驻通知；Android 16 及以上会显示为实况通知。"
+        /**
+         * Vendor-private island notification channels. These are separate from the standard live
+         * channel so that turning one off for troubleshooting never touches the other.
+         */
+        const val VENDOR_LIVE_CHANNEL_XIAOMI = "小米超级岛"
+        const val VENDOR_LIVE_CHANNEL_VIVO = "vivo 原子岛"
+        const val VENDOR_LIVE_CHANNEL_MEIZU = "Flyme 实况通知"
+        const val VENDOR_LIVE_CHANNEL_DESCRIPTION_XIAOMI = "通过小米超级岛的私有参数显示上课进度；与系统实况通知分开。"
+        const val VENDOR_LIVE_CHANNEL_DESCRIPTION_VIVO = "通过 vivo 原子通知的公开参数显示上课进度；场景按会议日程申报。"
+        const val VENDOR_LIVE_CHANNEL_DESCRIPTION_MEIZU = "通过 Flyme 实况通知的私有参数显示；魅族未公开文档，系统更新后可能失效。"
+        /** Shown in settings when a vendor path is active, so the user knows which mechanism runs. */
+        const val VENDOR_MODE_XIAOMI = "当前使用小米超级岛"
+        const val VENDOR_MODE_VIVO = "当前使用 vivo 原子岛（按会议日程场景）"
+        const val VENDOR_MODE_MEIZU = "当前使用 Flyme 实况通知（私有接口）"
+        const val VENDOR_MODE_STANDARD = "当前使用系统标准实况通知"
+        const val LIVE_MODE_TITLE = "上课实况显示方式"
+        /** In-app test button: one synthetic class so the user can see the real card. */
+        const val LIVE_TEST_ACTION = "测试上课实况"
+        const val LIVE_TEST_HINT = "发一条 90 秒的模拟上课通知，用的就是真实渲染路径；不写课表、不联网。"
+        const val LIVE_TEST_COURSE = "测试课程"
+        const val LIVE_TEST_ROOM = "测试教室 A101"
+        const val LIVE_TEST_FAILED = "本机暂时发不出实况通知：请检查通知权限，或按下方厂商说明放开后台限制。"
+        const val LIVE_TEST_POSTED = "已发出，请下拉通知栏查看。"
+        /** Course anchor for the Meizu expanded card; never a fabricated value. */
+        const val VENDOR_EMPTY_SUBTITLE = ""
         /** Ardot P42 labels; ACCOUNT_FIELD above already names the field. */
         const val PASSWORD_STATE_SAVED = "密码状态：已在本机加密保存"
         const val SYNC_COURSE_TABLE = "同步课程表"
@@ -909,6 +934,17 @@ object AppText {
         fun moreCourses(count: Int) = "同格共${count}门 · 查看全部"
         fun leadMinutes(minutes: Int) = "提前${minutes}分钟"
         fun affectedCourses(count: Int) = "本学期${count}门课程使用此作息，确认后重新核对未来提醒。"
+        /**
+         * Meizu Flyme live-notification copy.
+         *
+         * Flyme draws only the capsule and the expanded card, so any text the system can read aloud
+         * has to be supplied as a view description. The capsule widget is a bare number such as
+         * "42分"; announcing that alone would be meaningless, hence a sentence that names the stage.
+         * The mechanism itself is reverse engineered and can vanish after a Flyme update, which is
+         * why the channel description says so instead of promising the card always appears.
+         */
+        const val VENDOR_MEIZU_CAPSULE_CONTENT_DESCRIPTION = "上课实况胶囊，展开查看课程进度"
+        const val VENDOR_MEIZU_CAPSULE_FALLBACK = "上课实况"
     }
 
     object Navigation {

@@ -94,6 +94,14 @@ interface ScheduleNativeBridge {
      */
     fun clear(status: ScheduleNativeStatus = ScheduleNativeStatus.UNAUTHENTICATED, ownerRevision: String? = null)
     fun consumeOpenRequest()
+    /**
+     * Fire one synthetic 90-second live card so the user can see what the island looks like
+     * without waiting for a real class. Returns false when no mechanism can post on this device.
+     *
+     * Default false keeps the iOS/JVM bridges honest: they have no ongoing-notification surface, so
+     * advertising a test hook there would be a lie the UI would have to work around.
+     */
+    fun testLiveNotification(): Boolean = false
     /** Releases app-side observers only; healthy published reminders survive app UI disposal. */
     fun close()
 }

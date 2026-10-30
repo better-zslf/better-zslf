@@ -51,6 +51,7 @@ private class AndroidScheduleNativeBridge(private val context: Context) : Schedu
     override fun publish(publication: ScheduleNativePublication): Boolean = engine.publish(publication)
     override fun clear(status: ScheduleNativeStatus, ownerRevision: String?) = engine.clear(status, ownerRevision)
     override fun consumeOpenRequest() = engine.consumeOpenRequest()
+    override fun testLiveNotification(): Boolean = engine.testLiveNotification()
     override fun close() = Unit // Native publication and its alarms intentionally outlive AppGraph's UI.
     private fun start(intent: Intent): Boolean = runCatching {
         context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true

@@ -78,6 +78,7 @@ internal class ScheduleLiveNotifications(private val context: Context) {
         val state = scheduleLiveState(stored.blocks.map {
             ScheduleLiveBlock(it.id, it.title, it.location, it.startsAtMillis, it.endsAtMillis)
         }, nowMillis)
+        lastState = state.takeIf { it.active }
         if (!state.active || !notificationsEnabled() || dismissed(state)) {
             lastReason = when {
                 !state.active -> "inactive"
@@ -94,6 +95,25 @@ internal class ScheduleLiveNotifications(private val context: Context) {
             ?: ("posted:" + state.phase.name)
     }
 
+    /**
+     * Post a caller-supplied state directly, bypassing the stored-block lookup.
+     *
+     * Only the in-app test button uses this: it has already resolved a synthetic state through the
+     * real state machine, and needs to see the real notification. Nothing else should call it,
+     * because it skips the dismissal bookkeeping that [reconcile] maintains.
+     */
+    fun publishTest(state: ScheduleLiveState): Boolean {
+        if (!notificationsEnabled()) {
+            lastReason = "test: notifications disabled"
+            return false
+        }
+        val result = runCatching { notifications.notify(TAG, NOTIFICATION_ID, build(state, "test")) }
+        lastPostFailed = result.isFailure
+        lastReason = result.exceptionOrNull()?.let { it::class.java.simpleName + ": " + (it.message ?: "") }
+            ?: ("test-posted:" + state.phase.name)
+        return result.isSuccess
+    }
+
     /** True when the most recent [reconcile] tried to post and the platform refused it. */
     var lastPostFailed: Boolean = false
         private set
@@ -101,6 +121,17 @@ internal class ScheduleLiveNotifications(private val context: Context) {
     /** Diagnostic for the probe: why the last reconcile did or did not post. */
     var lastReason: String = "never"
         private set
+
+    /**
+     * The state most recently resolved by [reconcile], or null when nothing is live.
+     *
+     * Exposed so the vendor dispatcher can render the same class block without re-deriving the
+     * schedule: two independent derivations would disagree at boundaries and could show one card
+     * saying "in class" while the other counts down.
+     */
+    fun currentState(): ScheduleLiveState? = lastState
+
+    private var lastState: ScheduleLiveState? = null
 
     /**
      * True when the user swiped this exact stage away. Clearing happens by comparing keys: once a

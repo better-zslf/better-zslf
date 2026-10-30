@@ -14,6 +14,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.PowerManager
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.text.AppText.NativeSchedule
 import io.github.betterzslf.feature.schedule.SCHEDULE_TIME_ZONE_ID
 import io.github.betterzslf.feature.schedule.scheduleNextBoundaryMillis
@@ -44,6 +45,9 @@ private const val FUTURE_DAYS = 14L
 private const val MAX_ALARMS = 128
 private const val CHANNEL = "schedule_lessons_v1"
 private const val TAG_PREFIX = "schedule.lesson:"
+/** Synthetic test card: 30 minutes already elapsed of a 32-minute class. */
+private const val TEST_LIVE_ELAPSED_MILLIS = 30L * 60_000L
+private const val TEST_LIVE_REMAINING_MILLIS = 90L * 1_000L
 internal const val SCHEDULE_URI_SCHEME = "better-zslf-schedule"
 internal const val SCHEDULE_OPEN_PATH = "open"
 internal const val SCHEDULE_ALARM_PATH = "remind"
@@ -86,6 +90,7 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
     private val alarms = requireNotNull(context.getSystemService(AlarmManager::class.java))
     private val notifications = requireNotNull(context.getSystemService(NotificationManager::class.java))
     private val liveNotifications = ScheduleLiveNotifications(context)
+    private val vendorLive = io.github.betterzslf.schedule.vendor.VendorLiveDispatcher()
     /** Debug-only trace of the last live-notification decision. */
     private val liveDebug = kotlinx.coroutines.flow.MutableStateFlow("none")
     private var state = load()
@@ -218,9 +223,20 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
                 " occ=" + projection.occurrences.size
             liveNotifications.publish(projection.ownerRevision.orEmpty(), liveBlocks)
             liveDebug.value += " reason=" + liveNotifications.lastReason
+            // A vendor island and the standard card describe the same class; posting both would
+            // show two cards, so the vendor path wins and the standard one stands down.
+            val state = liveNotifications.currentState()
+            val vendorClaimed = state != null && vendorLive.publish(context, state, capability.vendor)
+            if (vendorClaimed) {
+                liveNotifications.clear()
+                liveDebug.value += " vendor=" + capability.vendor
+            } else {
+                vendorLive.cancel(context)
+            }
         } else {
             liveDebug.value = "skip status=" + projection.status + " granted=" + capability.notificationsGranted
             liveNotifications.clear()
+            vendorLive.cancel(context)
         }
         if (!ScheduleWidgets.update(context, projection)) success = false
         if (ScheduleWidgets.hasWidgets(context) || canRemind) {
@@ -335,6 +351,50 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
      * appears if feature.schedule could place it on a real date for this publication.
      */
 
+
+    /**
+     * Post a synthetic 90-second "in class" card through the same rendering path a real class uses.
+     *
+     * This deliberately does not build a special demo notification: the point of a test button is
+     * to show what the real mechanism will look like on this ROM, including whether a vendor island
+     * accepts the payload. A separate demo object would prove nothing.
+     *
+     * It bypasses only the schedule lookup, not the rendering: the state is built by
+     * feature.schedule's own [io.github.betterzslf.feature.schedule.scheduleLiveState] from a
+     * synthetic block, so the progress fraction, chip text and countdown wording are the real ones.
+     */
+    @Synchronized
+    fun testLiveNotification(): Boolean {
+        val capability = readCapabilities()
+        if (!capability.notificationsGranted) {
+            liveDebug.value = "test: notifications not granted"
+            return false
+        }
+        val now = System.currentTimeMillis()
+        val testBlock = io.github.betterzslf.feature.schedule.ScheduleLiveBlock(
+            id = "vendor-live-test",
+            title = AppText.Schedule.LIVE_TEST_COURSE,
+            location = AppText.Schedule.LIVE_TEST_ROOM,
+            startsAtMillis = now - TEST_LIVE_ELAPSED_MILLIS,
+            endsAtMillis = now + TEST_LIVE_REMAINING_MILLIS,
+        )
+        val state = io.github.betterzslf.feature.schedule.scheduleLiveState(listOf(testBlock), now)
+        if (!state.active) {
+            liveDebug.value = "test: synthetic state inactive"
+            return false
+        }
+        val vendorClaimed = vendorLive.publish(context, state, capability.vendor)
+        if (vendorClaimed) {
+            liveNotifications.clear()
+            liveDebug.value = "test: vendor=" + capability.vendor
+            return true
+        }
+        // No vendor island took it: show the standard card so the button still demonstrates
+        // something on Pixel / OPPO / Samsung / Honor.
+        val posted = liveNotifications.publishTest(state)
+        liveDebug.value = "test: standard posted=" + posted + " reason=" + liveNotifications.lastReason
+        return posted
+    }
 
     /** Debug-only: the live-notification decision trace. */
     fun liveTrace(): String = liveDebug.value

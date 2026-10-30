@@ -17,21 +17,37 @@ data class AppSettings(
     val skipImportWarning: Boolean = false,
     /** Developer option. Off by default and never enabled by server data or saved preferences alone. */
     val debugMode: Boolean = false,
+    /**
+     * ISO weekdays (1=Monday..7=Sunday) the timetable should not draw, because the term really
+     * has no classes on them. Empty means show all seven, which is the honest default: hiding a
+     * day that does have classes would silently drop real data, so the user opts in per day.
+     */
+    val hiddenWeekdays: List<Int> = emptyList(),
 )
 
 class SettingsStore(private val store: KeyValueStore) {
     private val json = Json { ignoreUnknownKeys = true }
     private val mutableError = MutableStateFlow<String?>(null)
     val error = mutableError.asStateFlow()
+
+    /**
+     * One normalisation rule for both read and write, so a corrupt or hand-edited preference can
+     * never yield a duplicated/out-of-range weekday or an impossible sampling interval.
+     */
+    private fun normalise(value: AppSettings): AppSettings = value.copy(
+        samplingSeconds = value.samplingSeconds.coerceIn(10, 60),
+        hiddenWeekdays = value.hiddenWeekdays.filter { day -> day in 1..7 }.distinct().sorted(),
+    )
+
     private val current = MutableStateFlow(runCatching {
-        json.decodeFromString<AppSettings>(store.get(KEY) ?: "{}")
+        normalise(json.decodeFromString<AppSettings>(store.get(KEY) ?: "{}"))
     }.getOrElse {
         mutableError.value = AppText.Settings.READ_FAILED_USING_DEFAULTS_NOTICE
         AppSettings()
     })
     val settings = current.asStateFlow()
     fun update(transform: (AppSettings) -> AppSettings): Boolean {
-        val next = transform(current.value).let { it.copy(samplingSeconds = it.samplingSeconds.coerceIn(10, 60)) }
+        val next = normalise(transform(current.value))
         return try {
             store.put(KEY, json.encodeToString(next))
             current.value = next

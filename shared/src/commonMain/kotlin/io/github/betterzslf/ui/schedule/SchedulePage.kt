@@ -22,6 +22,8 @@ import io.github.betterzslf.feature.schedule.*
 import io.github.betterzslf.ui.*
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Tune
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 internal object ScheduleRoutes {
@@ -54,7 +56,7 @@ fun SchedulePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onB
         ScheduleRoutes.BIND -> ScheduleBindingPage(runtime, page.id == "password", onBack)
         ScheduleRoutes.TERMS -> ScheduleTermWeekPage(runtime, onBack)
         ScheduleRoutes.DETAIL -> ScheduleDetailPage(runtime, page.id, onBack)
-        ScheduleRoutes.MANAGE -> ScheduleManagementPage(runtime, onOpen, onBack)
+        ScheduleRoutes.MANAGE -> ScheduleManagementPage(runtime, graph.settings, onOpen, onBack)
         ScheduleRoutes.REMINDERS -> ScheduleReminderPage(runtime, onOpen, onBack)
         ScheduleRoutes.WIDGET -> ScheduleWidgetPage(runtime, onBack)
         ScheduleRoutes.PERIODS -> SchedulePeriodsPage(runtime, onBack)
@@ -68,9 +70,14 @@ fun SchedulePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onB
  * The shell owns the selected third tab and all navigation-bar/rail drawing.
  *
  * Laid out as Ardot P39: a 34sp page title, one row holding the week pill and the date range,
- * then the board card. The design has no week/day view switcher and no refresh/management
- * toolbar buttons on this screen, so the grid is the only body mode; the day list appears
- * automatically on narrow screens or large font scales, where 46dp columns cannot hold text.
+ * then the board card. The design has no week/day view switcher on this screen, so the grid is
+ * the only body mode; the day list appears automatically on narrow screens or large font
+ * scales, where 46dp columns cannot hold text.
+ *
+ * The design also draws no toolbar button, but a timetable without a visible entry to its own
+ * settings is not usable -- binding, credential update, period calibration, reminders and the
+ * week-visibility setting all live behind it. So the top bar carries one settings button for
+ * every body state, including the unbound one, where it is the only way to reach binding.
  */
 @Composable
 fun ScheduleRootPage(graph: AppGraph, onOpen: (Route) -> Unit) {
@@ -80,17 +87,26 @@ fun ScheduleRootPage(graph: AppGraph, onOpen: (Route) -> Unit) {
     val now = scheduleDisplayClock()
     val snapshot = state.snapshot
     val body = scheduleBody(state)
+    val settings by graph.settings.settings.collectAsState()
     val fontScale = LocalDensity.current.fontScale
     val openBinding = { onOpen(scheduleRoute(ScheduleRoutes.BIND, "password")) }
     val openTermWeek = { onOpen(scheduleRoute(ScheduleRoutes.TERMS)) }
+    val openManagement = { onOpen(scheduleRoute(ScheduleRoutes.MANAGE)) }
 
-    Screen(AppText.Schedule.TITLE) { padding ->
+    Screen(AppText.Schedule.TITLE, actions = {
+        IconButton(onClick = openManagement) {
+            Icon(MiuixIcons.Tune, contentDescription = AppText.Schedule.MANAGE,
+                tint = MiuixTheme.colorScheme.onSurface)
+        }
+    }) { padding ->
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val dayList = preferScheduleDayList(maxWidth.value, fontScale)
+            val hiddenDays = settings.hiddenWeekdays.toSet()
             if (snapshot != null && body == ScheduleBody.SCHEDULE) {
                 ScheduleWeekScreenContent(
                     snapshot = snapshot, state = state, dayList = dayList, now = now,
-                    padding = padding, openTermWeek = openTermWeek, openManagement = { onOpen(scheduleRoute(ScheduleRoutes.MANAGE)) },
+                    hiddenDays = hiddenDays,
+                    padding = padding, openTermWeek = openTermWeek,
                     openDetail = onOpen, refresh = { scope.launch { runtime.refresh() } },
                 )
             } else {
@@ -131,9 +147,9 @@ private fun ScheduleWeekScreenContent(
     state: io.github.betterzslf.feature.schedule.runtime.ScheduleState,
     dayList: Boolean,
     now: Long,
+    hiddenDays: Set<Int>,
     padding: PaddingValues,
     openTermWeek: () -> Unit,
-    openManagement: () -> Unit,
     openDetail: (Route) -> Unit,
     refresh: () -> Unit,
 ) {
@@ -154,15 +170,15 @@ private fun ScheduleWeekScreenContent(
         }
         if (state.busy || state.reauthenticating || state.message != null || state.needsCredentials ||
             !snapshot.complete || snapshot.warnings.isNotEmpty() || state.storageFailure) {
-            scheduleStatusItems(state, { openManagement() })
+            scheduleStatusItems(state, { openTermWeek() })
         }
         item("schedule-board") {
             ScheduleBoardCardContainer {
                 if (dayList) {
-                    ScheduleDayBody(snapshot, state.selectedWeek, state.periods, now, selectedDay,
+                    ScheduleDayBody(snapshot, state.selectedWeek, state.periods, now, selectedDay, hiddenDays,
                         onSelectDay = { selectedDay = it }, openDetail = openDetail)
                 } else {
-                    ScheduleWeekBoard(snapshot, state.selectedWeek, state.periods, now) { courses ->
+                    ScheduleWeekBoard(snapshot, state.selectedWeek, state.periods, now, hiddenDays) { courses ->
                         openDetail(scheduleRoute(ScheduleRoutes.DETAIL,
                             ScheduleDetailSelection(snapshot.term.id, courses.map { it.id }, state.selectedWeek).encode()))
                     }
@@ -283,9 +299,14 @@ private fun ScheduleDayBody(
     periods: List<SchedulePeriod>,
     now: Long,
     selectedDay: Int,
+    hiddenDays: Set<Int>,
     onSelectDay: (Int) -> Unit,
     openDetail: (Route) -> Unit,
 ) {
+    val visibleDays = remember(hiddenDays) { scheduleVisibleDays(hiddenDays) }
+    // A hidden day can still be the remembered selection; fall back to the first visible day
+    // so the list never shows an empty screen for a day the user asked not to see.
+    val activeDay = if (selectedDay in visibleDays) selectedDay else visibleDays.first()
     val today = remember(snapshot, week, now) {
         (1..7).firstOrNull { scheduleDateForWeek(snapshot, week, it) == scheduleSchoolDate(now) }
     }
@@ -294,8 +315,8 @@ private fun ScheduleDayBody(
         // The design still needs a way to reach other days, so the strip stays; it is drawn
         // with the same primary pill as the week selector rather than a second Miuix tab row.
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            for (day in 1..7) {
-                val selected = day == selectedDay
+            for (day in visibleDays) {
+                val selected = day == activeDay
                 Box(
                     Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(10.dp))
                         .background(if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceVariant)
@@ -309,15 +330,15 @@ private fun ScheduleDayBody(
                 }
             }
         }
-        val courses = scheduleDayCourses(snapshot, week, selectedDay)
-        if (courses.isEmpty() && scheduleCanConcludeDayEmpty(snapshot, week, selectedDay)) {
+        val courses = scheduleDayCourses(snapshot, week, activeDay)
+        if (courses.isEmpty() && scheduleCanConcludeDayEmpty(snapshot, week, activeDay)) {
             Text(AppText.Schedule.DAY_EMPTY, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         }
         courses.forEach { course ->
             ScheduleDayCard(
                 course = course,
                 periods = periods,
-                running = scheduleCourseRunning(course, selectedDay, periods, nowMinutes) && selectedDay == today,
+                running = scheduleCourseRunning(course, activeDay, periods, nowMinutes) && activeDay == today,
                 onOpen = {
                     openDetail(scheduleRoute(ScheduleRoutes.DETAIL,
                         ScheduleDetailSelection(snapshot.term.id, listOf(course.id), week).encode()))

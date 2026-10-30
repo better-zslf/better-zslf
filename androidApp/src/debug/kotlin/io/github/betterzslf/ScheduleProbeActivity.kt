@@ -133,6 +133,47 @@ class ScheduleProbeActivity : ComponentActivity() {
         action("Refresh capabilities") { display("refreshed") }
         action("Request notifications") { native.requestNotificationPermission(); display("request launched") }
         action("Open exact alarm settings") { native.openExactAlarmSettings() }
+        action("Seed live class spanning now") {
+            // Places a block that already started and has not ended, so the live notification
+            // must report IN_CLASS rather than counting down.
+            val revision = java.util.UUID.randomUUID().toString()
+            native.clear(ScheduleNativeStatus.NOT_SYNCED, revision)
+            val instant = now.withSecond(0).withNano(0)
+            val formatter = DateTimeFormatter.ofPattern("HH:mm")
+            // A real timetable has strictly increasing HH:mm windows, and the validator rejects
+            // anything else. Anchor the twelve periods so that period 1 holds the current minute:
+            // it is clamped to today and kept inside 00:00..23:59 so no window wraps midnight.
+            val firstMinute = (instant.hour * 60 + instant.minute - 5).coerceAtLeast(0)
+            val periods = (1..12).map { number ->
+                // 20-minute windows with no gap: period 1 contains "now", period 2 follows it.
+                val startMinute = firstMinute + (number - 1) * 20
+                val endMinute = startMinute + 19
+                fun clock(total: Int) = String.format("%02d:%02d", total / 60, total % 60)
+                SchedulePeriod(number, clock(startMinute), clock(endMinute))
+            }
+            // The occurrence projection derives the class date from weekMondays, so the synthetic
+            // "week" must map to the CURRENT week's Monday -- otherwise the projected block sits
+            // weeks in the past and the live state is correctly empty.
+            val thisMonday = instant.toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+            val currentWeek = 44
+            val snapshot = ScheduleSnapshot(ScheduleTerm("fixture-term", "Synthetic semester", true),
+                listOf(ScheduleCourse("live-now-course", "Synthetic live class", location = "Synthetic room 9",
+                    dayOfWeek = instant.dayOfWeek.value, periods = listOf(1, 2), weeks = listOf(currentWeek))),
+                weekMondays = mapOf(currentWeek to thisMonday.toString()),
+                syncedAtMillis = System.currentTimeMillis())
+            val publication = ScheduleNativePublication(revision, ScheduleNativeStatus.READY, snapshot, periods,
+                remindersEnabled = true, reminderLeadMinutes = 10)
+            // Report the platform outcome too: "accepted" only means the publication was valid.
+            val accepted = native.publish(publication)
+            val active = runCatching {
+                val manager = getSystemService(android.app.NotificationManager::class.java)
+                manager.activeNotifications.count { it.tag == "schedule.live" }
+            }.getOrDefault(-1)
+            val reason = runCatching {
+                io.github.betterzslf.schedule.scheduleLiveDiagnostic(this)
+            }.getOrElse { "n/a:" + it::class.java.simpleName }
+            display("live accepted=$accepted active=$active reason=$reason")
+        }
         action("Seed 10-minute reminder due next minute") { display(seed(native, 10)) }
         action("Seed 0-minute reminder due next minute") { display(seed(native, 0)) }
         action("Pin TODAY widget") { display("pin request=${native.requestPinWidget(ScheduleWidgetKind.TODAY)}") }

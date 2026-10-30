@@ -681,6 +681,9 @@ object AppText {
     object NativeSchedule {
         const val REMINDER_TITLE = "课前提醒"
         const val REMINDER_CHANNEL_DESCRIPTION = "只使用已同步课表，在课程开始前提醒；不在后台登录教务。"
+        /** Ongoing live-notification channel (Android 16+ shows it as a Live Update). */
+        const val LIVE_CHANNEL_TITLE = "上课实况"
+        const val LIVE_TITLE = "课表"
         const val OPEN_COURSE = "打开应用查看课程"
         const val OPEN_TIMETABLE = "打开应用查看课表"
         const val LOGIN_REQUIRED = Auth.LOGIN_REQUIRED
@@ -859,6 +862,20 @@ object AppText {
         /** Ardot P40: a non-selected term pill ends with a muted affordance, not an icon. */
         const val SERVER_DEFAULT_SUFFIX = " · 教务默认"
         const val TERM_VIEW_SUFFIX = " · 查看"
+        /** Shown under the term pills when the service returned more terms than are listed. */
+        const val TERMS_TRIMMED_HINT = "仅列出教务默认学期及其前后各一个学期；教务系统返回的学期过多，其余暂不展示，以免选错。"
+        /** Weekday visibility, in 教务管理 because that screen is the timetable's settings surface. */
+        const val DISPLAY_SECTION_TITLE = "课表显示"
+        const val DAY_SHOWN_SUMMARY = "显示在课表中"
+        const val DAY_HIDDEN_SUMMARY = "已隐藏，不占用课表宽度"
+        /** Ongoing notification / Android 16 Live Update copy. */
+        fun liveInClassTitle(title: String) = "正在上课：$title"
+        fun liveNextTitle(title: String) = "下节课：$title"
+        fun liveRemaining(minutes: Long) = "剩余 ${minutes.coerceAtLeast(0)} 分钟"
+        fun liveUntil(clock: String) = "到 $clock"
+        fun liveStartsIn(minutes: Long) = "${minutes.coerceAtLeast(0)} 分钟后开始"
+        fun liveAt(clock: String) = "$clock 开始"
+        const val LIVE_CHANNEL_DESCRIPTION = "上课期间的常驻通知；Android 16 及以上会显示为实况通知。"
         /** Ardot P42 labels; ACCOUNT_FIELD above already names the field. */
         const val PASSWORD_STATE_SAVED = "密码状态：已在本机加密保存"
         const val SYNC_COURSE_TABLE = "同步课程表"

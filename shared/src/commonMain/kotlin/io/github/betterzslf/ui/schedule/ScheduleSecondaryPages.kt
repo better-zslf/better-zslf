@@ -18,10 +18,12 @@ import io.github.betterzslf.Route
 import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.feature.schedule.*
 import io.github.betterzslf.feature.schedule.runtime.ScheduleRuntime
+import io.github.betterzslf.feature.settings.SettingsStore
 import io.github.betterzslf.ui.*
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -29,6 +31,8 @@ internal fun ScheduleTermWeekPage(runtime: ScheduleRuntime, onBack: () -> Unit) 
     val state by runtime.state.collectAsState()
     val scope = rememberCoroutineScope()
     val weeks = remember(state.snapshot, state.selectedWeek) { scheduleUiWeeks(state.snapshot, state.selectedWeek) }
+    // The service returns years of history; keep this term and its immediate neighbours.
+    val terms = remember(state.terms) { scheduleVisibleTerms(state.terms) }
     Screen(AppText.Schedule.SELECT_TERM_WEEK, onBack) { padding -> PageList(padding) {
         if (state.owner == null) item("selector-owner") { InfoBanner(AppText.Schedule.OWNER_REQUIRED, tone = UiTone.Warning) }
         if (state.busy) item("selector-loading") { ScheduleProgress(AppText.Common.LOADING) }
@@ -37,7 +41,7 @@ internal fun ScheduleTermWeekPage(runtime: ScheduleRuntime, onBack: () -> Unit) 
         // Ardot P40: terms are full-width pills in a wrapping row, the selected one filled primary.
         item("selector-terms") {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.terms.chunked(2).forEach { row ->
+                terms.chunked(2).forEach { row ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEach { term ->
                             val selected = term.id == state.snapshot?.term?.id
@@ -58,6 +62,10 @@ internal fun ScheduleTermWeekPage(runtime: ScheduleRuntime, onBack: () -> Unit) 
                         }
                         repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
                     }
+                }
+                if (terms.size < state.terms.size) {
+                    Text(AppText.Schedule.TERMS_TRIMMED_HINT, fontSize = 12.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 }
             }
         }
@@ -189,8 +197,14 @@ private fun DetailField(label: String, value: String) {
 }
 
 @Composable
-internal fun ScheduleManagementPage(runtime: ScheduleRuntime, onOpen: (Route) -> Unit, onBack: () -> Unit) {
+internal fun ScheduleManagementPage(
+    runtime: ScheduleRuntime,
+    settings: SettingsStore,
+    onOpen: (Route) -> Unit,
+    onBack: () -> Unit,
+) {
     val state by runtime.state.collectAsState()
+    val current by settings.settings.collectAsState()
     val scope = rememberCoroutineScope()
     var confirmUnbind by remember { mutableStateOf(false) }
     var unbinding by remember { mutableStateOf(false) }
@@ -240,6 +254,33 @@ internal fun ScheduleManagementPage(runtime: ScheduleRuntime, onOpen: (Route) ->
             } }
             if (state.sourceTermId != null) item("management-source-term") {
                 Text(AppText.Schedule.reminderSource(state.terms.firstOrNull { it.id == state.sourceTermId }?.name ?: AppText.Common.UNKNOWN))
+            }
+            item("management-visibility-heading") { SectionTitle(AppText.Schedule.DISPLAY_SECTION_TITLE) }
+            item("management-visibility") {
+                Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues(0.dp)) {
+                    // Hiding the last visible day is refused rather than silently undone: a board
+                    // that ignores the switch would look like a bug.
+                    val visibleCount = 7 - current.hiddenWeekdays.count { it in 1..7 }
+                    (1..7).forEachIndexed { index, day ->
+                        if (index > 0) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        val shown = day !in current.hiddenWeekdays
+                        SwitchPreference(
+                            title = AppText.Schedule.dayLabel(day),
+                            summary = when {
+                                shown -> AppText.Schedule.DAY_SHOWN_SUMMARY
+                                else -> AppText.Schedule.DAY_HIDDEN_SUMMARY
+                            },
+                            enabled = shown || visibleCount > 1,
+                            checked = shown,
+                            onCheckedChange = { next ->
+                                settings.update { value ->
+                                    value.copy(hiddenWeekdays =
+                                        if (next) value.hiddenWeekdays - day else (value.hiddenWeekdays + day).distinct())
+                                }
+                            },
+                        )
+                    }
+                }
             }
             // Ardot P42 draws the destructive area as one tinted block: explanation on top,
             // then an explicit full-width confirm button inside the same surface.

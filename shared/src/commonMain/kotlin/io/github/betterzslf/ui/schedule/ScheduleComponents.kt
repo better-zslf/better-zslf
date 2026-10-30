@@ -88,6 +88,24 @@ internal fun scheduleUiWeeks(snapshot: ScheduleSnapshot?, selectedWeek: Int): Li
     return (0..(known.filter { it in 0..99 }.maxOrNull() ?: 1)).toList()
 }
 
+/**
+ * The academic service returns a long history of terms (the school has run this system for
+ * years), which makes the selector unusable. The design only needs "this term, one before, one
+ * after", so the list is trimmed around the service's own default term.
+ *
+ * Trimming is by the default term's position in the service's ordered list, not by parsing
+ * "2025-2026 第1学期" semantics: the service owns that ordering, and its selected term is the
+ * only one it explicitly marks as current. If no term is marked default the whole list is kept
+ * rather than guessing a centre and hiding a term the user may need.
+ */
+internal fun scheduleVisibleTerms(terms: List<ScheduleTerm>, radius: Int = 1): List<ScheduleTerm> {
+    val centre = terms.indexOfFirst { it.isDefault }
+    if (centre < 0) return terms
+    val from = (centre - radius).coerceAtLeast(0)
+    val to = (centre + radius).coerceAtMost(terms.lastIndex)
+    return terms.subList(from, to + 1).toList()
+}
+
 @Composable
 internal fun ScheduleCourseCard(course: ScheduleCourse, periods: List<SchedulePeriod>, onOpen: () -> Unit) {
     val dark = MiuixTheme.colorScheme.surface.luminance() < 0.5f

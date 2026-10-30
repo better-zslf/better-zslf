@@ -73,6 +73,8 @@ internal data class ScheduleNativeView(
 /** Private per-applicationId state, no HTTP or credential access. All owner-sensitive actions share a lock. */
 internal class ScheduleNativeEngine private constructor(private val context: Context) {
     companion object {
+        /** Statuses whose cached timetable is trustworthy enough to describe as "now". */
+        private val LIVE_STATUSES = setOf(ScheduleNativeStatus.READY, ScheduleNativeStatus.CACHED)
         @Volatile private var instance: ScheduleNativeEngine? = null
         fun from(context: Context): ScheduleNativeEngine = instance ?: synchronized(this) {
             instance ?: ScheduleNativeEngine(context.applicationContext).also { instance = it }
@@ -82,6 +84,9 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
     private val alarms = requireNotNull(context.getSystemService(AlarmManager::class.java))
     private val notifications = requireNotNull(context.getSystemService(NotificationManager::class.java))
+    private val liveNotifications = ScheduleLiveNotifications(context)
+    /** Debug-only trace of the last live-notification decision. */
+    private val liveDebug = kotlinx.coroutines.flow.MutableStateFlow("none")
     private var state = load()
     private var needsRearm = true
     private val mutableCapabilities = MutableStateFlow(ScheduleNativeCapabilities(supported = true))
@@ -144,6 +149,7 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
         previous.alarms.forEach { cancelAlarm(it.id, previous.ownerRevision) }
         alarms.cancel(reconcileIntent())
         cancelLessonNotifications()
+        liveNotifications.clear()
         val persisted = save(next)
         val widgetsCleared = ScheduleWidgets.update(context, view(System.currentTimeMillis()))
         if (!persisted || !widgetsCleared) throw IllegalStateException("Native schedule invalidation could not be completed")
@@ -185,6 +191,17 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
         val aliveIds = projection.occurrences.map { it.id }.toSet()
         if (!save(state.copy(alarms = scheduled, deliveredIds = state.deliveredIds.filter { it in aliveIds }.takeLast(256)))) success = false
         if (capability.notificationsGranted) refreshVisibleNotifications(projection) else cancelLessonNotifications()
+        // The live notification is derived, never invented: it only reflects today's real blocks.
+        if (capability.notificationsGranted && projection.status in LIVE_STATUSES) {
+            val liveBlocks = liveBlocksFor(projection, now)
+            liveDebug.value = "status=" + projection.status + " blocks=" + liveBlocks.size +
+                " occ=" + projection.occurrences.size
+            liveNotifications.publish(projection.ownerRevision.orEmpty(), liveBlocks)
+            liveDebug.value += " reason=" + liveNotifications.lastReason
+        } else {
+            liveDebug.value = "skip status=" + projection.status + " granted=" + capability.notificationsGranted
+            liveNotifications.clear()
+        }
         if (!ScheduleWidgets.update(context, projection)) success = false
         if (ScheduleWidgets.hasWidgets(context) || canRemind) {
             scheduleNextBoundaryMillis(projection.occurrences, now)?.let { boundary ->
@@ -291,6 +308,29 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
         runCatching { notifications.notify(TAG_PREFIX + revision + ":" + occurrence.id, 1, notification) }
     }
     private fun cancelLessonNotifications() { notifications.activeNotifications.filter { it.tag?.startsWith(TAG_PREFIX) == true }.forEach { notifications.cancel(it.tag, it.id) } }
+
+    /**
+     * Today's real class blocks for the live notification, taken from the same occurrence
+     * projection the widgets and reminders use. Nothing is extrapolated: an occurrence only
+     * appears if feature.schedule could place it on a real date for this publication.
+     */
+
+
+    /** Debug-only: the live-notification decision trace. */
+    fun liveTrace(): String = liveDebug.value
+
+    private fun liveBlocksFor(view: ScheduleNativeView, nowMillis: Long): List<io.github.betterzslf.feature.schedule.ScheduleLiveBlock> {
+        val today = io.github.betterzslf.feature.schedule.scheduleSchoolDate(nowMillis).toString()
+        return view.occurrences
+            .filter { it.date == today }
+            .map {
+                io.github.betterzslf.feature.schedule.ScheduleLiveBlock(
+                    id = it.id, title = it.title, location = it.location,
+                    startsAtMillis = it.startsAtMillis, endsAtMillis = it.endsAtMillis,
+                )
+            }
+    }
+
     private fun refreshVisibleNotifications(view: ScheduleNativeView) {
         notifications.activeNotifications.filter { it.tag?.startsWith(TAG_PREFIX) == true }.forEach { item ->
             val prefix = TAG_PREFIX + (view.ownerRevision ?: "") + ":"
@@ -301,3 +341,11 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
         }
     }
 }
+
+/**
+ * Debug-only diagnostic: why the last live-notification reconcile did or did not post.
+ * Top-level and public so the debug probe (a separate module) can read it without widening
+ * the internal engine type or the release-facing bridge contract.
+ */
+fun scheduleLiveDiagnostic(context: android.content.Context): String =
+    ScheduleNativeEngine.from(context).liveTrace()

@@ -46,28 +46,31 @@ internal fun ScheduleWeekBoard(
     week: Int,
     periods: List<SchedulePeriod>,
     nowMillis: Long,
+    hiddenDays: Set<Int> = emptySet(),
     onOpen: (List<ScheduleCourse>) -> Unit,
 ) {
+    val visibleDays = remember(hiddenDays) { scheduleVisibleDays(hiddenDays) }
     val todayDate = scheduleSchoolDate(nowMillis)
     val today = (1..7).firstOrNull { scheduleDateForWeek(snapshot, week, it) == todayDate }
     val nowMinutes = remember(nowMillis) { scheduleSchoolMinutes(nowMillis) }
-    val blocks = remember(snapshot, week, periods, today, nowMinutes) {
-        scheduleBoardBlocks(snapshot, week, periods, today, nowMinutes)
+    val blocks = remember(snapshot, week, periods, today, nowMinutes, hiddenDays) {
+        scheduleBoardBlocks(snapshot, week, periods, today, nowMinutes).filter { it.day in visibleDays }
     }
     val dark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
     val todayColumn = MiuixTheme.colorScheme.primary.copy(alpha = if (dark) 0.22f else 0.10f)
     // Ardot 14:190 draws every non-today column fully transparent inside the white card;
     // only the today column (14:198 primarySoft) is tinted.
     val gridSurface = Color.Transparent
+    val dayWeight = 1f / visibleDays.size
 
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ScheduleColumnGap)) {
             Spacer(Modifier.width(ScheduleAxisWidth))
-            for (day in 1..7) {
+            for (day in visibleDays) {
                 val date = scheduleDateForWeek(snapshot, week, day)
                 val isToday = day == today
                 Column(
-                    Modifier.weight(1f).height(ScheduleHeaderHeight).clip(RoundedCornerShape(8.dp))
+                    Modifier.weight(dayWeight).height(ScheduleHeaderHeight).clip(RoundedCornerShape(8.dp))
                         .background(if (isToday) todayColumn else gridSurface),
                     verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -100,25 +103,27 @@ internal fun ScheduleWeekBoard(
                 }
             }
             Spacer(Modifier.width(ScheduleColumnGap))
-            // Body: seven columns on one shared baseline, blocks absolutely offset by period.
+            // Body: the visible columns share one baseline, blocks absolutely offset by period.
             BoxWithConstraints(Modifier.weight(1f).height(ScheduleRowHeight * 12)) {
-                val columnWidth = maxWidth / 7
+                val columnWidth = maxWidth / visibleDays.size
                 Row(Modifier.fillMaxSize()) {
-                    for (day in 1..7) {
+                    for (day in visibleDays) {
                         Box(
-                            Modifier.weight(1f).fillMaxHeight()
+                            Modifier.weight(dayWeight).fillMaxHeight()
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (day == today) todayColumn else gridSurface),
                         )
                     }
                 }
                 blocks.forEach { block ->
+                    // Column order, not the ISO weekday, decides the horizontal offset.
+                    val column = visibleDays.indexOf(block.day).coerceAtLeast(0)
                     ScheduleBoardCard(
                         block = block,
                         modifier = Modifier
                             .width(columnWidth)
                             .height(ScheduleRowHeight * block.spanRows)
-                            .offset(x = columnWidth * (block.day - 1), y = ScheduleRowHeight * (block.startRow - 1))
+                            .offset(x = columnWidth * column, y = ScheduleRowHeight * (block.startRow - 1))
                             .padding(horizontal = 1.dp, vertical = 1.dp),
                         periods = periods,
                         onOpen = {
@@ -129,6 +134,16 @@ internal fun ScheduleWeekBoard(
             }
         }
     }
+}
+
+/**
+ * Weekdays to draw, in ISO order. Hiding is only ever a narrowing: an empty or fully-hidden
+ * selection falls back to all seven days rather than drawing an empty board, because an empty
+ * board would look like "no classes" instead of "you hid everything".
+ */
+internal fun scheduleVisibleDays(hidden: Set<Int>): List<Int> {
+    val visible = (1..7).filter { it !in hidden }
+    return visible.ifEmpty { (1..7).toList() }
 }
 
 /** One course block: fill, title, and the location/room line, matching Ardot 14:191. */

@@ -341,7 +341,7 @@ private fun TreePage(source: ContentSource, owner: String, page: Route.Page, ope
             LazyColumn(Modifier.fillMaxSize().overScrollVertical(), overscrollEffect = null, contentPadding = pageContentPadding(padding, LocalNavigationBottomInset.current, LocalLayoutDirection.current),
                 verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                 item {
-                    if (columns) Text((listOf(AppText.Navigation.COMMUNITY, title) + directoryCrumbs(selected, state.tree)).distinct().joinToString(" / "),
+                    if (columns) Text((listOf(title) + directoryCrumbs(selected, state.tree)).distinct().joinToString(" / "),
                         fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     else Text(AppText.Content.SERVICE_DIRECTORY_INTRO, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 }

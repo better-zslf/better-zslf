@@ -152,6 +152,9 @@ private fun ProfileOwnerScreen(graph: AppGraph, open: (Route) -> Unit) {
                     listOf("用户协议" to AppText.App.USER_AGREEMENT_DISPLAY_LABEL, "隐私政策" to AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, "使用帮助" to AppText.App.USER_GUIDE_DISPLAY_LABEL).forEach { (documentId, title) ->
                         ArrowPreference(title, onClick = { open(Route.Page("document", documentId, title)) })
                     }
+                    // Moved here from the removed Community tab, which was this entry's only host.
+                    ArrowPreference(AppText.App.HELP_AND_FEEDBACK_SECTION_TITLE, summary = AppText.App.GITHUB_FEEDBACK_SUMMARY,
+                        onClick = { open(Route.Page("feedback", title = AppText.App.FEEDBACK_TITLE)) })
                 }
             }
             item("logout") {

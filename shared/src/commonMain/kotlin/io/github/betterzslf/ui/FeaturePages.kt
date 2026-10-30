@@ -54,7 +54,6 @@ fun FeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBa
         "columns", "articles", "article", "document", "history", "notices", "messages", "discover" -> ContentPage(graph, page, onOpen, onBack)
         "venues", "venue", "venuetimes", "venueapply", "myvenues", "venueapplication", "fitness", "fitnessitems", "fitnessenrol" -> BookingPage(graph, page, onOpen, onBack)
         "runs", "rundetail", "runrecords", "runrecord", "runtracker", "runimport" -> RunFeaturePage(graph, page, onOpen, onBack, graph.runRuntime)
-        "community" -> CommunityScreen(graph, onOpen, onBack)
         "water" -> graph.editionFeatures.Page(graph, page, onOpen, onBack)
         "campusnet" -> CampusNetworkFeaturePage(graph, onBack)
         "feedback" -> FeedbackScreen(graph, onBack)

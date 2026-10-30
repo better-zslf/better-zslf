@@ -10,8 +10,8 @@
         "after": ", AppText.Content.FRESHMAN_GUIDE_DISPLAY_LABEL))"
       },
       "position": {
-        "start": 23359,
-        "end": 23365,
+        "start": 23329,
+        "end": 23335,
         "line": 360,
         "column": 115
       },
@@ -100,67 +100,13 @@
         "after": ") }) { columns ->\n                    val column"
       },
       "position": {
-        "start": 4079,
-        "end": 4085,
-        "line": 67,
+        "start": 4023,
+        "end": 4029,
+        "line": 66,
         "column": 94
       },
       "category": "lookup",
       "reason": "Exact school content column name, not the visible title",
-      "owner": "task38/build-ci"
-    },
-    {
-      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/MainScreens.kt",
-      "kind": "string",
-      "source": "\"学校动态\"",
-      "context": {
-        "before": "Y_LABEL, onClick = { open(Route.Page(\"columns\", ",
-        "after": ", AppText.Content.SCHOOL_NEWS_DISPLAY_LABEL)) })"
-      },
-      "position": {
-        "start": 10661,
-        "end": 10667,
-        "line": 156,
-        "column": 115
-      },
-      "category": "lookup",
-      "reason": "Exact school content column name, not the visible title",
-      "owner": "task38/build-ci"
-    },
-    {
-      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/MainScreens.kt",
-      "kind": "string",
-      "source": "\"新生攻略\"",
-      "context": {
-        "before": "Y_LABEL, onClick = { open(Route.Page(\"columns\", ",
-        "after": ", AppText.Content.FRESHMAN_GUIDE_DISPLAY_LABEL))"
-      },
-      "position": {
-        "start": 10833,
-        "end": 10839,
-        "line": 157,
-        "column": 118
-      },
-      "category": "lookup",
-      "reason": "Exact second Route.Page argument remains backend/document lookup id; display title is independent",
-      "owner": "task38/build-ci"
-    },
-    {
-      "path": "shared/src/commonMain/kotlin/io/github/betterzslf/ui/MainScreens.kt",
-      "kind": "string",
-      "source": "\"使用帮助\"",
-      "context": {
-        "before": "_LABEL, onClick = { open(Route.Page(\"document\", ",
-        "after": ", AppText.App.USER_GUIDE_DISPLAY_LABEL)) })\n    "
-      },
-      "position": {
-        "start": 11155,
-        "end": 11161,
-        "line": 159,
-        "column": 111
-      },
-      "category": "lookup",
-      "reason": "Exact second Route.Page argument remains backend/document lookup id; display title is independent",
       "owner": "task38/build-ci"
     },
     {
@@ -1090,9 +1036,9 @@
         "after": ", AppText.Content.SCHOOL_NEWS_DISPLAY_LABEL))\n  "
       },
       "position": {
-        "start": 3898,
-        "end": 3904,
-        "line": 64,
+        "start": 3842,
+        "end": 3848,
+        "line": 63,
         "column": 44
       },
       "category": "lookup",

@@ -24,7 +24,6 @@ import kotlinx.serialization.json.*
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.*
-import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 
@@ -89,7 +88,6 @@ private fun HomeQuickGrid(graph: AppGraph, open: (Route) -> Unit) {
         HomeShortcut(AppText.CampusNetwork.CAMPUS_NETWORK_TITLE, MiuixIcons.Carrier, Color(0xFF655BD6), Route.Page("campusnet", title = AppText.CampusNetwork.CAMPUS_NETWORK_TITLE)),
         HomeShortcut(AppText.Content.CAMPUS_DISCOVERY_TITLE, MiuixIcons.GridView, Color(0xFF16A3A9), Route.Page("discover", title = AppText.Content.CAMPUS_DISCOVERY_TITLE)),
         HomeShortcut(AppText.Booking.MY_BOOKINGS_TITLE, MiuixIcons.Notes, Color(0xFF4B85D4), Route.Page("myvenues", title = AppText.Booking.MY_BOOKINGS_TITLE)),
-        HomeShortcut(AppText.Common.MORE, MiuixIcons.More, Color(0xFF7B7E89), Route.Page("community", title = AppText.Navigation.COMMUNITY)),
     )
     val hasEditionEntry = EditionAccess.waterEnabled
     val total = entries.size + if (hasEditionEntry) 1 else 0
@@ -128,53 +126,6 @@ fun CampusShortcut(title: String, icon: ImageVector, accent: Color, supportingTe
             Text(title, fontSize = 12.sp, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (supportingText.isNotBlank()) Text(supportingText, fontSize = 11.sp, color = MiuixTheme.colorScheme.primary,
                 textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-@Composable
-fun CommunityScreen(graph: AppGraph, open: (Route) -> Unit) = CommunityScreen(graph, open, null)
-
-@Composable
-fun CommunityScreen(graph: AppGraph, open: (Route) -> Unit, back: (() -> Unit)?) {
-    Screen(AppText.Navigation.COMMUNITY, onBack = back) { padding ->
-        PageList(padding) {
-            item { CommunityEntry(AppText.Content.CAMPUS_DISCOVERY_TITLE, AppText.Content.SERVICES_STUDY_AND_CAMPUS_LIFE_SUMMARY,
-                MiuixIcons.GridView, Color(0xFF16A3A9)) { open(Route.Page("discover", title = AppText.Content.CAMPUS_DISCOVERY_TITLE)) } }
-            item { CommunityEntry(AppText.Content.ANNOUNCEMENTS_AND_NOTIFICATIONS_TITLE, AppText.Content.MESSAGES_AND_NOTIFICATIONS_TITLE,
-                MiuixIcons.Messages, AppUiTokens.Primary) { open(Route.Page("notices", title = AppText.Content.ANNOUNCEMENTS_AND_NOTIFICATIONS_TITLE)) } }
-            item { CommunityEntry(AppText.Booking.VENUE_BOOKING_TITLE, AppText.Booking.VIEW_OPEN_VENUES,
-                MiuixIcons.Store, Color(0xFFFF9400)) { open(Route.Page("venues", title = AppText.Booking.VENUE_BOOKING_TITLE)) } }
-            item { CommunityEntry(AppText.Booking.FITNESS_REGISTRATION_TITLE, AppText.Booking.FITNESS_SESSIONS_AND_ITEMS_SUMMARY,
-                MiuixIcons.Tasks, Color(0xFF33B878)) { open(Route.Page("fitness", title = AppText.Booking.FITNESS_REGISTRATION_TITLE)) } }
-            item { CommunityEntry(AppText.Content.BROWSING_HISTORY_TITLE, "", MiuixIcons.Recent, Color(0xFF655BD6)) {
-                open(Route.Page("history", title = AppText.Content.BROWSING_HISTORY_TITLE)) } }
-            item { CommunityEntry(AppText.App.HELP_AND_FEEDBACK_SECTION_TITLE, AppText.App.GITHUB_FEEDBACK_SUMMARY,
-                MiuixIcons.Help, Color(0xFF7B7E89)) { open(Route.Page("feedback", title = AppText.App.FEEDBACK_TITLE)) } }
-            item { SectionTitle(AppText.Content.NEWS_SECTION_TITLE) }
-            item { Card(insideMargin = PaddingValues(0.dp), modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
-                ArrowPreference(AppText.Content.SCHOOL_NEWS_DISPLAY_LABEL, onClick = { open(Route.Page("columns", "学校动态", AppText.Content.SCHOOL_NEWS_DISPLAY_LABEL)) })
-                ArrowPreference(AppText.Content.FRESHMAN_GUIDE_DISPLAY_LABEL, onClick = { open(Route.Page("columns", "新生攻略", AppText.Content.FRESHMAN_GUIDE_DISPLAY_LABEL)) })
-                ArrowPreference(AppText.Booking.MY_BOOKINGS_TITLE, onClick = { open(Route.Page("myvenues", title = AppText.Booking.MY_BOOKINGS_TITLE)) })
-                ArrowPreference(AppText.App.USER_GUIDE_DISPLAY_LABEL, onClick = { open(Route.Page("document", "使用帮助", AppText.App.USER_GUIDE_DISPLAY_LABEL)) })
-            } }
-        }
-    }
-}
-
-@Composable
-private fun CommunityEntry(title: String, summary: String, icon: ImageVector, accent: Color, onClick: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(16.dp),
-        onClick = onClick, pressFeedbackType = PressFeedbackType.Sink, showIndication = true) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Box(Modifier.size(46.dp).clip(RoundedCornerShape(14.dp)).background(accent.copy(alpha = 0.11f)), contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(25.dp))
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                if (summary.isNotBlank()) Text(summary, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-            }
-            Icon(MiuixIcons.ChevronForward, contentDescription = null, tint = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.size(18.dp))
         }
     }
 }

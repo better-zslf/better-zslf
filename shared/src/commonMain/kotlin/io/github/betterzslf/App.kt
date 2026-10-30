@@ -187,7 +187,7 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
     }
     val theme = remember(mode) { ThemeController(mode, lightColors = ardotLightColors(), darkColors = ardotDarkColors()) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { graph.onForeground() }
-    // Invalidate old four-tab saved indices once; v2 then retains all five stacks on recreation.
+    // Invalidate old five-tab saved indices once; v3 then retains all four stacks on recreation.
     key(NavigationLayoutPolicy.SAVED_STATE_SCHEMA) {
     val root = rememberNavBackStack<Route>(Route.Main)
     // Keep tab navigation outside the login-gated subtree, including across a 401.
@@ -195,9 +195,8 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
     val home = rememberNavBackStack<Route>(Route.TabRoot(0))
     val run = rememberNavBackStack<Route>(Route.TabRoot(1))
     val timetable = rememberNavBackStack<Route>(Route.TabRoot(2))
-    val community = rememberNavBackStack<Route>(Route.TabRoot(3))
-    val profile = rememberNavBackStack<Route>(Route.TabRoot(4))
-    val tabStacks = listOf(home, run, timetable, community, profile)
+    val profile = rememberNavBackStack<Route>(Route.TabRoot(3))
+    val tabStacks = listOf(home, run, timetable, profile)
     val nativeOpenRequest by graph.schedule.native.openRequests.collectAsState()
     LaunchedEffect(nativeOpenRequest, session?.userId) {
         val request = nativeOpenRequest ?: return@LaunchedEffect
@@ -287,8 +286,8 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
     val open: (Route) -> Unit = { route ->
         if (route is Route.Page && route.kind == "resetpassword") onAccountRecovery() else stack.pushUnique(route)
     }
-    val titles = listOf(AppText.Navigation.HOME, AppText.Navigation.CAMPUS_RUN, AppText.Navigation.SCHEDULE, AppText.Navigation.COMMUNITY, AppText.Navigation.PROFILE)
-    val icons = listOf(MiuixIcons.Home, MiuixIcons.Location, MiuixIcons.Notes, MiuixIcons.Community, MiuixIcons.Contacts)
+    val titles = listOf(AppText.Navigation.HOME, AppText.Navigation.CAMPUS_RUN, AppText.Navigation.SCHEDULE, AppText.Navigation.PROFILE)
+    val icons = listOf(MiuixIcons.Home, MiuixIcons.Location, MiuixIcons.Notes, MiuixIcons.Contacts)
     val showBottomNavigation = stack.lastOrNull() is Route.TabRoot
     // Miuix measures the whole bottomBar before composing its body. Its padding includes the
     // pill, outer spacing and system navigation area, unlike measuring inside padding modifiers.
@@ -346,8 +345,7 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
                                 0 -> HomeScreen(graph, open)
                                 1 -> RunTaskList(graph, open)
                                 2 -> ScheduleRootPage(graph, open)
-                                3 -> CommunityScreen(graph, open)
-                                4 -> ProfileScreen(graph, open)
+                                3 -> ProfileScreen(graph, open)
                             }
                         }
                         entry<Route.Page>(swipeDismiss = if ((stack.lastOrNull() as? Route.Page)?.kind in setOf("water", "runtracker", "resetpassword")) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) { route ->

@@ -56,6 +56,13 @@ data class ScheduleNativePublication(
      * the redactor drops this map before the record reaches storage.
      */
     val displayTeachers: Map<String, String> = emptyMap(),
+    /**
+     * Whether the vendor capsule should show the course name beside the minutes.
+     *
+     * Display-only, like [displayTeachers]: which form fits depends on the ROM's pill width, so it
+     * is a user preference rather than something the platform decides.
+     */
+    val capsuleLongText: Boolean = false,
 ) {
     override fun toString(): String = "ScheduleNativePublication(redacted)"
 }

@@ -28,6 +28,14 @@ internal data class StoredSchedule(
     val dailyAttempts: Map<String, String> = emptyMap(),
     val remindersEnabled: Boolean = false,
     val reminderLeadMinutes: Int = 10,
+    /**
+     * Whether the vendor capsule shows the course name beside the minutes.
+     *
+     * Exposed as a setting rather than hard-coded because the pill's width is ROM-specific: some
+     * builds render the whole phrase, others clip to a few glyphs, and only the user can see which
+     * their device does. Default false -- the short form is the one confirmed to work on Flyme.
+     */
+    val capsuleLongText: Boolean = false,
     val periods: List<SchedulePeriod> = defaultSchedulePeriods(),
 ) {
     override fun toString(): String = "StoredSchedule(schema=$schema, credentials=<redacted>, snapshots=${snapshots.size})"

@@ -886,6 +886,9 @@ object AppText {
         fun liveRemaining(minutes: Long) = "剩余 ${minutes.coerceAtLeast(0)} 分钟"
         /** Status-bar capsule for the promoted-ongoing chip; keep it under ~7 glyphs. */
         fun liveChipMinutes(minutes: Long) = "${minutes.coerceIn(0L, 99L)}分"
+        /** "数据结构 · 33分" -- the optional long form for a capsule wide enough to show it. */
+        fun liveCapsulePhrase(course: String, chip: String): String =
+            if (chip.isBlank()) course else course + " · " + chip
         fun liveUntil(clock: String) = "到 $clock"
         fun liveStartsIn(minutes: Long) = "${minutes.coerceAtLeast(0)} 分钟后开始"
         fun liveAt(clock: String) = "$clock 开始"
@@ -927,6 +930,9 @@ object AppText {
         const val LIVE_MATRIX_ACTION = "测试魅族参数矩阵（8 组）"
         const val LIVE_MATRIX_HINT = "一次发出 8 条不同参数的通知，标题就是组合名。下拉通知栏截图即可看出哪组生效。"
         const val LIVE_MATRIX_CLEAR = "清除全部测试通知"
+        /** Capsule wording switch, for ROMs whose pill is wide enough for the phrase. */
+        const val CAPSULE_TEXT_TITLE = "胶囊显示课程名"
+        const val CAPSULE_TEXT_SUMMARY = "开启后胶囊显示「数据结构 · 33分」，关闭只显示「33分」。部分机型胶囊较窄会被截断，可按实际效果选择。"
         /** Variant names for the Flyme matrix; each becomes a notification title. */
         val LIVE_MATRIX_LABELS: List<String> = listOf(
             "A 基线",

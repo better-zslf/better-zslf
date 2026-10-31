@@ -375,14 +375,19 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
 
     /** The pill is ~60dp of chrome; a chip past a few glyphs is clipped, so keep it short. */
     /**
-     * Capsule text: the bare minute count ("33分").
+     * Capsule text: the bare minute count, or the course name plus minutes.
      *
-     * The phrase form from the design reference ("数据结构 · 剩余 23 分钟") was tried on device and
-     * did not take: Flyme draws the pill from its own template and shows only the short string, so
-     * a longer value never reached the screen. The short form is therefore the only wording.
+     * The long form was tried on Flyme 12.6 and did not reach the pill, so it defaults to off. It
+     * stays available because the pill width is ROM-specific -- an island that lays the text out
+     * itself may well show the phrase, and that is exactly the case this switch exists for.
      */
-    private fun capsuleText(data: VendorLiveData): String =
-        data.chip.trim().ifEmpty { Schedule.VENDOR_MEIZU_CAPSULE_FALLBACK }
+    private fun capsuleText(data: VendorLiveData): String {
+        val short = data.chip.trim().ifEmpty { Schedule.VENDOR_MEIZU_CAPSULE_FALLBACK }
+        if (!data.capsuleLongText) return short
+        val course = data.courseName.ifBlank { data.title }.trim()
+        if (course.isBlank()) return short
+        return Schedule.liveCapsulePhrase(course, short)
+    }
 
     private fun ensureChannel(manager: NotificationManager) {
         if (manager.getNotificationChannel(channelId()) != null) return

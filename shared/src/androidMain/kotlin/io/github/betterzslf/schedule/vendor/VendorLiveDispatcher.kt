@@ -37,7 +37,12 @@ internal class VendorLiveDispatcher(private val renderers: List<VendorLiveRender
      *
      * @return true when a vendor card was posted, meaning the standard card must NOT also post.
      */
-    fun publish(context: Context, state: ScheduleLiveState, vendor: ScheduleVendor): Boolean {
+    fun publish(
+        context: Context,
+        state: ScheduleLiveState,
+        vendor: ScheduleVendor,
+        capsuleLongText: Boolean = false,
+    ): Boolean {
         if (!state.active) { cancel(context); return false }
         val renderer = renderers.firstOrNull { runCatching { it.isSupported(context) }.getOrDefault(false) }
         if (renderer == null) {
@@ -67,6 +72,7 @@ internal class VendorLiveDispatcher(private val renderers: List<VendorLiveRender
                 // have a real fraction now, so a break would be drawn as a class: blue bar, period
                 // column instead of start time.
                 betweenClasses = state.phase == ScheduleLivePhase.BEFORE_NEXT,
+                capsuleLongText = capsuleLongText,
             ))
         }.getOrDefault(false)
         if (!VendorLivePolicy.mayClaim(vendor, rendererSupports = true, rendererDelivered = delivered)) {

@@ -223,7 +223,8 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
             // A vendor island and the standard card describe the same class; posting both would
             // show two cards, so the vendor path wins and the standard one stands down.
             val state = liveNotifications.currentState()
-            val vendorClaimed = state != null && vendorLive.publish(context, state, capability.vendor)
+            val vendorClaimed = state != null && vendorLive.publish(
+                context, state, capability.vendor, capsuleLongText = projection.publication?.capsuleLongText == true)
             if (vendorClaimed) {
                 liveNotifications.clear()
                 liveDebug.value += " vendor=" + capability.vendor

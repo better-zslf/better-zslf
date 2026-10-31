@@ -23,6 +23,8 @@ data class ScheduleState(
     val showBindingPrompt: Boolean = false,
     val remindersEnabled: Boolean = false,
     val reminderLeadMinutes: Int = 10,
+    /** See StoredSchedule.capsuleLongText. */
+    val capsuleLongText: Boolean = false,
     val periods: List<SchedulePeriod> = defaultSchedulePeriods(),
     val sourceTermId: String? = null,
     val pendingReminderCourses: Int = 0,

@@ -143,7 +143,14 @@ fun scheduleLiveState(blocks: List<ScheduleLiveBlock>, nowMillis: Long): Schedul
             courseName = current.title,
         )
     }
+    // Only a short gap counts as a break worth announcing.
+    //
+    // "Next class in 4 hours" is not live activity, it is a calendar entry: at lunch and in the
+    // evening an ongoing card claiming to track something would sit there for hours describing
+    // nothing happening. A real break between periods is minutes, so anything past the window is
+    // treated as "no live state" and the card clears -- the user can open the timetable instead.
     val next = ordered.firstOrNull { it.startsAtMillis > nowMillis }
+        ?.takeIf { it.startsAtMillis - nowMillis <= MAX_BREAK_WINDOW_MILLIS }
     if (next != null) {
         val gapMillis = next.startsAtMillis - nowMillis
         // The break started when the last class before this one ended. Without an earlier block
@@ -181,6 +188,15 @@ fun scheduleLiveState(blocks: List<ScheduleLiveBlock>, nowMillis: Long): Schedul
     }
     return ScheduleLiveState(phase = ScheduleLivePhase.NONE, title = "", text = "", progress = null)
 }
+
+/**
+ * Longest gap that still counts as "between classes" rather than "nothing happening".
+ *
+ * Chosen at 90 minutes: a back-to-back pair of 45-minute periods leaves a 10-minute break, and the
+ * longest realistic intra-day gap at a Chinese university is a two-hour lunch. 90 minutes covers
+ * every real break while excluding lunch and end-of-day, which is exactly the requested behaviour.
+ */
+const val MAX_BREAK_WINDOW_MILLIS: Long = 90L * 60_000L
 
 /** Millisecond formatting shared by the live notification and its tests. */
 object ScheduleLiveClock {

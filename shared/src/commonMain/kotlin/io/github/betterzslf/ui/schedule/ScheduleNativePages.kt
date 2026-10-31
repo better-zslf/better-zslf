@@ -96,6 +96,20 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                 item("reminders-vendor") { InfoBanner(vendorHint(capabilities.vendor),
                     title = AppText.Schedule.BATTERY_OPTIMIZATION, tone = UiTone.Neutral) }
             }
+            // Capsule wording: only meaningful on a ROM whose pill we draw, so it is shown solely
+            // where a vendor island exists.
+            if (capabilities.vendor != ScheduleVendor.AOSP) {
+                item("reminders-capsule-text") { Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues()) {
+                    SwitchPreference(checked = state.capsuleLongText,
+                        title = AppText.Schedule.CAPSULE_TEXT_TITLE,
+                        summary = AppText.Schedule.CAPSULE_TEXT_SUMMARY,
+                        enabled = state.owner != null && !state.busy && !applying,
+                        onCheckedChange = { long -> if (!applying) {
+                            applying = true
+                            scope.launch { try { runtime.setCapsuleLongText(long) } finally { applying = false } }
+                        } })
+                } }
+            }
             item("reminders-switch") { Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues()) {
                 SwitchPreference(checked = state.remindersEnabled,
                     title = AppText.Schedule.REMINDERS_SWITCH, summary = AppText.Schedule.REMINDER_RULES,

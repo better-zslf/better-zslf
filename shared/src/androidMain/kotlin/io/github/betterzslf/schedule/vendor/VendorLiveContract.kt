@@ -68,6 +68,14 @@ internal data class VendorLiveData(
      * wrong colour and the wrong third column.
      */
     val betweenClasses: Boolean = false,
+    /**
+     * Show the course name beside the minutes in the vendor capsule.
+     *
+     * Off by default: the short form is what Flyme was observed to render, and some builds clip a
+     * longer string. Exposed because the pill width is ROM-specific and only a device shows which
+     * form fits -- this is the "some models may prefer the long text" case.
+     */
+    val capsuleLongText: Boolean = false,
     val notificationId: Int = VENDOR_LIVE_NOTIFICATION_ID,
 )
 

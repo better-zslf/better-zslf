@@ -277,6 +277,21 @@ class ScheduleRuntime(
         }
     }
 
+    /**
+     * Switch the vendor capsule between the short minute count and the course-name phrase.
+     *
+     * Republishing is deliberate: the pill is drawn from the notification's extras, so the change
+     * only becomes visible after the card is posted again.
+     */
+    suspend fun setCapsuleLongText(long: Boolean) {
+        val current = stored ?: return
+        if (!native.supported) return
+        if (save(current.copy(capsuleLongText = long))) {
+            showRecord(stored!!)
+            publishNative(cached = true)
+        }
+    }
+
     suspend fun updatePeriods(periods: List<SchedulePeriod>): Boolean {
         val current = stored ?: return false
         if (!validateSchedulePeriods(periods.sortedBy { it.number })) {
@@ -456,6 +471,7 @@ class ScheduleRuntime(
             snapshot = snapshot, sourceSnapshot = sourceSnapshot, terms = record.terms, sourceTermId = record.sourceTermId.ifBlank { null },
             selectedWeek = if (resetWeek) currentWeek(snapshot) else mutableState.value.selectedWeek,
             remindersEnabled = record.remindersEnabled, reminderLeadMinutes = record.reminderLeadMinutes,
+            capsuleLongText = record.capsuleLongText,
             periods = record.periods, pendingReminderCourses = pendingCount, storageFailure = false)
     }
 
@@ -492,6 +508,7 @@ class ScheduleRuntime(
             reminderLeadMinutes = record.reminderLeadMinutes, uncertainCount = mutableState.value.pendingReminderCourses,
             // Display-only: the island shows the instructor, but the redactor drops this before
             // anything is persisted. Sourced from the in-memory snapshot, which still has it.
+            capsuleLongText = record.capsuleLongText,
             displayTeachers = snapshot?.courses.orEmpty()
                 .filter { it.teacher.isNotBlank() }
                 .associate { it.id to it.teacher })) }.getOrDefault(false).also {

@@ -130,6 +130,14 @@ interface ScheduleNativeBridge {
     fun vendorVariantLabels(): List<String> = emptyList()
     /** Post the between-classes variant, which the in-class matrix never reaches. */
     fun testVendorCountdown(): Boolean = false
+    /**
+     * Replay one synthetic school day and post the live card at [minutesFromNow].
+     *
+     * A transition cannot be seen in a single frame, so the day is fixed relative to now and this
+     * picks the moment to render. Returns false when that moment has no live state at all, which
+     * is itself the expected answer for lunch and after school.
+     */
+    fun testLiveTransition(minutesFromNow: Long): Boolean = false
     /** Withdraw every notification posted by [testVendorMatrix]. */
     fun clearVendorMatrix() = Unit
     /** Releases app-side observers only; healthy published reminders survive app UI disposal. */

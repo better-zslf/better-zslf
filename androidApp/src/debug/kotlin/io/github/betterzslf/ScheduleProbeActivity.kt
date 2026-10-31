@@ -132,6 +132,22 @@ class ScheduleProbeActivity : ComponentActivity() {
         layout.addView(status)
         action("Refresh capabilities") { display("refreshed") }
         action("Request notifications") { native.requestNotificationPermission(); display("request launched") }
+        // Live-card transitions. Each replays the same synthetic day at a different moment, because
+        // a transition cannot be judged from a single frame and the real card only reposts when the
+        // schedule boundary alarm fires.
+        action("Live: in class") {
+            display("transition in-class ok=${native.testLiveTransition(-20)}")
+        }
+        action("Live: break (10 min to next)") {
+            display("transition break ok=${native.testLiveTransition(5)}")
+        }
+        action("Live: after school (expect cleared)") {
+            display("transition none ok=${native.testLiveTransition(120)}")
+        }
+        action("Live: lunch gap (expect cleared)") {
+            // A 120-minute offset lands past the 90-minute window, so nothing should be posted.
+            display("transition lunch ok=${native.testLiveTransition(95)}")
+        }
         action("Open exact alarm settings") { native.openExactAlarmSettings() }
         action("Seed live class spanning now") {
             // Places a block that already started and has not ended, so the live notification

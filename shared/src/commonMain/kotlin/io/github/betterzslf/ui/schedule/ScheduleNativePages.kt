@@ -81,6 +81,23 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                             }, modifier = Modifier.fillMaxWidth())
                         }
                     }
+                    // A transition cannot be judged from one frame, so the same synthetic day is
+                    // posted at three moments: mid-class, in the break, and after school.
+                    Text(AppText.Schedule.LIVE_TRANSITION_ACTION, fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            AppText.Schedule.LIVE_TRANSITION_ACTION_A to -20L,
+                            AppText.Schedule.LIVE_TRANSITION_ACTION_B to 5L,
+                            AppText.Schedule.LIVE_TRANSITION_ACTION_C to 120L,
+                        ).forEach { (label, minutes) ->
+                            TextButton(label, onClick = {
+                                val ok = native.testLiveTransition(minutes)
+                                testNotice = if (ok) label else AppText.Schedule.LIVE_TRANSITION_NONE
+                                native.refreshCapabilities()
+                            }, modifier = Modifier.weight(1f))
+                        }
+                    }
                     PrimaryAction(AppText.Schedule.LIVE_COUNTDOWN_PROBE_ACTION, onClick = {
                         val ok = native.testVendorCountdown()
                         testNotice = AppText.Schedule.liveMatrixResult(if (ok) 1 else 0, 1)

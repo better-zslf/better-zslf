@@ -5,7 +5,9 @@ import android.content.Context
 import android.os.Build
 import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.text.AppText.Schedule
+import io.github.betterzslf.feature.schedule.ScheduleLiveBlock
 import io.github.betterzslf.feature.schedule.ScheduleLivePhase
+import io.github.betterzslf.feature.schedule.scheduleLiveState
 import io.github.betterzslf.feature.schedule.ScheduleLiveState
 import io.github.betterzslf.platform.ScheduleVendor
 
@@ -132,6 +134,56 @@ internal object VendorDiagnostics {
             periodText = AppText.Schedule.LIVE_TEST_PERIODS,
             courseName = AppText.Schedule.LIVE_TEST_COURSE,
         )
+
+    /**
+     * Replay one school day through the live card, posting the state at [minutesFromNow].
+     *
+     * This exists because a single screenshot cannot show a transition. The synthetic day is fixed
+     * relative to now -- a class that ended, then a short break, then the next class -- and the
+     * offset picks the moment to render, so the same day can be inspected before, during and after
+     * the change without waiting for real time to pass.
+     *
+     * @param minutesFromNow negative means earlier; the whole day shifts with it.
+     */
+    fun runTransitionProbe(context: Context, minutesFromNow: Long): Boolean {
+        val flyme = FlymeLiveRenderer()
+        if (!flyme.isSupported(context)) return false
+        clear(context)
+        val now = System.currentTimeMillis()
+        val at = now + minutesFromNow * 60_000L
+        // Two 45-minute classes with a 10-minute break between them, anchored so that `at` falls
+        // where the caller asked. Periods are consecutive numbers of the SAME course, matching the
+        // "one course is two periods" rule.
+        val day = listOf(
+            ScheduleLiveBlock(
+                id = "probe-a", title = AppText.Schedule.LIVE_TEST_COURSE, location = AppText.Schedule.LIVE_TEST_ROOM,
+                startsAtMillis = at - 45 * 60_000L, endsAtMillis = at,
+                teacher = AppText.Schedule.LIVE_TEST_TEACHER, periods = listOf(1, 2),
+            ),
+            ScheduleLiveBlock(
+                id = "probe-b", title = AppText.Schedule.LIVE_TEST_NEXT_COURSE, location = AppText.Schedule.LIVE_TEST_ROOM,
+                startsAtMillis = at + 10 * 60_000L, endsAtMillis = at + 55 * 60_000L,
+                teacher = AppText.Schedule.LIVE_TEST_TEACHER, periods = listOf(3, 4),
+            ),
+        )
+        val state = scheduleLiveState(day, at)
+        if (state.phase == ScheduleLivePhase.NONE) {
+            lastRunSummary = AppText.Schedule.LIVE_TRANSITION_NONE
+            return false
+        }
+        val label = when (state.phase) {
+            ScheduleLivePhase.IN_CLASS -> AppText.Schedule.LIVE_TRANSITION_IN_CLASS
+            ScheduleLivePhase.BEFORE_NEXT -> AppText.Schedule.LIVE_TRANSITION_BREAK
+            ScheduleLivePhase.NONE -> ""
+        }
+        val ok = flyme.publishVariant(
+            context = context, state = state, id = PROBE_ID_BASE + COUNTDOWN_INDEX, label = label,
+            capsuleStatus = 1, capsuleType = 1, operation = 0, liveType = 2,
+            withCapsuleRemoteView = false, withContentRemoteView = true,
+        )
+        lastRunSummary = label + " · " + state.courseName
+        return ok
+    }
 
     /** Post the countdown variant on its own, on the same ids the matrix uses. */
     fun runCountdownProbe(context: Context): Boolean {

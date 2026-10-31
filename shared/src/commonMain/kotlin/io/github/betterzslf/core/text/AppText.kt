@@ -921,6 +921,15 @@ object AppText {
         const val LIVE_TEST_ROOM = "测试教室 A101"
         const val LIVE_TEST_TEACHER = "李老师"
         const val LIVE_TEST_PERIODS = "3-4"
+        /** Transition probe: replay one school day and inspect a chosen moment of it. */
+        const val LIVE_TEST_NEXT_COURSE = "下一门课"
+        const val LIVE_TRANSITION_IN_CLASS = "推进：上课中"
+        const val LIVE_TRANSITION_BREAK = "推进：课间"
+        const val LIVE_TRANSITION_NONE = "推进：当前无实况（午休或已放学）"
+        const val LIVE_TRANSITION_ACTION = "推进到课间 10 分钟前"
+        const val LIVE_TRANSITION_ACTION_A = "推进到上课中"
+        const val LIVE_TRANSITION_ACTION_B = "推进到课间"
+        const val LIVE_TRANSITION_ACTION_C = "推进到放学后"
         /** Countdown-state probe: the orange branch that the in-class matrix never reaches. */
         const val LIVE_COUNTDOWN_PROBE_LABEL = "课间 · 下一节"
         const val LIVE_COUNTDOWN_PROBE_ACTION = "测试课间倒计时样式"

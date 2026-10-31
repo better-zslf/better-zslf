@@ -126,6 +126,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         withContentRemoteView: Boolean,
         meituanStyle: Boolean = false,
         withLegacyIsLive: Boolean = true,
+        progress: Float? = null,
     ): Boolean {
         if (!isFlymeFamily() || !notificationsAllowed(context)) return false
         val views = resolve(context) ?: return false
@@ -133,7 +134,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             title = label,
             subtitle = state.title,
             status = state.text,
-            progress = state.progress,
+            progress = progress ?: state.progress,
             chip = state.chip,
             deadlineAtMillis = state.endsAtMillis,
             notificationId = id,
@@ -146,6 +147,12 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
                 .setSmallIcon(notificationIcon(context))
                 .setContentTitle(label)
                 .setContentText(state.text)
+                // Flyme ignores title/text whenever it decides to draw its own card, and draws
+                // NOTHING when the payload is one it does not understand -- which produced
+                // indistinguishable blank cards in the probe. subText and the ticker survive that
+                // path often enough to tell the variants apart in a screenshot.
+                .setSubText(label)
+                .setTicker(label)
                 .setContentIntent(openIntent(context))
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
@@ -195,6 +202,9 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             // demos disagreed (1 vs 5) and neither explained the enum.
             putInt(EXTRA_CAPSULE_TYPE, capsuleType)
             putString(EXTRA_CAPSULE_CONTENT, chipText(data))
+            // Meituan always sets a short title beside the content ("开锁中"); we omitted it
+            // entirely, so the pill had to guess. Kept to a couple of glyphs so it fits ~60dp.
+            putString(EXTRA_CAPSULE_TITLE, Schedule.VENDOR_MEIZU_CAPSULE_FALLBACK)
             putInt(EXTRA_CAPSULE_BG_COLOR, CAPSULE_BG_COLOR)
             putInt(EXTRA_CAPSULE_CONTENT_COLOR, CAPSULE_TEXT_COLOR)
             // Only the app's own drawable may become an Icon: `Icon.createWithResource` records the
@@ -471,6 +481,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         const val EXTRA_CAPSULE_STATUS = "notification.live.capsuleStatus"
         const val EXTRA_CAPSULE_TYPE = "notification.live.capsuleType"
         const val EXTRA_CAPSULE_CONTENT = "notification.live.capsuleContent"
+        const val EXTRA_CAPSULE_TITLE = "notification.live.capsuleTitle"
         const val EXTRA_CAPSULE_ICON = "notification.live.capsuleIcon"
         const val EXTRA_CAPSULE_BG_COLOR = "notification.live.capsuleBgColor"
         const val EXTRA_CAPSULE_CONTENT_COLOR = "notification.live.capsuleContentColor"

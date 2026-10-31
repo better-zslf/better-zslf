@@ -81,6 +81,11 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                             }, modifier = Modifier.fillMaxWidth())
                         }
                     }
+                    PrimaryAction(AppText.Schedule.LIVE_COUNTDOWN_PROBE_ACTION, onClick = {
+                        val ok = native.testVendorCountdown()
+                        testNotice = AppText.Schedule.liveMatrixResult(if (ok) 1 else 0, 1)
+                        native.refreshCapabilities()
+                    })
                     TextButton(AppText.Schedule.LIVE_MATRIX_CLEAR, onClick = {
                         native.clearVendorMatrix()
                         testNotice = null

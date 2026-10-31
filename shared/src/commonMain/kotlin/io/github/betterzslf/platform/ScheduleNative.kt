@@ -121,6 +121,8 @@ interface ScheduleNativeBridge {
     fun testVendorVariant(index: Int): Boolean = false
     /** Labels of the vendor variants, in posting order. */
     fun vendorVariantLabels(): List<String> = emptyList()
+    /** Post the between-classes variant, which the in-class matrix never reaches. */
+    fun testVendorCountdown(): Boolean = false
     /** Withdraw every notification posted by [testVendorMatrix]. */
     fun clearVendorMatrix() = Unit
     /** Releases app-side observers only; healthy published reminders survive app UI disposal. */

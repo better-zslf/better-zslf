@@ -48,13 +48,26 @@
     </LinearLayout>
 
     <!-- Progress bar: hidden while counting down to the next class -->
+    <!--
+      No `style` attribute on purpose.
+
+      The platform horizontal style ships its own progressDrawable and applies an internal
+      scale/inset wrapper; overriding progressDrawable while keeping the style made the clip
+      layer render at full width, so every variant showed a completely filled bar regardless of
+      the progress value pushed via setProgressBar. Declaring the drawable on a bare
+      ProgressBar makes the clip honour `progress`.
+
+      `indeterminate=false` is explicit because without a style the default is indeterminate,
+      which would spin instead of showing the fraction.
+    -->
     <ProgressBar
         android:id="@+id/schedule_flyme_progress"
-        style="@android:style/Widget.Material.ProgressBar.Horizontal"
         android:layout_width="match_parent"
         android:layout_height="6dp"
         android:layout_marginTop="10dp"
+        android:indeterminate="false"
         android:max="100"
+        android:progress="0"
         android:progressDrawable="@drawable/schedule_flyme_progress_track" />
 
     <!-- Detail row: three equal columns, blank cells simply empty -->

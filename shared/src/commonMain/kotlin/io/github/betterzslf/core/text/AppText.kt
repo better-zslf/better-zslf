@@ -916,6 +916,11 @@ object AppText {
         const val LIVE_TEST_HINT = "发一条 90 秒的模拟上课通知，用的就是真实渲染路径；不写课表、不联网。"
         const val LIVE_TEST_COURSE = "测试课程"
         const val LIVE_TEST_ROOM = "测试教室 A101"
+        const val LIVE_TEST_TEACHER = "李老师"
+        const val LIVE_TEST_PERIODS = "3-4"
+        /** Countdown-state probe: the orange branch that the in-class matrix never reaches. */
+        const val LIVE_COUNTDOWN_PROBE_LABEL = "课间 · 下一节"
+        const val LIVE_COUNTDOWN_PROBE_ACTION = "测试课间倒计时样式"
         const val LIVE_TEST_FAILED = "本机暂时发不出实况通知：请检查通知权限，或按下方厂商说明放开后台限制。"
         const val LIVE_TEST_POSTED = "已发出，请下拉通知栏查看。"
         /** Flyme payload matrix: one card per combination, so one screenshot decides the winner. */

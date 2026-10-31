@@ -35,6 +35,8 @@ internal object VendorDiagnostics {
         val meituanStyle: Boolean = false,
         /** Emit the fake `is_live` flag; Meituan never does, so probes can compare. */
         val withLegacyIsLive: Boolean = true,
+        /** Overrides the mocked fraction, so a single screenshot proves the bar tracks progress. */
+        val progress: Float? = null,
     )
 
     /**
@@ -57,7 +59,7 @@ internal object VendorDiagnostics {
         Variant(1, 5, 0, 1, true, true),
         Variant(1, 5, 0, 10, true, true),
         Variant(1, 5, 1, 2, true, true),
-        Variant(1, 0, 0, 2, true, true),
+        Variant(1, 0, 0, 2, true, true, progress = 0.05f),
         // ---- Meituan-style probes (I..P): feature.* payload, no RemoteViews ----
         // I: closest transcription of Meituan's call chain for a single-stage card.
         Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false),
@@ -72,7 +74,7 @@ internal object VendorDiagnostics {
         // N/O/P: feature payload with the dual-section (first/last) text Meituan also supports.
         Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false),
         Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false),
-        Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false),
+        Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false, progress = 0.95f),
     )
 
     fun labels(): List<String> = AppText.Schedule.LIVE_MATRIX_LABELS
@@ -81,6 +83,13 @@ internal object VendorDiagnostics {
     fun supported(vendor: ScheduleVendor): Boolean = vendor == ScheduleVendor.MEIZU
 
     /** One synthetic class, identical for every variant so only the payload differs. */
+    /**
+     * One synthetic class, identical for every variant so only the payload differs.
+     *
+     * The detail columns are filled with obvious placeholders rather than real data: the probe
+     * answers "does this layout render", and made-up values are easier to spot in a screenshot
+     * than real ones. Empty strings here were the bug that made the three-column card look blank.
+     */
     fun mockState(label: String, minutesLeft: Long = 33): ScheduleLiveState = ScheduleLiveState(
         phase = ScheduleLivePhase.IN_CLASS,
         title = label,
@@ -89,6 +98,9 @@ internal object VendorDiagnostics {
         startsAtMillis = System.currentTimeMillis() - 20 * 60_000L,
         endsAtMillis = System.currentTimeMillis() + minutesLeft.coerceAtLeast(1) * 60_000L,
         chip = Schedule.liveChipMinutes(minutesLeft),
+        teacher = AppText.Schedule.LIVE_TEST_TEACHER,
+        location = AppText.Schedule.LIVE_TEST_ROOM,
+        periodText = AppText.Schedule.LIVE_TEST_PERIODS,
     )
 
     /**
@@ -109,6 +121,48 @@ internal object VendorDiagnostics {
     }
 
     /** Post a single variant by index, so the user can compare one card at a time. */
+    /**
+     * A between-classes state, so the countdown variant can be inspected too.
+     *
+     * All matrix variants model "in class"; without this the orange countdown branch, the hidden
+     * progress bar and the start-time column would never be seen on a device.
+     */
+    fun mockCountdownState(label: String, minutesToStart: Long = 12): ScheduleLiveState =
+        ScheduleLiveState(
+            phase = ScheduleLivePhase.BEFORE_NEXT,
+            title = label,
+            text = Schedule.liveStartsIn(minutesToStart),
+            progress = null,
+            startsAtMillis = System.currentTimeMillis() + minutesToStart.coerceAtLeast(1) * 60_000L,
+            endsAtMillis = System.currentTimeMillis() + (minutesToStart.coerceAtLeast(1) + 40) * 60_000L,
+            chip = Schedule.liveChipMinutes(minutesToStart),
+            teacher = AppText.Schedule.LIVE_TEST_TEACHER,
+            location = AppText.Schedule.LIVE_TEST_ROOM,
+            periodText = AppText.Schedule.LIVE_TEST_PERIODS,
+        )
+
+    /** Post the countdown variant on its own, on the same ids the matrix uses. */
+    fun runCountdownProbe(context: Context): Boolean {
+        val flyme = FlymeLiveRenderer()
+        if (!flyme.isSupported(context)) return false
+        clear(context)
+        val label = AppText.Schedule.LIVE_COUNTDOWN_PROBE_LABEL
+        val ok = flyme.publishVariant(
+            context = context,
+            state = mockCountdownState(label),
+            id = PROBE_ID_BASE + COUNTDOWN_INDEX,
+            label = label,
+            capsuleStatus = 1,
+            capsuleType = 1,
+            operation = 0,
+            liveType = 2,
+            withCapsuleRemoteView = false,
+            withContentRemoteView = true,
+        )
+        lastRunSummary = AppText.Schedule.liveMatrixSummary(if (ok) 1 else 0, 1, notificationsOn(context))
+        return ok
+    }
+
     fun runFlymeVariant(context: Context, index: Int): Boolean {
         val flyme = FlymeLiveRenderer()
         val variant = variants.getOrNull(index) ?: return false
@@ -135,13 +189,14 @@ internal object VendorDiagnostics {
             withContentRemoteView = variant.withContentRemoteView,
             meituanStyle = variant.meituanStyle,
             withLegacyIsLive = variant.withLegacyIsLive,
+            progress = variant.progress,
         )
     }
 
     /** Clears every probe notification, but not the production live card. */
     fun clear(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
-        repeat(variants.size) { manager.cancel(PROBE_ID_BASE + it) }
+        repeat(variants.size + 1) { manager.cancel(PROBE_ID_BASE + it) }
         lastRunSummary = ""
     }
 
@@ -159,6 +214,8 @@ internal object VendorDiagnostics {
 
     /** Base id for probe notifications. Kept clear of VENDOR_LIVE_NOTIFICATION_ID (0x5C4E01). */
     private const val PROBE_ID_BASE = 0x5C4E80
+    /** One past the last matrix variant, reserved for the countdown probe. */
+    private const val COUNTDOWN_INDEX = 16
 
     /** True on Android 16+, where a vendor island may also compete with the native card. */
     fun nativeLiveAvailable(): Boolean = Build.VERSION.SDK_INT >= 36

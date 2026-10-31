@@ -48,16 +48,16 @@
     </LinearLayout>
 
     <!--
-      Stock horizontal ProgressBar, tinted with progressTint.
+      Two progress bars, one per phase: the blue one is shown while a class runs, the amber one
+      during a break. Only the relevant bar is visible at a time.
 
-      Three attempts to customise the drawable were each worse than leaving it alone:
-        - platform style + custom progressDrawable: the clip layer drew at full width
-        - no style at all: fell back to the indeterminate ring seen on device
-        - FrameLayout track + plain View fill: the whole RemoteViews failed to inflate, blanking
-          every card
-      The lesson is to keep the system drawable, which is the only one the host is guaranteed to
-      clip correctly, and change just its colour. `progressTint` is applied at inflate time and
-      needs no RemoteViews action, so it cannot be dropped the way calls can.
+      Why two instead of one re-tinted bar: ProgressBar.setProgressTintList is not annotated
+      @RemotableViewMethod, so a RemoteViews call to it is dropped by the host exactly like the
+      earlier setProgressBar calls were. Colours therefore have to be fixed at inflate time, and
+      two views is the only way to have two colours without touching the drawable at runtime.
+
+      Stock style kept: three attempts to customise the drawable each broke worse (see history).
+      Only progressTint is set, in XML, which the host applies during inflate and cannot drop.
     -->
     <ProgressBar
         android:id="@+id/schedule_flyme_progress"
@@ -69,6 +69,17 @@
         android:max="100"
         android:progressTint="@color/schedule_flyme_accent"
         android:progressBackgroundTint="@color/schedule_flyme_track" />
+
+    <ProgressBar
+        android:id="@+id/schedule_flyme_progress_break"
+        style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="6dp"
+        android:layout_marginTop="10dp"
+        android:indeterminate="false"
+        android:max="100"
+        android:progressTint="@color/schedule_flyme_accent_break"
+        android:progressBackgroundTint="@color/schedule_flyme_track_break" />
 
     <!-- Detail row: three equal columns, blank cells simply empty -->
     <LinearLayout

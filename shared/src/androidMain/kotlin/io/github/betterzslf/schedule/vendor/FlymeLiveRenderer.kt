@@ -134,6 +134,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         meituanStyle: Boolean = false,
         withLegacyIsLive: Boolean = true,
         progress: Float? = null,
+        longCapsule: Boolean = false,
     ): Boolean {
         if (!isFlymeFamily() || !notificationsAllowed(context)) return false
         val views = resolve(context) ?: return false
@@ -156,7 +157,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         return runCatching {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return false
             ensureChannel(manager)
-            val capsuleViews = if (withCapsuleRemoteView) capsuleView(context, views, data) else null
+            val capsuleViews = if (withCapsuleRemoteView) capsuleView(context, views, data, longCapsule) else null
             val builder = Notification.Builder(context, channelId())
                 .setSmallIcon(notificationIcon(context))
                 .setContentTitle(label)
@@ -215,7 +216,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             // Defaults to the demo's 5. The diagnostics probe varies it deliberately, because the
             // demos disagreed (1 vs 5) and neither explained the enum.
             putInt(EXTRA_CAPSULE_TYPE, capsuleType)
-            putString(EXTRA_CAPSULE_CONTENT, chipText(data))
+            putString(EXTRA_CAPSULE_CONTENT, capsuleText(data, long = false))
             // Meituan always sets a short title beside the content ("开锁中"); we omitted it
             // entirely, so the pill had to guess. Kept to a couple of glyphs so it fits ~60dp.
             putString(EXTRA_CAPSULE_TITLE, Schedule.VENDOR_MEIZU_CAPSULE_FALLBACK)
@@ -281,9 +282,9 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
     }
 
     /** The status-bar pill. One line of chip text, nothing else fits in ~60dp. */
-    private fun capsuleView(context: Context, views: ResolvedViews, data: VendorLiveData): RemoteViews =
+    private fun capsuleView(context: Context, views: ResolvedViews, data: VendorLiveData, longCapsule: Boolean = false): RemoteViews =
         RemoteViews(context.packageName, views.capsuleLayout).apply {
-            setTextViewText(views.capsuleText, chipText(data))
+            setTextViewText(views.capsuleText, capsuleText(data, longCapsule))
             // Colours are re-applied from code so the pill stays legible if a Flyme build inflates
             // the layout with a different default text colour. The dark surface itself comes from
             // the XML: setBackgroundColor is a remote method some Flyme versions refuse, and losing
@@ -308,21 +309,31 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             setTextViewText(views.contentStatus, data.status)
             // The right-hand status doubles as the countdown, so it takes the accent colour while
             // a class is running and a warmer one while waiting for the next one.
-            setTextColor(views.contentStatus, if (data.progress != null) STATUS_IN_CLASS_COLOR else STATUS_COUNTDOWN_COLOR)
+            setTextColor(views.contentStatus,
+                if (data.progress != null) STATUS_IN_CLASS_COLOR else STATUS_BREAK_COLOR)
 
             val progress = data.progress?.coerceIn(0f, 1f)
+            // The bar is present in both phases. In class it fills with elapsed time; between
+            // classes it fills with the share of the break consumed, which is a real fraction
+            // because the break runs from the previous class's end to the next one's start.
+            // A missing fraction only happens when no earlier block exists to measure from, and
+            // then the bar is hidden rather than faked.
+            val inClassPhase = data.progress != null
             if (progress == null) {
-                // No honest percentage before a class starts; hiding beats a bar stuck at zero.
                 setViewVisibility(views.contentProgress, View.GONE)
+                setViewVisibility(views.contentProgressBreak, View.GONE)
             } else {
-                setViewVisibility(views.contentProgress, View.VISIBLE)
+                // Exactly one bar is visible; the other keeps a stale value but is not drawn.
+                val activeBar = if (inClassPhase) views.contentProgress else views.contentProgressBreak
+                setViewVisibility(views.contentProgress, if (inClassPhase) View.VISIBLE else View.GONE)
+                setViewVisibility(views.contentProgressBreak, if (inClassPhase) View.GONE else View.VISIBLE)
                 // setInt, NOT setProgressBar.
                 //
                 // RemoteViews can only invoke methods marked @RemotableViewMethod in the host
                 // process. ProgressBar.setProgress is annotated; RemoteViews.setProgressBar
                 // itself is not, so the host silently dropped every value -- which is why the bar
                 // rendered at whatever the XML default was (full, then an indeterminate ring).
-                setInt(views.contentProgress, "setProgress", (progress * PROGRESS_MAX).roundToInt())
+                setInt(activeBar, "setProgress", (progress * PROGRESS_MAX).roundToInt())
             }
 
             // Three columns. In class they are teacher / room / period; between classes the third
@@ -370,15 +381,16 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         val contentTitle = id(ID_CONTENT_TITLE)
         val contentStatus = id(ID_CONTENT_STATUS)
         val contentProgress = id(ID_CONTENT_PROGRESS)
+        val contentProgressBreak = id(ID_CONTENT_PROGRESS_BREAK)
         val label1 = id(ID_LABEL_1); val value1 = id(ID_VALUE_1)
         val label2 = id(ID_LABEL_2); val value2 = id(ID_VALUE_2)
         val label3 = id(ID_LABEL_3); val value3 = id(ID_VALUE_3)
         val ids = listOf(capsuleLayout, contentLayout, capsuleText, contentTitle, contentStatus,
-            contentProgress, label1, value1, label2, value2, label3, value3)
+            contentProgress, contentProgressBreak, label1, value1, label2, value2, label3, value3)
         if (ids.any { it == 0 }) return null
         return ResolvedViews(
             capsuleLayout, contentLayout, capsuleText,
-            contentTitle, contentStatus, contentProgress,
+            contentTitle, contentStatus, contentProgress, contentProgressBreak,
             label1, value1, label2, value2, label3, value3,
         )
     }
@@ -390,13 +402,27 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         val contentTitle: Int,
         val contentStatus: Int,
         val contentProgress: Int,
+        val contentProgressBreak: Int,
         val label1: Int, val value1: Int,
         val label2: Int, val value2: Int,
         val label3: Int, val value3: Int,
     )
 
     /** The pill is ~60dp of chrome; a chip past a few glyphs is clipped, so keep it short. */
-    private fun chipText(data: VendorLiveData): String = data.chip.trim().ifEmpty { Schedule.VENDOR_MEIZU_CAPSULE_FALLBACK }
+    /**
+     * Capsule text: the bare minute count, or the phrase form.
+     *
+     * The phrase is what the design reference shows ("数据结构 · 剩余 23 分钟") and reads much better,
+     * but the pill is roughly 60dp wide in the working build and a longer string may clip. Both
+     * forms are kept selectable so the choice is made from a device screenshot.
+     */
+    private fun capsuleText(data: VendorLiveData, long: Boolean): String =
+        if (long) {
+            val course = data.courseName.ifBlank { data.title }
+            if (course.isBlank()) data.chip else Schedule.liveCapsulePhrase(course, data.chip)
+        } else {
+            data.chip.trim().ifEmpty { Schedule.VENDOR_MEIZU_CAPSULE_FALLBACK }
+        }
 
     private fun ensureChannel(manager: NotificationManager) {
         if (manager.getNotificationChannel(channelId()) != null) return
@@ -531,6 +557,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         const val ID_CONTENT_TITLE = "schedule_flyme_title"
         const val ID_CONTENT_STATUS = "schedule_flyme_status"
         const val ID_CONTENT_PROGRESS = "schedule_flyme_progress"
+        const val ID_CONTENT_PROGRESS_BREAK = "schedule_flyme_progress_break"
         const val ID_LABEL_1 = "schedule_flyme_label_1"
         const val ID_VALUE_1 = "schedule_flyme_value_1"
         const val ID_LABEL_2 = "schedule_flyme_label_2"
@@ -539,7 +566,8 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         const val ID_VALUE_3 = "schedule_flyme_value_3"
         /** Accent colours for the right-hand status line. */
         const val STATUS_IN_CLASS_COLOR = 0xFF3B82F6.toInt()
-        const val STATUS_COUNTDOWN_COLOR = 0xFFF59E0B.toInt()
+        /** Amber for the between-classes phase; a break is not an alarm, so not red. */
+        const val STATUS_BREAK_COLOR = 0xFFFFB020.toInt()
 
         const val MAIN_ACTIVITY = "io.github.betterzslf.MainActivity"
         const val OPEN_INTENT_REQUEST = 5

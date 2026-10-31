@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Accent for the live card's progress bar and status line.
+  Status colours for the live card: blue while a class is running, amber between classes.
 
-  A calmer blue than the previous #3382FF: Flyme tints the card surface from the wallpaper, and
-  the saturated brand blue read as neon against the pale pink it produced. This sits closer to the
-  system's own accent so the bar looks native rather than pasted on.
+  The pair carries meaning, not decoration. The bar and the right-hand status text switch together,
+  so a glance at the notification tells you which phase you are in without reading the words.
+  Amber rather than red because a break is not an alarm.
+
+  Each bar keeps a translucent version of its own hue for the track, so the unfilled part reads as
+  part of the same control instead of a separate grey rule.
 -->
 <resources>
     <color name="schedule_flyme_accent">#4C8DFF</color>
-    <!-- Track stays a translucent version of the accent, so the empty part reads as the same bar. -->
     <color name="schedule_flyme_track">#334C8DFF</color>
+    <color name="schedule_flyme_accent_break">#FFB020</color>
+    <color name="schedule_flyme_track_break">#33FFB020</color>
 </resources>

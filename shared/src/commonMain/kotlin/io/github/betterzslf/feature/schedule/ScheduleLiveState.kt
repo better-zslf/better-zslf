@@ -146,6 +146,16 @@ fun scheduleLiveState(blocks: List<ScheduleLiveBlock>, nowMillis: Long): Schedul
     val next = ordered.firstOrNull { it.startsAtMillis > nowMillis }
     if (next != null) {
         val gapMillis = next.startsAtMillis - nowMillis
+        // The break started when the last class before this one ended. Without an earlier block
+        // there is no measurable gap (the app was opened mid-morning), so the fraction stays null
+        // rather than inventing a start time and showing a bar that means nothing.
+        val gapStart = ordered.map { it.endsAtMillis }
+            .filter { it <= nowMillis }
+            .maxOrNull()
+        val gapProgress = gapStart?.let { start ->
+            val span = (next.startsAtMillis - start).coerceAtLeast(1L)
+            ((nowMillis - start).toFloat() / span.toFloat()).coerceIn(0f, 1f)
+        }
         return ScheduleLiveState(
             phase = ScheduleLivePhase.BEFORE_NEXT,
             title = AppText.Schedule.liveNextTitle(next.title),
@@ -154,9 +164,10 @@ fun scheduleLiveState(blocks: List<ScheduleLiveBlock>, nowMillis: Long): Schedul
                 AppText.Schedule.liveStartsIn(scheduleLiveMinutes(gapMillis)),
                 AppText.Schedule.liveAt(ScheduleLiveClock.format(next.startsAtMillis)),
             ).filterNotNull().joinToString(" · "),
-            // The countdown has no natural denominator (the gap depends on when the day started),
-            // so it stays indeterminate rather than faking a percentage.
-            progress = null,
+            // Between classes the bar shows how much of the break has been used. This is a real
+            // denominator (previous end -> next start), unlike the naive "time until next class",
+            // which has no natural zero.
+            progress = gapProgress,
             startsAtMillis = next.startsAtMillis,
             nextTitle = next.title,
             nextLocation = next.location,

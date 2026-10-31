@@ -886,6 +886,14 @@ object AppText {
         fun liveRemaining(minutes: Long) = "剩余 ${minutes.coerceAtLeast(0)} 分钟"
         /** Status-bar capsule for the promoted-ongoing chip; keep it under ~7 glyphs. */
         fun liveChipMinutes(minutes: Long) = "${minutes.coerceIn(0L, 99L)}分"
+        /**
+         * Phrase form for the vendor capsule: "数据结构 · 剩余 23 分钟".
+         *
+         * Falls back to the course name alone when the chip is blank, so a missing duration never
+         * leaves a stray separator on the pill.
+         */
+        fun liveCapsulePhrase(course: String, chip: String): String =
+            if (chip.isBlank()) course else course + " · " + chip
         fun liveUntil(clock: String) = "到 $clock"
         fun liveStartsIn(minutes: Long) = "${minutes.coerceAtLeast(0)} 分钟后开始"
         fun liveAt(clock: String) = "$clock 开始"
@@ -929,10 +937,9 @@ object AppText {
         const val LIVE_MATRIX_CLEAR = "清除全部测试通知"
         /** Variant names for the Flyme matrix; each becomes a notification title. */
         val LIVE_MATRIX_LABELS: List<String> = listOf(
-            "A 基线",
-            "B capsuleType=5",
-            "C 进度 5%",
-            "D 进度 95%",
+            "A 胶囊短文案",
+            "B 胶囊长文案",
+            "C 进度 50%",
         )
         fun liveMatrixSummary(posted: Int, total: Int, notificationEnabled: Boolean) =
             "已投递 $posted/$total；通知总开关=$notificationEnabled"

@@ -99,7 +99,14 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
                 .addExtras(liveExtras(context, data, capsuleView(context, views, data)))
             // Required, not optional: without a custom content view Flyme has nothing to expand and
             // only the pill (or nothing at all) is shown.
-            builder.setCustomContentView(contentView(context, views, data))
+            val content = contentView(context, views, data)
+            // Inflate locally before posting. A RemoteViews that the host cannot apply renders as a
+            // completely blank card -- which is indistinguishable from "Flyme ignored the payload"
+            // and cost several debug rounds. `apply` here throws on the same faults the host would
+            // hit (missing resource, bad id, unsupported method), so a broken layout fails loudly
+            // and the caller falls back to the standard notification instead.
+            content.apply(context, android.widget.FrameLayout(context))
+            builder.setCustomContentView(content)
             manager.notify(data.notificationId, builder.build())
             lastNotificationId = data.notificationId
             true
@@ -303,12 +310,16 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             val progress = data.progress?.coerceIn(0f, 1f)
             if (progress == null) {
                 // No honest percentage before a class starts; hiding beats a bar stuck at zero.
-                setViewVisibility(views.progressTrack, View.GONE)
+                setViewVisibility(views.contentProgress, View.GONE)
             } else {
-                setViewVisibility(views.progressTrack, View.VISIBLE)
-                // The fill is a plain View, so its width is ours to compute. A ProgressBar in this
-                // host either ignored `progress` (always full) or span as an indeterminate ring.
-                setViewLayoutWidth(views.progressFill, progress * PROGRESS_TRACK_WIDTH_DP, 1)
+                setViewVisibility(views.contentProgress, View.VISIBLE)
+                // setInt, NOT setProgressBar.
+                //
+                // RemoteViews can only invoke methods marked @RemotableViewMethod in the host
+                // process. ProgressBar.setProgress is annotated; RemoteViews.setProgressBar
+                // itself is not, so the host silently dropped every value -- which is why the bar
+                // rendered at whatever the XML default was (full, then an indeterminate ring).
+                setInt(views.contentProgress, "setProgress", (progress * PROGRESS_MAX).roundToInt())
             }
 
             // Three columns. In class they are teacher / room / period; between classes the third
@@ -355,17 +366,16 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         val capsuleText = id(ID_CAPSULE_TEXT)
         val contentTitle = id(ID_CONTENT_TITLE)
         val contentStatus = id(ID_CONTENT_STATUS)
-        val progressTrack = id(ID_PROGRESS_TRACK)
-        val progressFill = id(ID_PROGRESS_FILL)
+        val contentProgress = id(ID_CONTENT_PROGRESS)
         val label1 = id(ID_LABEL_1); val value1 = id(ID_VALUE_1)
         val label2 = id(ID_LABEL_2); val value2 = id(ID_VALUE_2)
         val label3 = id(ID_LABEL_3); val value3 = id(ID_VALUE_3)
         val ids = listOf(capsuleLayout, contentLayout, capsuleText, contentTitle, contentStatus,
-            progressTrack, progressFill, label1, value1, label2, value2, label3, value3)
+            contentProgress, label1, value1, label2, value2, label3, value3)
         if (ids.any { it == 0 }) return null
         return ResolvedViews(
             capsuleLayout, contentLayout, capsuleText,
-            contentTitle, contentStatus, progressTrack, progressFill,
+            contentTitle, contentStatus, contentProgress,
             label1, value1, label2, value2, label3, value3,
         )
     }
@@ -376,8 +386,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         val capsuleText: Int,
         val contentTitle: Int,
         val contentStatus: Int,
-        val progressTrack: Int,
-        val progressFill: Int,
+        val contentProgress: Int,
         val label1: Int, val value1: Int,
         val label2: Int, val value2: Int,
         val label3: Int, val value3: Int,
@@ -488,15 +497,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         const val EXTRA_FEATURE_DESC_PIC = "notification.live.feature.descPic"
         /** 1 selects a determinate bar in Meituan's usage. */
         const val PROGRESS_TYPE_BAR = 1
-        /**
-         * Nominal track width in dp for the fill fraction.
-         *
-         * RemoteViews cannot measure, so the width has to be resolved against a fixed reference.
-         * The card is a third of a 360dp screen minus padding, hence ~220dp; being a little wide
-         * only means a full bar clips at the track edge, which `clipChildren` in the layout
-         * already handles.
-         */
-        const val PROGRESS_TRACK_WIDTH_DP = 220
+
 
         const val EXTRA_CAPSULE_STATUS = "notification.live.capsuleStatus"
         const val EXTRA_CAPSULE_TYPE = "notification.live.capsuleType"
@@ -526,8 +527,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         const val ID_CAPSULE_TEXT = "schedule_flyme_capsule_text"
         const val ID_CONTENT_TITLE = "schedule_flyme_title"
         const val ID_CONTENT_STATUS = "schedule_flyme_status"
-        const val ID_PROGRESS_TRACK = "schedule_flyme_progress_track"
-        const val ID_PROGRESS_FILL = "schedule_flyme_progress_fill"
+        const val ID_CONTENT_PROGRESS = "schedule_flyme_progress"
         const val ID_LABEL_1 = "schedule_flyme_label_1"
         const val ID_VALUE_1 = "schedule_flyme_value_1"
         const val ID_LABEL_2 = "schedule_flyme_label_2"

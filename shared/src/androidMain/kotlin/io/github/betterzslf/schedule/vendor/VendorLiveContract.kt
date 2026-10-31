@@ -60,6 +60,14 @@ internal data class VendorLiveData(
      * only has the prefixed notification title still renders something sensible.
      */
     val courseName: String = "",
+    /**
+     * True between classes.
+     *
+     * Carried explicitly instead of inferring the phase from `progress == null`: breaks have a real
+     * fraction now, so "no progress" no longer means "counting down" and the renderer would pick the
+     * wrong colour and the wrong third column.
+     */
+    val betweenClasses: Boolean = false,
     val notificationId: Int = VENDOR_LIVE_NOTIFICATION_ID,
 )
 

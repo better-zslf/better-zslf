@@ -16,6 +16,7 @@ import android.widget.RemoteViews
 import io.github.betterzslf.core.text.AppText.NativeSchedule
 import io.github.betterzslf.core.text.AppText.Schedule
 import io.github.betterzslf.feature.schedule.ScheduleLiveClock
+import io.github.betterzslf.feature.schedule.ScheduleLivePhase
 import io.github.betterzslf.feature.schedule.ScheduleLiveState
 import kotlin.math.roundToInt
 
@@ -152,6 +153,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             periodText = state.periodText,
             startsAtMillis = state.startsAtMillis,
             courseName = state.courseName.ifBlank { label },
+            betweenClasses = state.phase == ScheduleLivePhase.BEFORE_NEXT,
             notificationId = id,
         )
         return runCatching {
@@ -174,7 +176,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
                 .setShowWhen(true)
                 .setWhen(state.endsAtMillis)
                 .addExtras(liveExtras(context, data, capsuleViews, capsuleStatus, capsuleType, operation,
-                    liveType, meituanStyle, withLegacyIsLive))
+                    liveType, meituanStyle, withLegacyIsLive, longCapsule))
             if (withContentRemoteView) builder.setCustomContentView(contentView(context, views, data))
             manager.notify(id, builder.build())
             true
@@ -209,6 +211,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         liveType: Int = LIVE_TYPE_STANDARD,
         meituanStyle: Boolean = false,
         withLegacyIsLive: Boolean = true,
+        longCapsule: Boolean = false,
     ): Bundle {
         val capsuleBundle = Bundle().apply {
             // 1 is the only value the demos ever saw render; everything else hides the pill.
@@ -216,11 +219,18 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             // Defaults to the demo's 5. The diagnostics probe varies it deliberately, because the
             // demos disagreed (1 vs 5) and neither explained the enum.
             putInt(EXTRA_CAPSULE_TYPE, capsuleType)
-            putString(EXTRA_CAPSULE_CONTENT, capsuleText(data, long = false))
+            // The string field AND the RemoteViews both carry the same wording. Flyme is free to
+            // draw either, and on this build it appears to use the string (changing the pill's
+            // colour inside the RemoteViews had no visible effect), so putting the long form only
+            // in the RemoteViews was why the long wording never appeared on device.
+            putString(EXTRA_CAPSULE_CONTENT, capsuleText(data, long = longCapsule))
             // Meituan always sets a short title beside the content ("开锁中"); we omitted it
             // entirely, so the pill had to guess. Kept to a couple of glyphs so it fits ~60dp.
             putString(EXTRA_CAPSULE_TITLE, Schedule.VENDOR_MEIZU_CAPSULE_FALLBACK)
-            putInt(EXTRA_CAPSULE_BG_COLOR, CAPSULE_BG_COLOR)
+            // The pill background follows the phase too: blue while a class runs, amber during a
+            // break. `capsuleBgColor` is honoured by the builds that read it; where it is ignored
+            // the system's own dark pill remains, which still reads fine with white text.
+            putInt(EXTRA_CAPSULE_BG_COLOR, if (data.betweenClasses) CAPSULE_BG_COLOR_BREAK else CAPSULE_BG_COLOR)
             putInt(EXTRA_CAPSULE_CONTENT_COLOR, CAPSULE_TEXT_COLOR)
             // Only the app's own drawable may become an Icon: `Icon.createWithResource` records the
             // caller's package name, so handing it a framework id such as
@@ -309,8 +319,9 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             setTextViewText(views.contentStatus, data.status)
             // The right-hand status doubles as the countdown, so it takes the accent colour while
             // a class is running and a warmer one while waiting for the next one.
+            val inClassPhase = !data.betweenClasses
             setTextColor(views.contentStatus,
-                if (data.progress != null) STATUS_IN_CLASS_COLOR else STATUS_BREAK_COLOR)
+                if (inClassPhase) STATUS_IN_CLASS_COLOR else STATUS_BREAK_COLOR)
 
             val progress = data.progress?.coerceIn(0f, 1f)
             // The bar is present in both phases. In class it fills with elapsed time; between
@@ -318,7 +329,6 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             // because the break runs from the previous class's end to the next one's start.
             // A missing fraction only happens when no earlier block exists to measure from, and
             // then the bar is hidden rather than faked.
-            val inClassPhase = data.progress != null
             if (progress == null) {
                 setViewVisibility(views.contentProgress, View.GONE)
                 setViewVisibility(views.contentProgressBreak, View.GONE)
@@ -338,7 +348,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
 
             // Three columns. In class they are teacher / room / period; between classes the third
             // becomes the start time, which is the only useful value at that moment.
-            val inClass = data.progress != null
+            val inClass = inClassPhase
             val columns = listOf(
                 Schedule.LIVE_FIELD_TEACHER to data.teacher,
                 Schedule.LIVE_FIELD_ROOM to data.room,
@@ -546,7 +556,10 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         const val LIVE_TYPE_STANDARD = 2
 
         /** Kept in step with `schedule_flyme_capsule.xml`, which pins the same dark pill. */
-        val CAPSULE_BG_COLOR: Int = 0xFF1F1F24.toInt()
+        /** Deep blue for the running phase; dark enough for white text to stay legible. */
+        val CAPSULE_BG_COLOR: Int = 0xFF2B4C8C.toInt()
+        /** Deep amber for the break phase, same legibility constraint. */
+        val CAPSULE_BG_COLOR_BREAK: Int = 0xFF8A5A12.toInt()
         val CAPSULE_TEXT_COLOR: Int = 0xFFFFFFFF.toInt()
 
         const val PROGRESS_MAX = 100

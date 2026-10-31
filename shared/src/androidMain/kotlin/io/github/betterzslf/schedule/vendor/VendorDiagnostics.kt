@@ -134,7 +134,10 @@ internal object VendorDiagnostics {
             phase = ScheduleLivePhase.BEFORE_NEXT,
             title = label,
             text = Schedule.liveStartsIn(minutesToStart),
-            progress = null,
+            // A real break has a measurable fraction (previous class ended -> next class starts).
+            // Leaving this null made the renderer hide the bar, which is why the countdown card
+            // showed no progress at all even after the two-bar change.
+            progress = 0.35f,
             startsAtMillis = System.currentTimeMillis() + minutesToStart.coerceAtLeast(1) * 60_000L,
             endsAtMillis = System.currentTimeMillis() + (minutesToStart.coerceAtLeast(1) + 40) * 60_000L,
             chip = Schedule.liveChipMinutes(minutesToStart),

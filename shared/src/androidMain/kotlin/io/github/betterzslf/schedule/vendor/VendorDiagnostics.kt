@@ -263,6 +263,10 @@ internal object VendorDiagnostics {
     fun clear(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         repeat(variants.size + 1) { manager.cancel(PROBE_ID_BASE + it) }
+        // The transition probe posts through the standard path under its own tag and id, which the
+        // loop above cannot reach. Without this, each transition test left the previous phase's card
+        // on screen and the new result was invisible behind it.
+        io.github.betterzslf.schedule.scheduleLiveClearTest(context)
         lastRunSummary = ""
     }
 

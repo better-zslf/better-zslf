@@ -82,6 +82,19 @@ internal data class VendorLiveData(
 /** One id for every vendor path: only one can own the device at a time anyway. */
 internal const val VENDOR_LIVE_NOTIFICATION_ID = 0x5C4E01
 
+/**
+ * Id reserved for the in-app "test live notification" button.
+ *
+ * Distinct from the production id because the engine's reconcile runs on every tick and, when the
+ * real timetable has no live class, cancels the vendor card. Sharing the production id meant the
+ * test card was withdrawn within a second of being posted -- so the button looked broken while the
+ * matrix probes, which use their own id range, stayed visible.
+ *
+ * [VendorLiveRenderer.cancel] must never touch this id: it belongs to the user's explicit action,
+ * not to the derived production state.
+ */
+internal const val VENDOR_LIVE_TEST_NOTIFICATION_ID = 0x5C4E11
+
 /** Channel id prefix; the suffix is the vendor name so their settings stay separable. */
 internal const val VENDOR_LIVE_CHANNEL_PREFIX = "schedule_vendor_live_"
 

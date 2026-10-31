@@ -208,6 +208,39 @@ internal object VendorDiagnostics {
     private fun standardPosted(context: Context, state: ScheduleLiveState): Boolean =
         io.github.betterzslf.schedule.scheduleLivePostTest(context, state)
 
+    /**
+     * One demo card for the plain "test live notification" button.
+     *
+     * Posts under [VENDOR_LIVE_TEST_NOTIFICATION_ID], which the engine's reconcile never cancels.
+     * The button previously reused the production id, so on a device with no class in progress the
+     * card was withdrawn a second after posting and the button looked dead -- while every probe,
+     * which owns a separate id, kept working.
+     *
+     * Uses the production capsule and card settings (rather than the matrix's single-variant knobs)
+     * because the point of this button is to show what the real notification looks like.
+     */
+    fun runDemoCard(context: Context, longCapsule: Boolean): Boolean {
+        val flyme = FlymeLiveRenderer()
+        val state = mockState(AppText.Schedule.LIVE_TEST_COURSE)
+        if (!flyme.isSupported(context)) {
+            // Non-vendor ROM: show the standard card so the button still demonstrates something.
+            return io.github.betterzslf.schedule.scheduleLivePostTest(context, state)
+        }
+        return flyme.publishVariant(
+            context = context,
+            state = state,
+            id = VENDOR_LIVE_TEST_NOTIFICATION_ID,
+            label = state.courseName,
+            capsuleStatus = 1,
+            capsuleType = 1,
+            operation = 0,
+            liveType = 2,
+            withCapsuleRemoteView = true,
+            withContentRemoteView = true,
+            longCapsule = longCapsule,
+        )
+    }
+
     /** Post the countdown variant on its own, on the same ids the matrix uses. */
     fun runCountdownProbe(context: Context): Boolean {
         val flyme = FlymeLiveRenderer()

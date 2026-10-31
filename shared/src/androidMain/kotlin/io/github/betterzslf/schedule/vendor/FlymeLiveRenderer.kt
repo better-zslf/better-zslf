@@ -130,6 +130,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         withContentRemoteView: Boolean,
         withLegacyIsLive: Boolean = true,
         progress: Float? = null,
+        longCapsule: Boolean = false,
     ): Boolean {
         if (!isFlymeFamily() || !notificationsAllowed(context)) return false
         val views = resolve(context) ?: return false
@@ -148,6 +149,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             startsAtMillis = state.startsAtMillis,
             courseName = state.courseName.ifBlank { label },
             betweenClasses = state.phase == ScheduleLivePhase.BEFORE_NEXT,
+            capsuleLongText = longCapsule,
             notificationId = id,
         )
         return runCatching {
@@ -183,9 +185,16 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
     override fun cancel(context: Context) {
         // Cancel the id that was actually posted plus the shared default: a replay of an old alarm
         // or a process restart can leave a card behind under either.
+        //
+        // The test id is deliberately exempt. It is posted by the user's own "test live
+        // notification" action rather than derived from the timetable, so reconcile -- which runs on
+        // every tick and cancels the vendor card whenever no class is live -- must not withdraw it
+        // out from under them a second after they asked for it.
         runCatching {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return
-            manager.cancel(lastNotificationId)
+            if (lastNotificationId != VENDOR_LIVE_TEST_NOTIFICATION_ID) {
+                manager.cancel(lastNotificationId)
+            }
             if (lastNotificationId != VENDOR_LIVE_NOTIFICATION_ID) manager.cancel(VENDOR_LIVE_NOTIFICATION_ID)
         }
     }

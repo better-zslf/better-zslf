@@ -368,26 +368,17 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
             liveDebug.value = "test: notifications not granted"
             return false
         }
-        // Build the state with every displayed field populated. Driving this through
-        // scheduleLiveState() from a bare block left teacher/location/period empty, so the vendor
-        // card rendered with three blank columns -- exactly what the matrix probe showed as fine,
-        // because the matrix constructs its state directly.
-        val state = io.github.betterzslf.schedule.vendor.VendorDiagnostics.mockState(
-            AppText.Schedule.LIVE_TEST_COURSE,
-        )
-        val vendorClaimed = vendorLive.publish(context, state, capability.vendor)
-        if (vendorClaimed) {
-            // Do NOT call liveNotifications.clear() here. It cancels the standard card under the
-            // same tag, and on a vendor ROM the vendor card is a different notification -- so the
-            // clear ran immediately after a successful post and the user saw nothing. The vendor
-            // dispatcher already stands the standard card down on its own path.
-            liveDebug.value = "test: vendor=" + capability.vendor
-            return true
-        }
-        // No vendor island took it: show the standard card so the button still demonstrates
-        // something on Pixel / OPPO / Samsung / Honor.
-        val posted = liveNotifications.publishTest(state)
-        liveDebug.value = "test: standard posted=" + posted + " reason=" + liveNotifications.lastReason
+        // Routed through the probe rather than the dispatcher.
+        //
+        // The dispatcher posts under the production id, which reconcile cancels on its next tick
+        // whenever the real timetable has no live class -- so the test card vanished within a second
+        // and the button looked broken while every probe kept working. The demo path owns an id that
+        // reconcile never touches and builds its state with the teacher/room/period fields filled, so
+        // the card shows the same three columns the real one does.
+        // Same preference the production card honours, read from the stored publication.
+        val longCapsule = state.publication?.capsuleLongText == true
+        val posted = io.github.betterzslf.schedule.vendor.VendorDiagnostics.runDemoCard(context, longCapsule)
+        liveDebug.value = "test: posted=" + posted + " vendor=" + capability.vendor
         return posted
     }
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Flyme live-notification expanded card.
+  Live-notification expanded card shared by every vendor path.
 
   Three zones, matching the design reference:
     1. title row      course name (left) + remaining time or start clock (right)
@@ -28,7 +28,7 @@
         android:gravity="center_vertical">
 
         <TextView
-            android:id="@+id/schedule_flyme_title"
+            android:id="@+id/schedule_live_title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -38,7 +38,7 @@
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/schedule_flyme_status"
+            android:id="@+id/schedule_live_status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
@@ -60,26 +60,26 @@
       Only progressTint is set, in XML, which the host applies during inflate and cannot drop.
     -->
     <ProgressBar
-        android:id="@+id/schedule_flyme_progress"
+        android:id="@+id/schedule_live_progress"
         style="@android:style/Widget.ProgressBar.Horizontal"
         android:layout_width="match_parent"
         android:layout_height="6dp"
         android:layout_marginTop="10dp"
         android:indeterminate="false"
         android:max="100"
-        android:progressTint="@color/schedule_flyme_accent"
-        android:progressBackgroundTint="@color/schedule_flyme_track" />
+        android:progressTint="@color/schedule_live_accent"
+        android:progressBackgroundTint="@color/schedule_live_track" />
 
     <ProgressBar
-        android:id="@+id/schedule_flyme_progress_break"
+        android:id="@+id/schedule_live_progress_break"
         style="@android:style/Widget.ProgressBar.Horizontal"
         android:layout_width="match_parent"
         android:layout_height="6dp"
         android:layout_marginTop="10dp"
         android:indeterminate="false"
         android:max="100"
-        android:progressTint="@color/schedule_flyme_accent_break"
-        android:progressBackgroundTint="@color/schedule_flyme_track_break" />
+        android:progressTint="@color/schedule_live_accent_break"
+        android:progressBackgroundTint="@color/schedule_live_track_break" />
 
     <!-- Detail row: three equal columns, blank cells simply empty -->
     <LinearLayout
@@ -96,13 +96,13 @@
             android:orientation="vertical">
 
             <TextView
-                android:id="@+id/schedule_flyme_label_1"
+                android:id="@+id/schedule_live_label_1"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textSize="11sp" />
 
             <TextView
-                android:id="@+id/schedule_flyme_value_1"
+                android:id="@+id/schedule_live_value_1"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
@@ -119,13 +119,13 @@
             android:orientation="vertical">
 
             <TextView
-                android:id="@+id/schedule_flyme_label_2"
+                android:id="@+id/schedule_live_label_2"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textSize="11sp" />
 
             <TextView
-                android:id="@+id/schedule_flyme_value_2"
+                android:id="@+id/schedule_live_value_2"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
@@ -142,13 +142,13 @@
             android:orientation="vertical">
 
             <TextView
-                android:id="@+id/schedule_flyme_label_3"
+                android:id="@+id/schedule_live_label_3"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textSize="11sp" />
 
             <TextView
-                android:id="@+id/schedule_flyme_value_3"
+                android:id="@+id/schedule_live_value_3"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"

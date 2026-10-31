@@ -84,3 +84,4 @@ internal const val VENDOR_LIVE_NOTIFICATION_ID = 0x5C4E01
 
 /** Channel id prefix; the suffix is the vendor name so their settings stay separable. */
 internal const val VENDOR_LIVE_CHANNEL_PREFIX = "schedule_vendor_live_"
+

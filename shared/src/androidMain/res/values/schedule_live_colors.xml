@@ -10,8 +10,8 @@
   part of the same control instead of a separate grey rule.
 -->
 <resources>
-    <color name="schedule_flyme_accent">#4C8DFF</color>
-    <color name="schedule_flyme_track">#334C8DFF</color>
-    <color name="schedule_flyme_accent_break">#FFB020</color>
-    <color name="schedule_flyme_track_break">#33FFB020</color>
+    <color name="schedule_live_accent">#4C8DFF</color>
+    <color name="schedule_live_track">#334C8DFF</color>
+    <color name="schedule_live_accent_break">#FFB020</color>
+    <color name="schedule_live_track_break">#33FFB020</color>
 </resources>

@@ -87,6 +87,12 @@ internal class VivoLiveRenderer : VendorLiveRenderer {
                 // chronometer would only disagree with it.
                 .setShowWhen(false)
                 .addExtras(superxExtras(context, data, operation))
+            // The same expanded card as the other paths. OriginOS otherwise draws only its own
+            // single line, so vivo would look plainer than Meizu for no reason the user can see.
+            LiveCard.build(context, data)?.let { card ->
+                runCatching { card.apply(context, android.widget.FrameLayout(context)) }
+                builder.setCustomContentView(card)
+            }
             // Safety net for the same reason the native card has one: if the boundary alarm and
             // the foreground refresh are both missed (frozen process, vendor battery manager), the
             // system drops the stale card instead of leaving a countdown past zero.

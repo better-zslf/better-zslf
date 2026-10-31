@@ -126,6 +126,15 @@ internal class XiaomiLiveRenderer : VendorLiveRenderer {
             runCatching { builder.setShortCriticalText(data.chip) }
         }
         builder.addExtras(focusExtras(context, data, icon, progress))
+        // The same expanded card every other path uses. Without it HyperOS falls back to its own
+        // single-line rendering, which is why Xiaomi looked plainer than Meizu: the island extras
+        // only describe the pill, and the shade card is ours to draw.
+        LiveCard.build(context, data)?.let { card ->
+            // Inflate locally first: a card the host cannot apply renders blank, which is
+            // indistinguishable from "the ROM ignored the payload".
+            runCatching { card.apply(context, android.widget.FrameLayout(context)) }
+            builder.setCustomContentView(card)
+        }
         return builder.build()
     }
 

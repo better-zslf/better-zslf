@@ -96,7 +96,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
                 .addExtras(liveExtras(context, data, capsuleView(context, views, data)))
             // Required, not optional: without a custom content view Flyme has nothing to expand and
             // only the pill (or nothing at all) is shown.
-            val content = contentView(context, views, data)
+            val content = contentView(context, data) ?: return false
             // Inflate locally before posting. A RemoteViews that the host cannot apply renders as a
             // completely blank card -- which is indistinguishable from "Flyme ignored the payload"
             // and cost several debug rounds. `apply` here throws on the same faults the host would
@@ -171,7 +171,10 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
                 .setWhen(state.endsAtMillis)
                 .addExtras(liveExtras(context, data, capsuleViews, capsuleStatus, capsuleType, operation,
                     liveType, withLegacyIsLive))
-            if (withContentRemoteView) builder.setCustomContentView(contentView(context, views, data))
+            if (withContentRemoteView) {
+                val probeCard = contentView(context, data) ?: return false
+                builder.setCustomContentView(probeCard)
+            }
             manager.notify(id, builder.build())
             true
         }.getOrDefault(false)
@@ -260,74 +263,13 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         }
 
     /**
-     * The expanded card: course name, status, progress bar, three detail columns.
+     * The expanded card, built by the shared [LiveCard] so every vendor path shows the same thing.
      *
-     * Both phases show a bar. In class it is elapsed time; between classes it is the share of the
-     * break consumed, which has a real denominator (previous class end -> next class start). Only
-     * when that denominator is unknown is the bar hidden rather than zeroed.
+     * Returns null when the layout cannot be resolved; the caller then reports failure and the
+     * standard notification takes over.
      */
-    private fun contentView(context: Context, views: ResolvedViews, data: VendorLiveData): RemoteViews =
-        RemoteViews(context.packageName, views.contentLayout).apply {
-            // Headline is the course, not the notification title: the status line already says
-            // whether the class is running or upcoming.
-            setTextViewText(views.contentTitle, data.courseName.ifBlank { data.title })
-            setTextViewText(views.contentStatus, data.status)
-            // The right-hand status doubles as the countdown, so it takes the accent colour while
-            // a class is running and a warmer one while waiting for the next one.
-            val inClassPhase = !data.betweenClasses
-            setTextColor(views.contentStatus,
-                if (inClassPhase) STATUS_IN_CLASS_COLOR else STATUS_BREAK_COLOR)
-
-            val progress = data.progress?.coerceIn(0f, 1f)
-            // The bar is present in both phases. In class it fills with elapsed time; between
-            // classes it fills with the share of the break consumed, which is a real fraction
-            // because the break runs from the previous class's end to the next one's start.
-            // A missing fraction only happens when no earlier block exists to measure from, and
-            // then the bar is hidden rather than faked.
-            if (progress == null) {
-                setViewVisibility(views.contentProgress, View.GONE)
-                setViewVisibility(views.contentProgressBreak, View.GONE)
-            } else {
-                // Exactly one bar is visible; the other keeps a stale value but is not drawn.
-                val activeBar = if (inClassPhase) views.contentProgress else views.contentProgressBreak
-                setViewVisibility(views.contentProgress, if (inClassPhase) View.VISIBLE else View.GONE)
-                setViewVisibility(views.contentProgressBreak, if (inClassPhase) View.GONE else View.VISIBLE)
-                // setInt, NOT setProgressBar.
-                //
-                // RemoteViews can only invoke methods marked @RemotableViewMethod in the host
-                // process. ProgressBar.setProgress is annotated; RemoteViews.setProgressBar
-                // itself is not, so the host silently dropped every value -- which is why the bar
-                // rendered at whatever the XML default was (full, then an indeterminate ring).
-                setInt(activeBar, "setProgress", (progress * PROGRESS_MAX).roundToInt())
-            }
-
-            // Three columns. In class they are teacher / room / period; between classes the third
-            // becomes the start time, which is the only useful value at that moment.
-            val inClass = inClassPhase
-            val columns = listOf(
-                Schedule.LIVE_FIELD_TEACHER to data.teacher,
-                Schedule.LIVE_FIELD_ROOM to data.room,
-                (if (inClass) Schedule.LIVE_FIELD_PERIOD else Schedule.LIVE_FIELD_START) to
-                    if (inClass) data.periodText else ScheduleLiveClock.hhmm(data.startsAtMillis),
-            )
-            val ids = listOf(
-                Triple(views.label1, views.value1, columns[0]),
-                Triple(views.label2, views.value2, columns[1]),
-                Triple(views.label3, views.value3, columns[2]),
-            )
-            ids.forEach { (labelId, valueId, pair) ->
-                val (label, value) = pair
-                if (value.isBlank()) {
-                    // An unknown value stays blank rather than printing a dash: the column simply
-                    // has no second line, which reads as "not provided" without a placeholder.
-                    setTextViewText(labelId, "")
-                    setTextViewText(valueId, "")
-                } else {
-                    setTextViewText(labelId, label)
-                    setTextViewText(valueId, value)
-                }
-            }
-        }
+    private fun contentView(context: Context, data: VendorLiveData): RemoteViews? =
+        LiveCard.build(context, data)
 
     /**
      * Resolves the two layouts and every view id once per publish.
@@ -337,57 +279,25 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
      * silent failure this renderer must not produce. Returning null lets [publish] report false and
      * the caller fall back to the standard notification instead.
      */
+    /**
+     * Resolves the capsule layout and its one view id.
+     *
+     * The expanded card is no longer resolved here: [LiveCard] owns it, including its own
+     * missing-resource check, so this renderer only has to know about the pill.
+     */
     private fun resolve(context: Context): ResolvedViews? {
         fun layout(name: String): Int = context.resources.getIdentifier(name, "layout", context.packageName)
         fun id(name: String): Int = context.resources.getIdentifier(name, "id", context.packageName)
         val capsuleLayout = layout(LAYOUT_CAPSULE)
-        val contentLayout = layout(LAYOUT_CONTENT)
         val capsuleText = id(ID_CAPSULE_TEXT)
-        val contentTitle = id(ID_CONTENT_TITLE)
-        val contentStatus = id(ID_CONTENT_STATUS)
-        val contentProgress = id(ID_CONTENT_PROGRESS)
-        val contentProgressBreak = id(ID_CONTENT_PROGRESS_BREAK)
-        val label1 = id(ID_LABEL_1); val value1 = id(ID_VALUE_1)
-        val label2 = id(ID_LABEL_2); val value2 = id(ID_VALUE_2)
-        val label3 = id(ID_LABEL_3); val value3 = id(ID_VALUE_3)
-        val ids = listOf(capsuleLayout, contentLayout, capsuleText, contentTitle, contentStatus,
-            contentProgress, contentProgressBreak, label1, value1, label2, value2, label3, value3)
-        if (ids.any { it == 0 }) return null
-        return ResolvedViews(
-            capsuleLayout, contentLayout, capsuleText,
-            contentTitle, contentStatus, contentProgress, contentProgressBreak,
-            label1, value1, label2, value2, label3, value3,
-        )
+        if (capsuleLayout == 0 || capsuleText == 0) return null
+        return ResolvedViews(capsuleLayout, capsuleText)
     }
 
-    private class ResolvedViews(
-        val capsuleLayout: Int,
-        val contentLayout: Int,
-        val capsuleText: Int,
-        val contentTitle: Int,
-        val contentStatus: Int,
-        val contentProgress: Int,
-        val contentProgressBreak: Int,
-        val label1: Int, val value1: Int,
-        val label2: Int, val value2: Int,
-        val label3: Int, val value3: Int,
-    )
+    private class ResolvedViews(val capsuleLayout: Int, val capsuleText: Int)
 
-    /** The pill is ~60dp of chrome; a chip past a few glyphs is clipped, so keep it short. */
-    /**
-     * Capsule text: the bare minute count, or the course name plus minutes.
-     *
-     * The long form was tried on Flyme 12.6 and did not reach the pill, so it defaults to off. It
-     * stays available because the pill width is ROM-specific -- an island that lays the text out
-     * itself may well show the phrase, and that is exactly the case this switch exists for.
-     */
-    private fun capsuleText(data: VendorLiveData): String {
-        val short = data.chip.trim().ifEmpty { Schedule.VENDOR_MEIZU_CAPSULE_FALLBACK }
-        if (!data.capsuleLongText) return short
-        val course = data.courseName.ifBlank { data.title }.trim()
-        if (course.isBlank()) return short
-        return Schedule.liveCapsulePhrase(course, short)
-    }
+    /** The pill's text: the short chip, or the phrase form when the user enabled it. */
+    private fun capsuleText(data: VendorLiveData): String = LiveCard.capsuleText(data)
 
     private fun ensureChannel(manager: NotificationManager) {
         if (manager.getNotificationChannel(channelId()) != null) return

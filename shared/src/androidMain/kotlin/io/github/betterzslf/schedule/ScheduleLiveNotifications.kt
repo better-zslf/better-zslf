@@ -195,6 +195,15 @@ internal class ScheduleLiveNotifications(private val context: Context) {
         val deadline = if (inClass) state.endsAtMillis else state.startsAtMillis
         val remaining = (deadline - System.currentTimeMillis()).coerceAtLeast(1_000L)
         builder.setTimeoutAfter(remaining)
+        // No custom content view here, deliberately.
+        //
+        // Android 16 forbids RemoteViews inside a promoted ongoing notification, and this path
+        // requests promotion below -- that is the strongest live treatment the platform offers
+        // (status-bar capsule, lock-screen presence, system-rendered progress). Custom card and
+        // promotion are mutually exclusive, so the native path keeps promotion and lets the system
+        // draw the card. The three detail columns therefore remain a vendor-path feature; that is a
+        // platform constraint, not an oversight, and it is also why a vendor notification can never
+        // itself be promoted.
         if (Build.VERSION.SDK_INT >= 36) {
             // API 36: the chip is the status-bar capsule. It has the highest precedence of any
             // chip content, so an explicit value wins over the chronometer's own rendering.

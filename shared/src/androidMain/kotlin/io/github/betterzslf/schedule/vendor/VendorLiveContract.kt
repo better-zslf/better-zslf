@@ -47,6 +47,14 @@ internal data class VendorLiveData(
     val chip: String,
     /** Absolute end of the current phase, used for timers. */
     val deadlineAtMillis: Long,
+    /** Instructor for the expanded card's first column. Blank when the source had none. */
+    val teacher: String = "",
+    /** Room for the second column; same value as [subtitle] when that already holds one. */
+    val room: String = "",
+    /** Period range such as "3-4节", for the third column. Blank when unknown. */
+    val periodText: String = "",
+    /** Phase start/end, used for the countdown and the "开始 10:00" column. */
+    val startsAtMillis: Long = 0,
     val notificationId: Int = VENDOR_LIVE_NOTIFICATION_ID,
 )
 

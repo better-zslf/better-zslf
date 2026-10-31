@@ -489,7 +489,12 @@ class ScheduleRuntime(
         }
         return runCatching { native.publish(ScheduleNativePublication(ownerRevision = revision, status = status,
             snapshot = snapshot, periods = record.periods, remindersEnabled = record.remindersEnabled,
-            reminderLeadMinutes = record.reminderLeadMinutes, uncertainCount = mutableState.value.pendingReminderCourses)) }.getOrDefault(false).also {
+            reminderLeadMinutes = record.reminderLeadMinutes, uncertainCount = mutableState.value.pendingReminderCourses,
+            // Display-only: the island shows the instructor, but the redactor drops this before
+            // anything is persisted. Sourced from the in-memory snapshot, which still has it.
+            displayTeachers = snapshot?.courses.orEmpty()
+                .filter { it.teacher.isNotBlank() }
+                .associate { it.id to it.teacher })) }.getOrDefault(false).also {
             if (!it) nativeFailure()
         }
     }

@@ -47,6 +47,15 @@ data class ScheduleNativePublication(
     val remindersEnabled: Boolean = false,
     val reminderLeadMinutes: Int = 10,
     val uncertainCount: Int = 0,
+    /**
+     * Display-only instructor names keyed by course id.
+     *
+     * Deliberately a separate field rather than relaxing [scheduleNativeRedact]: the native
+     * scheduler must keep persisting only what it needs to regenerate occurrences, and a teacher
+     * name is not that. A vendor island wants to *show* it, so the runtime hands it over here and
+     * the redactor drops this map before the record reaches storage.
+     */
+    val displayTeachers: Map<String, String> = emptyMap(),
 ) {
     override fun toString(): String = "ScheduleNativePublication(redacted)"
 }
@@ -167,6 +176,8 @@ internal fun scheduleNativeRedact(value: ScheduleNativePublication): ScheduleNat
             remarks = emptyList(), warnings = emptyList(),
         ),
         uncertainCount = maxOf(value.uncertainCount, source?.let(::scheduleUndatedCourseCount) ?: 0),
+        // Names are for the on-screen card only; they must not survive into the persisted seed.
+        displayTeachers = emptyMap(),
     )
 }
 

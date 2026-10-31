@@ -905,6 +905,11 @@ object AppText {
         const val VENDOR_MODE_VIVO = "当前使用 vivo 原子岛（按会议日程场景）"
         const val VENDOR_MODE_MEIZU = "当前使用 Flyme 实况通知（私有接口）"
         const val VENDOR_MODE_STANDARD = "当前使用系统标准实况通知"
+        /** Column labels on the vendor live card. Kept short: each column is a third of ~360dp. */
+        const val LIVE_FIELD_TEACHER = "老师"
+        const val LIVE_FIELD_ROOM = "教室"
+        const val LIVE_FIELD_PERIOD = "节次"
+        const val LIVE_FIELD_START = "开始"
         const val LIVE_MODE_TITLE = "上课实况显示方式"
         /** In-app test button: one synthetic class so the user can see the real card. */
         const val LIVE_TEST_ACTION = "测试上课实况"
@@ -927,6 +932,15 @@ object AppText {
             "F type=10",
             "G operation=1",
             "H capsuleType=0",
+            // Meituan-style: feature.* payload, no RemoteViews.
+            "I 美团式 1/1/0/1",
+            "J 美团式+is_live",
+            "K 美团式 type=4",
+            "L 美团式 capType=5",
+            "M 美团式+自绘卡",
+            "N 美团式 双段文本",
+            "O 美团式 无进度",
+            "P 美团式 纯文本",
         )
         fun liveMatrixSummary(posted: Int, total: Int, notificationEnabled: Boolean) =
             "已投递 $posted/$total；通知总开关=$notificationEnabled"

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Progress track for the Flyme live card: 8dp rounded ends, a muted track and a solid accent.
+
+  Drawn as a layer-list rather than using the platform style so the colours are ours: Flyme
+  re-tints the card from the wallpaper, and a platform progress drawable inherits that tint,
+  which made the bar visually disappear into the card background on the test device.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <corners android:radius="4dp" />
+            <solid android:color="#3382FF" android:alpha="0.25" />
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <clip>
+            <shape android:shape="rectangle">
+                <corners android:radius="4dp" />
+                <solid android:color="#3382FF" />
+            </shape>
+        </clip>
+    </item>
+</layer-list>

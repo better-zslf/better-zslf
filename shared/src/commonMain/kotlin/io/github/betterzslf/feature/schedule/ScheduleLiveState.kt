@@ -21,6 +21,17 @@ data class ScheduleLiveBlock(
     val location: String,
     val startsAtMillis: Long,
     val endsAtMillis: Long,
+    /**
+     * Instructor, kept only for on-screen display.
+     *
+     * This must never travel through `scheduleNativeRedact`: the native side deliberately drops
+     * non-essential private text before persisting, and a teacher name is exactly that. Callers
+     * fill it from the in-memory snapshot, which is also why it defaults to empty -- a block that
+     * only exists to test rendering has no instructor to show.
+     */
+    val teacher: String = "",
+    /** Period numbers of this block, for the card's 节次 column. Empty when unknown. */
+    val periods: List<Int> = emptyList(),
 )
 
 data class ScheduleLiveState(
@@ -36,6 +47,12 @@ data class ScheduleLiveState(
     val nextStartsAtMillis: Long = 0,
     /** Compact chip text for the promoted-ongoing view; empty means "no chip". */
     val chip: String = "",
+    // Display-only details for a vendor card that has room for a second row. Blank when the
+    // source course did not carry them, which the card renders as an absent column rather than
+    // as a dash-only placeholder.
+    val teacher: String = "",
+    val location: String = "",
+    val periodText: String = "",
 ) {
     val active: Boolean get() = phase != ScheduleLivePhase.NONE
 }
@@ -54,6 +71,28 @@ fun scheduleLiveMinutes(remainingMillis: Long): Long =
  * system clip mid-glyph.
  */
 fun scheduleLiveChip(minutes: Long): String = AppText.Schedule.liveChipMinutes(minutes)
+
+/**
+ * "3-4" from a [3,4,5] run; blank when the block carries no periods.
+ *
+ * Runs are collapsed here rather than reusing the UI helper: that one lives in `ui.schedule`,
+ * which this feature-layer file must not depend on (the UI depends on feature, not the reverse).
+ */
+fun compactPeriodRange(periods: List<Int>): String {
+    val valid = periods.filter { it in 1..12 }.distinct().sorted()
+    if (valid.isEmpty()) return ""
+    val parts = mutableListOf<String>()
+    var start = valid.first()
+    var previous = start
+    for (number in valid.drop(1)) {
+        if (number == previous + 1) { previous = number; continue }
+        parts += if (start == previous) "$start" else "$start-$previous"
+        start = number
+        previous = number
+    }
+    parts += if (start == previous) "$start" else "$start-$previous"
+    return parts.joinToString(",")
+}
 
 /**
  * Resolve the live state for [nowMillis] from the day's blocks.
@@ -89,6 +128,9 @@ fun scheduleLiveState(blocks: List<ScheduleLiveBlock>, nowMillis: Long): Schedul
             startsAtMillis = current.startsAtMillis,
             endsAtMillis = current.endsAtMillis,
             chip = scheduleLiveChip(scheduleLiveMinutes(current.endsAtMillis - nowMillis)),
+            teacher = current.teacher,
+            location = current.location,
+            periodText = compactPeriodRange(current.periods),
         )
     }
     val next = ordered.firstOrNull { it.startsAtMillis > nowMillis }
@@ -110,6 +152,9 @@ fun scheduleLiveState(blocks: List<ScheduleLiveBlock>, nowMillis: Long): Schedul
             nextLocation = next.location,
             nextStartsAtMillis = next.startsAtMillis,
             chip = scheduleLiveChip(scheduleLiveMinutes(gapMillis)),
+            teacher = next.teacher,
+            location = next.location,
+            periodText = compactPeriodRange(next.periods),
         )
     }
     return ScheduleLiveState(phase = ScheduleLivePhase.NONE, title = "", text = "", progress = null)
@@ -117,6 +162,9 @@ fun scheduleLiveState(blocks: List<ScheduleLiveBlock>, nowMillis: Long): Schedul
 
 /** Millisecond formatting shared by the live notification and its tests. */
 object ScheduleLiveClock {
+    /** Epoch millis -> "HH:mm", for the card's start-time column. */
+    fun hhmm(epochMillis: Long): String = format(epochMillis)
+
     /** Epoch millis -> "HH:mm" in the school time zone. */
     fun format(epochMillis: Long): String = runCatching {
         val local = kotlinx.datetime.Instant.fromEpochMilliseconds(epochMillis)

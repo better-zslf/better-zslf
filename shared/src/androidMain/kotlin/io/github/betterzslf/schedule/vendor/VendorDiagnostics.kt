@@ -31,6 +31,10 @@ internal object VendorDiagnostics {
         val type: Int,
         val withCapsuleRemoteView: Boolean,
         val withContentRemoteView: Boolean,
+        /** Emit the `notification.live.feature.*` block that Meituan uses, and drop RemoteViews. */
+        val meituanStyle: Boolean = false,
+        /** Emit the fake `is_live` flag; Meituan never does, so probes can compare. */
+        val withLegacyIsLive: Boolean = true,
     )
 
     /**
@@ -54,6 +58,21 @@ internal object VendorDiagnostics {
         Variant(1, 5, 0, 10, true, true),
         Variant(1, 5, 1, 2, true, true),
         Variant(1, 0, 0, 2, true, true),
+        // ---- Meituan-style probes (I..P): feature.* payload, no RemoteViews ----
+        // I: closest transcription of Meituan's call chain for a single-stage card.
+        Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false),
+        // J: same, but keeps the fake is_live flag to see whether it hurts or is ignored.
+        Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = true),
+        // K: type=4 is Meituan's other observed value (template/c).
+        Variant(1, 1, 0, 4, false, false, meituanStyle = true, withLegacyIsLive = false),
+        // L: capsuleType 5 with feature payload, isolating the capsule field from the card body.
+        Variant(1, 5, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false),
+        // M: feature payload plus the custom content view, to see which body wins.
+        Variant(1, 1, 0, 1, false, true, meituanStyle = true, withLegacyIsLive = false),
+        // N/O/P: feature payload with the dual-section (first/last) text Meituan also supports.
+        Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false),
+        Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false),
+        Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false),
     )
 
     fun labels(): List<String> = AppText.Schedule.LIVE_MATRIX_LABELS
@@ -114,6 +133,8 @@ internal object VendorDiagnostics {
             liveType = variant.type,
             withCapsuleRemoteView = variant.withCapsuleRemoteView,
             withContentRemoteView = variant.withContentRemoteView,
+            meituanStyle = variant.meituanStyle,
+            withLegacyIsLive = variant.withLegacyIsLive,
         )
     }
 

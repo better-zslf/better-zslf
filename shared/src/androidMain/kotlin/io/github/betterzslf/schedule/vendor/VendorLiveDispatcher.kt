@@ -58,6 +58,10 @@ internal class VendorLiveDispatcher(private val renderers: List<VendorLiveRender
                 progress = state.progress,
                 chip = state.chip,
                 deadlineAtMillis = if (state.phase == ScheduleLivePhase.IN_CLASS) state.endsAtMillis else state.startsAtMillis,
+                teacher = state.teacher,
+                room = state.location,
+                periodText = state.periodText,
+                startsAtMillis = state.startsAtMillis,
             ))
         }.getOrDefault(false)
         if (!VendorLivePolicy.mayClaim(vendor, rendererSupports = true, rendererDelivered = delivered)) {

@@ -1,18 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Meizu Flyme live-notification expanded card: what opens when the user taps the pill.
+  Flyme live-notification expanded card.
 
-  Information order matches the standard live card (course, status, progress, room), so switching
-  between the vendor card and the standard one never changes what the user reads. Four elements
-  are deliberate: a determinate ProgressBar sits between the status and the subtitle; code hides
-  it (View.GONE) during a countdown, where a percentage would be invented.
+  Three zones, matching the design reference:
+    1. title row      course name (left) + remaining time or start clock (right)
+    2. progress bar   8dp rounded, only meaningful while in class
+    3. detail row     three equal columns: teacher / room / period (in class) or start (between)
 
-  Text colours are intentionally inherited from the host theme: this layout is inflated by Flyme's
-  SystemUI, which runs in whatever light/dark mode the user picked. Only the capsule pill pins its
-  own colours, because it is drawn on a chrome the app cannot see.
-
-  Mechanism note: the enclosing notification payload is reverse engineered (Meizu publishes no
-  documentation for it) and may silently stop working after a Flyme update.
+  Flyme tints whatever it can from the wallpaper, so colours that must stay readable are set
+  from code rather than left to the theme: the title uses the system onSurface colour and the
+  right-hand status uses an explicit accent.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -20,42 +17,122 @@
     android:orientation="vertical"
     android:paddingStart="16dp"
     android:paddingEnd="16dp"
-    android:paddingTop="12dp"
-    android:paddingBottom="12dp">
+    android:paddingTop="14dp"
+    android:paddingBottom="14dp">
 
-    <TextView
-        android:id="@+id/schedule_flyme_title"
+    <!-- Title row -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:maxLines="2"
-        android:ellipsize="end"
-        android:textSize="16sp"
-        android:textStyle="bold" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
 
-    <TextView
-        android:id="@+id/schedule_flyme_status"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:maxLines="2"
-        android:ellipsize="end"
-        android:textSize="13sp" />
+        <TextView
+            android:id="@+id/schedule_flyme_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:textSize="17sp"
+            android:textStyle="bold" />
 
+        <TextView
+            android:id="@+id/schedule_flyme_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:maxLines="1"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Progress bar: hidden while counting down to the next class -->
     <ProgressBar
         android:id="@+id/schedule_flyme_progress"
-        style="?android:attr/progressBarStyleHorizontal"
+        style="@android:style/Widget.Material.ProgressBar.Horizontal"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:max="100" />
+        android:layout_height="6dp"
+        android:layout_marginTop="10dp"
+        android:max="100"
+        android:progressDrawable="@drawable/schedule_flyme_progress_track" />
 
-    <TextView
-        android:id="@+id/schedule_flyme_subtitle"
+    <!-- Detail row: three equal columns, blank cells simply empty -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:maxLines="2"
-        android:ellipsize="end"
-        android:textSize="12sp" />
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal"
+        android:baselineAligned="false">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/schedule_flyme_label_1"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/schedule_flyme_value_1"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/schedule_flyme_label_2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/schedule_flyme_value_2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/schedule_flyme_label_3"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/schedule_flyme_value_3"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
 
 </LinearLayout>

@@ -15,6 +15,7 @@ import android.view.View
 import android.widget.RemoteViews
 import io.github.betterzslf.core.text.AppText.NativeSchedule
 import io.github.betterzslf.core.text.AppText.Schedule
+import io.github.betterzslf.feature.schedule.ScheduleLiveClock
 import io.github.betterzslf.feature.schedule.ScheduleLiveState
 import kotlin.math.roundToInt
 
@@ -123,6 +124,8 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         liveType: Int,
         withCapsuleRemoteView: Boolean,
         withContentRemoteView: Boolean,
+        meituanStyle: Boolean = false,
+        withLegacyIsLive: Boolean = true,
     ): Boolean {
         if (!isFlymeFamily() || !notificationsAllowed(context)) return false
         val views = resolve(context) ?: return false
@@ -148,7 +151,8 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
                 .setOnlyAlertOnce(true)
                 .setShowWhen(true)
                 .setWhen(state.endsAtMillis)
-                .addExtras(liveExtras(context, data, capsuleViews, capsuleStatus, capsuleType, operation, liveType))
+                .addExtras(liveExtras(context, data, capsuleViews, capsuleStatus, capsuleType, operation,
+                    liveType, meituanStyle, withLegacyIsLive))
             if (withContentRemoteView) builder.setCustomContentView(contentView(context, views, data))
             manager.notify(id, builder.build())
             true
@@ -181,6 +185,8 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         capsuleType: Int = CAPSULE_TYPE_DEFAULT,
         operation: Int = LIVE_OPERATION_SHOW,
         liveType: Int = LIVE_TYPE_STANDARD,
+        meituanStyle: Boolean = false,
+        withLegacyIsLive: Boolean = true,
     ): Bundle {
         val capsuleBundle = Bundle().apply {
             // 1 is the only value the demos ever saw render; everything else hides the pill.
@@ -202,13 +208,52 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             capsule?.let { putParcelable(EXTRA_CAPSULE_REMOTE_VIEW, it) }
         }
         return Bundle().apply {
-            putBoolean(EXTRA_IS_LIVE, true)
+            // `is_live` is NOT part of Meituan's payload (verified by scanning all 12 of its dex
+            // files: the key appears only as `is_live_photo`). It is kept as an option because the
+            // current working build uses it, and a probe should be able to isolate its effect.
+            if (withLegacyIsLive) putBoolean(EXTRA_IS_LIVE, true)
             // 0 = show/create. The demos only ever used 0, and the value was not observed to matter.
             putInt(EXTRA_LIVE_OPERATION, operation)
             // 2 = the demo's "standard live notification" type; same caveat as capsuleType.
             putInt(EXTRA_LIVE_TYPE, liveType)
             putBundle(EXTRA_LIVE_CAPSULE, capsuleBundle)
+            if (meituanStyle) putBundle(EXTRA_LIVE_FEATURE, featureBundle(context, data))
         }
+    }
+
+    /**
+     * The `notification.live.feature.*` block: Flyme's own description of the expanded card.
+     *
+     * Meituan never supplies a RemoteViews; it fills these keys and lets Flyme draw the card, which
+     * is why its cards pick up the system's typography and wallpaper tint while ours looked
+     * hand-rolled. Key names below were extracted from Meituan's dex, not guessed.
+     */
+    private fun featureBundle(context: Context, data: VendorLiveData): Bundle {
+        val feature = Bundle().apply {
+            putString(EXTRA_FEATURE_TITLE_TEXT, data.title)
+            putString(EXTRA_FEATURE_CONTENT_TEXT, data.status)
+            val progress = data.progress
+            if (progress != null) {
+                // progress is expressed as a whole percent; progressType 1 selects the bar.
+                putInt(EXTRA_FEATURE_PROGRESS, (progress.coerceIn(0f, 1f) * PROGRESS_MAX).roundToInt())
+                putInt(EXTRA_FEATURE_PROGRESS_TYPE, PROGRESS_TYPE_BAR)
+                putInt(EXTRA_FEATURE_PROGRESS_COLOR, STATUS_IN_CLASS_COLOR)
+            }
+            // The three detail columns travel as the dual-section text Meituan also uses:
+            // first* is the left pair, last* the right pair, and the middle stays in contentText.
+            val details = listOf(data.teacher, data.room, data.periodText).filter { it.isNotBlank() }
+            if (details.isNotEmpty()) {
+                putString(EXTRA_FEATURE_FIRST_TITLE_TEXT, Schedule.LIVE_FIELD_TEACHER)
+                putString(EXTRA_FEATURE_FIRST_CONTENT_TEXT, data.teacher)
+            }
+            if (data.room.isNotBlank()) {
+                putString(EXTRA_FEATURE_LAST_TITLE_TEXT, Schedule.LIVE_FIELD_ROOM)
+                putString(EXTRA_FEATURE_LAST_CONTENT_TEXT, data.room)
+            }
+            putBoolean(EXTRA_FEATURE_SPLIT_LINE_ENABLE, true)
+            appIcon(context)?.let { putParcelable(EXTRA_FEATURE_DESC_PIC, Icon.createWithResource(context, it)) }
+        }
+        return feature
     }
 
     /** The status-bar pill. One line of chip text, nothing else fits in ~60dp. */
@@ -235,20 +280,43 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         RemoteViews(context.packageName, views.contentLayout).apply {
             setTextViewText(views.contentTitle, data.title)
             setTextViewText(views.contentStatus, data.status)
-            val subtitle = data.subtitle.trim()
-            if (subtitle.isEmpty()) {
-                // Cards come from a device with no room text; hide the row instead of leaving a gap.
-                setViewVisibility(views.contentSubtitle, View.GONE)
-            } else {
-                // setTextViewText already resets visibility to VISIBLE, so a phase change from a
-                // countdown (hidden subtitle) to a class card brings the row back without a stale GONE.
-                setTextViewText(views.contentSubtitle, subtitle)
-            }
+            // The right-hand status doubles as the countdown, so it takes the accent colour while
+            // a class is running and a warmer one while waiting for the next one.
+            setTextColor(views.contentStatus, if (data.progress != null) STATUS_IN_CLASS_COLOR else STATUS_COUNTDOWN_COLOR)
+
             val progress = data.progress?.coerceIn(0f, 1f)
             if (progress == null) {
+                // No honest percentage before a class starts; hiding beats a bar stuck at zero.
                 setViewVisibility(views.contentProgress, View.GONE)
             } else {
                 setProgressBar(views.contentProgress, PROGRESS_MAX, (progress * PROGRESS_MAX).roundToInt(), false)
+            }
+
+            // Three columns. In class they are teacher / room / period; between classes the third
+            // becomes the start time, which is the only useful value at that moment.
+            val inClass = data.progress != null
+            val columns = listOf(
+                Schedule.LIVE_FIELD_TEACHER to data.teacher,
+                Schedule.LIVE_FIELD_ROOM to data.room,
+                (if (inClass) Schedule.LIVE_FIELD_PERIOD else Schedule.LIVE_FIELD_START) to
+                    if (inClass) data.periodText else ScheduleLiveClock.hhmm(data.startsAtMillis),
+            )
+            val ids = listOf(
+                Triple(views.label1, views.value1, columns[0]),
+                Triple(views.label2, views.value2, columns[1]),
+                Triple(views.label3, views.value3, columns[2]),
+            )
+            ids.forEach { (labelId, valueId, pair) ->
+                val (label, value) = pair
+                if (value.isBlank()) {
+                    // An unknown value stays blank rather than printing a dash: the column simply
+                    // has no second line, which reads as "not provided" without a placeholder.
+                    setTextViewText(labelId, "")
+                    setTextViewText(valueId, "")
+                } else {
+                    setTextViewText(labelId, label)
+                    setTextViewText(valueId, value)
+                }
             }
         }
 
@@ -269,12 +337,16 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         val contentTitle = id(ID_CONTENT_TITLE)
         val contentStatus = id(ID_CONTENT_STATUS)
         val contentProgress = id(ID_CONTENT_PROGRESS)
-        val contentSubtitle = id(ID_CONTENT_SUBTITLE)
-        val ids = listOf(capsuleLayout, contentLayout, capsuleText, contentTitle, contentStatus, contentProgress, contentSubtitle)
+        val label1 = id(ID_LABEL_1); val value1 = id(ID_VALUE_1)
+        val label2 = id(ID_LABEL_2); val value2 = id(ID_VALUE_2)
+        val label3 = id(ID_LABEL_3); val value3 = id(ID_VALUE_3)
+        val ids = listOf(capsuleLayout, contentLayout, capsuleText, contentTitle, contentStatus,
+            contentProgress, label1, value1, label2, value2, label3, value3)
         if (ids.any { it == 0 }) return null
         return ResolvedViews(
             capsuleLayout, contentLayout, capsuleText,
-            contentTitle, contentStatus, contentProgress, contentSubtitle,
+            contentTitle, contentStatus, contentProgress,
+            label1, value1, label2, value2, label3, value3,
         )
     }
 
@@ -285,7 +357,9 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         val contentTitle: Int,
         val contentStatus: Int,
         val contentProgress: Int,
-        val contentSubtitle: Int,
+        val label1: Int, val value1: Int,
+        val label2: Int, val value2: Int,
+        val label3: Int, val value3: Int,
     )
 
     /** The pill is ~60dp of chrome; a chip past a few glyphs is clipped, so keep it short. */
@@ -379,6 +453,20 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         const val EXTRA_LIVE_OPERATION = "notification.live.operation"
         const val EXTRA_LIVE_TYPE = "notification.live.type"
         const val EXTRA_LIVE_CAPSULE = "notification.live.capsule"
+        const val EXTRA_LIVE_FEATURE = "notification.live.feature"
+        const val EXTRA_FEATURE_TITLE_TEXT = "notification.live.feature.titleText"
+        const val EXTRA_FEATURE_CONTENT_TEXT = "notification.live.feature.contentText"
+        const val EXTRA_FEATURE_FIRST_TITLE_TEXT = "notification.live.feature.firstTitleText"
+        const val EXTRA_FEATURE_FIRST_CONTENT_TEXT = "notification.live.feature.firstContentText"
+        const val EXTRA_FEATURE_LAST_TITLE_TEXT = "notification.live.feature.lastTitleText"
+        const val EXTRA_FEATURE_LAST_CONTENT_TEXT = "notification.live.feature.lastContentText"
+        const val EXTRA_FEATURE_PROGRESS = "notification.live.feature.progress"
+        const val EXTRA_FEATURE_PROGRESS_TYPE = "notification.live.feature.progressType"
+        const val EXTRA_FEATURE_PROGRESS_COLOR = "notification.live.feature.progressColor"
+        const val EXTRA_FEATURE_SPLIT_LINE_ENABLE = "notification.live.feature.splitLineEnable"
+        const val EXTRA_FEATURE_DESC_PIC = "notification.live.feature.descPic"
+        /** 1 selects a determinate bar in Meituan's usage. */
+        const val PROGRESS_TYPE_BAR = 1
 
         const val EXTRA_CAPSULE_STATUS = "notification.live.capsuleStatus"
         const val EXTRA_CAPSULE_TYPE = "notification.live.capsuleType"
@@ -408,7 +496,15 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         const val ID_CONTENT_TITLE = "schedule_flyme_title"
         const val ID_CONTENT_STATUS = "schedule_flyme_status"
         const val ID_CONTENT_PROGRESS = "schedule_flyme_progress"
-        const val ID_CONTENT_SUBTITLE = "schedule_flyme_subtitle"
+        const val ID_LABEL_1 = "schedule_flyme_label_1"
+        const val ID_VALUE_1 = "schedule_flyme_value_1"
+        const val ID_LABEL_2 = "schedule_flyme_label_2"
+        const val ID_VALUE_2 = "schedule_flyme_value_2"
+        const val ID_LABEL_3 = "schedule_flyme_label_3"
+        const val ID_VALUE_3 = "schedule_flyme_value_3"
+        /** Accent colours for the right-hand status line. */
+        const val STATUS_IN_CLASS_COLOR = 0xFF3B82F6.toInt()
+        const val STATUS_COUNTDOWN_COLOR = 0xFFF59E0B.toInt()
 
         const val MAIN_ACTIVITY = "io.github.betterzslf.MainActivity"
         const val OPEN_INTENT_REQUEST = 5

@@ -404,12 +404,19 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
 
     private fun liveBlocksFor(view: ScheduleNativeView, nowMillis: Long): List<io.github.betterzslf.feature.schedule.ScheduleLiveBlock> {
         val today = io.github.betterzslf.feature.schedule.scheduleSchoolDate(nowMillis).toString()
+        val publication = view.publication
+        // Teachers live beside the snapshot, not inside it, so the redactor can drop them from
+        // storage while the card still shows them. Periods come from the course itself.
+        val courses = publication?.snapshot?.courses.orEmpty().associateBy { it.id }
         return view.occurrences
             .filter { it.date == today }
-            .map {
+            .map { occurrence ->
+                val course = courses[occurrence.id] ?: courses.values.firstOrNull { it.title == occurrence.title }
                 io.github.betterzslf.feature.schedule.ScheduleLiveBlock(
-                    id = it.id, title = it.title, location = it.location,
-                    startsAtMillis = it.startsAtMillis, endsAtMillis = it.endsAtMillis,
+                    id = occurrence.id, title = occurrence.title, location = occurrence.location,
+                    startsAtMillis = occurrence.startsAtMillis, endsAtMillis = occurrence.endsAtMillis,
+                    teacher = publication?.displayTeachers?.get(occurrence.id).orEmpty(),
+                    periods = course?.periods.orEmpty(),
                 )
             }
     }

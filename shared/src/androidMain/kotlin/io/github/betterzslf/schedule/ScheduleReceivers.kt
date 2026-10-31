@@ -28,6 +28,22 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
     }
 }
 
+/**
+ * Drives the one-minute live-card demonstration.
+ *
+ * A Handler cannot do this job: it lives in the app's process, and Android freezes or kills a
+ * backgrounded process, so the demo stopped the moment the user switched away -- which is precisely
+ * when they would be looking at the notification. An alarm broadcast starts the process for each
+ * step instead, the same mechanism the real schedule uses, so the demo survives being backgrounded.
+ */
+class ScheduleDemoTickReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        ScheduleNativeWork.execute(goAsync()) {
+            io.github.betterzslf.schedule.vendor.VendorDiagnostics.onAlarmTick(context, intent)
+        }
+    }
+}
+
 /** Device restart, clock/zone changes, app update and exact-alarm grant rearm from the private seed. */
 class ScheduleReconcileReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {

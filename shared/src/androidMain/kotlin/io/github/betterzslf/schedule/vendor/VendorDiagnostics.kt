@@ -2,8 +2,6 @@ package io.github.betterzslf.schedule.vendor
 
 import android.app.NotificationManager
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.text.AppText.Schedule
 import io.github.betterzslf.feature.schedule.ScheduleLivePhase
@@ -47,47 +45,90 @@ internal object VendorDiagnostics {
      * phase boundary is what the demo exists to show, so each phase gets equal time.
      */
     fun runSequence(context: Context, longCapsule: Boolean) {
-        stopSequence()
+        stopSequence(context)
         clear(context)
         lastSequenceTick = ""
-        val totalTicks = SEQUENCE_MILLIS / SEQUENCE_TICK_MILLIS
-        for (tick in 0..totalTicks) {
-            handler.postDelayed({
-                val elapsed = tick * SEQUENCE_TICK_MILLIS
-                when {
-                    elapsed >= SEQUENCE_MILLIS -> clear(context)
-                    elapsed < SEQUENCE_MILLIS / 3 -> {
-                        // First class. Both the bar and the "remaining" text are derived from
-                        // elapsed time, so they cannot disagree the way they would if the minutes
-                        // were a constant while the bar moved.
-                        val fraction = 0.05f + 0.9f * (elapsed.toFloat() / (SEQUENCE_MILLIS / 3f))
-                        val minutesLeft = (DEMO_CLASS_MINUTES * (1f - fraction)).toLong().coerceAtLeast(1L)
-                        record(elapsed, Schedule.LIVE_TRANSITION_IN_CLASS, publish(
-                            context, mockState(Schedule.LIVE_TEST_COURSE, minutesLeft, fraction),
-                            DEMO_ID, Schedule.LIVE_TRANSITION_IN_CLASS, longCapsule))
-                    }
-                    elapsed < SEQUENCE_MILLIS * 2 / 3 -> {
-                        // Break: a separate bar in the phase colour, also advancing.
-                        val into = elapsed - SEQUENCE_MILLIS / 3
-                        val fraction = 0.05f + 0.9f * (into.toFloat() / (SEQUENCE_MILLIS / 3f))
-                        // Counting down to the next class, so the number shrinks as the bar fills.
-                        val minutesToStart = (DEMO_BREAK_MINUTES * (1f - fraction)).toLong().coerceAtLeast(1L)
-                        record(elapsed, Schedule.LIVE_TRANSITION_BREAK, publish(
-                            context, mockBreakState(Schedule.LIVE_TEST_NEXT_COURSE, minutesToStart, fraction),
-                            DEMO_ID, Schedule.LIVE_TRANSITION_BREAK, longCapsule))
-                    }
-                    else -> {
-                        val into = elapsed - SEQUENCE_MILLIS * 2 / 3
-                        val fraction = 0.05f + 0.9f * (into.toFloat() / (SEQUENCE_MILLIS / 3f))
-                        val minutesLeft = (DEMO_CLASS_MINUTES * (1f - fraction)).toLong().coerceAtLeast(1L)
-                        record(elapsed, Schedule.LIVE_TRANSITION_IN_CLASS, publish(
-                            context, mockState(Schedule.LIVE_TEST_COURSE, minutesLeft, fraction),
-                            DEMO_ID, Schedule.LIVE_TRANSITION_IN_CLASS, longCapsule))
-                    }
-                }
-            }, tick * SEQUENCE_TICK_MILLIS)
+        // State first, then the first tick: if the process dies between the two, the next alarm
+        // still has everything it needs to continue rather than starting from nothing.
+        sequencePrefs(context).edit()
+            .putBoolean(KEY_RUNNING, true)
+            .putBoolean(KEY_LONG_CAPSULE, longCapsule)
+            .putLong(KEY_STARTED_AT, System.currentTimeMillis())
+            .apply()
+        tick(context)
+    }
+
+    /**
+     * One demonstration step, driven by an alarm broadcast.
+     *
+     * Everything needed to compute the current step comes from the clock and the stored start time,
+     * not from an in-memory counter: the process may have been killed and restarted between ticks,
+     * and a step number held in a field would resume from the wrong place.
+     */
+    fun onAlarmTick(context: Context, intent: android.content.Intent) {
+        if (!sequencePrefs(context).getBoolean(KEY_RUNNING, false)) return
+        tick(context)
+    }
+
+    private fun tick(context: Context) {
+        val prefs = sequencePrefs(context)
+        val startedAt = prefs.getLong(KEY_STARTED_AT, 0L)
+        if (startedAt <= 0L) { prefs.edit().putBoolean(KEY_RUNNING, false).apply(); return }
+        val longCapsule = prefs.getBoolean(KEY_LONG_CAPSULE, false)
+        val elapsed = System.currentTimeMillis() - startedAt
+        if (elapsed >= SEQUENCE_MILLIS) {
+            clear(context)
+            return
+        }
+        val third = SEQUENCE_MILLIS / 3f
+        when {
+            elapsed < third -> {
+                val fraction = 0.05f + 0.9f * (elapsed / third)
+                val minutesLeft = (DEMO_CLASS_MINUTES * (1f - fraction)).toLong().coerceAtLeast(1L)
+                record(elapsed, Schedule.LIVE_TRANSITION_IN_CLASS, publish(
+                    context, mockState(Schedule.LIVE_TEST_COURSE, minutesLeft, fraction),
+                    DEMO_ID, Schedule.LIVE_TRANSITION_IN_CLASS, longCapsule))
+            }
+            elapsed < third * 2 -> {
+                val into = elapsed - third
+                val fraction = 0.05f + 0.9f * (into / third)
+                val minutesToStart = (DEMO_BREAK_MINUTES * (1f - fraction)).toLong().coerceAtLeast(1L)
+                record(elapsed, Schedule.LIVE_TRANSITION_BREAK, publish(
+                    context, mockBreakState(Schedule.LIVE_TEST_NEXT_COURSE, minutesToStart, fraction),
+                    DEMO_ID, Schedule.LIVE_TRANSITION_BREAK, longCapsule))
+            }
+            else -> {
+                val into = elapsed - third * 2
+                val fraction = 0.05f + 0.9f * (into / third)
+                val minutesLeft = (DEMO_CLASS_MINUTES * (1f - fraction)).toLong().coerceAtLeast(1L)
+                record(elapsed, Schedule.LIVE_TRANSITION_IN_CLASS, publish(
+                    context, mockState(Schedule.LIVE_TEST_COURSE, minutesLeft, fraction),
+                    DEMO_ID, Schedule.LIVE_TRANSITION_IN_CLASS, longCapsule))
+            }
+        }
+        scheduleNextTick(context, elapsed)
+    }
+
+    /** Aims the next alarm at the next whole second of the demonstration. */
+    private fun scheduleNextTick(context: Context, elapsed: Long) {
+        val nextAt = System.currentTimeMillis() + SEQUENCE_TICK_MILLIS
+        runCatching {
+            val alarms = context.getSystemService(android.app.AlarmManager::class.java) ?: return
+            alarms.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, nextAt, tickIntent(context))
         }
     }
+
+    private fun tickIntent(context: Context): android.app.PendingIntent {
+        val intent = android.content.Intent(context, io.github.betterzslf.schedule.ScheduleDemoTickReceiver::class.java)
+            .setAction(ACTION_DEMO_TICK)
+        return android.app.PendingIntent.getBroadcast(
+            context, DEMO_REQUEST_CODE, intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private fun sequencePrefs(context: Context) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     private fun record(elapsed: Long, phase: String, posted: Boolean) {
         lastSequenceTick = "$phase t=${elapsed / 1000}s ok=$posted"
@@ -103,8 +144,11 @@ internal object VendorDiagnostics {
         private set
 
     /** Cancels any pending sequence step. Safe to call when nothing is running. */
-    fun stopSequence() {
-        handler.removeCallbacksAndMessages(null)
+    fun stopSequence(context: Context) {
+        sequencePrefs(context).edit().putBoolean(KEY_RUNNING, false).apply()
+        runCatching {
+            context.getSystemService(android.app.AlarmManager::class.java)?.cancel(tickIntent(context))
+        }
     }
 
     /**
@@ -116,7 +160,7 @@ internal object VendorDiagnostics {
      * safe.
      */
     fun clear(context: Context) {
-        stopSequence()
+        stopSequence(context)
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         // Cancel without a tag, because that is how they were posted: FlymeLiveRenderer calls
         // notify(id, ...) with no tag. The previous cancel(TAG, id) looked correct and silently
@@ -128,7 +172,7 @@ internal object VendorDiagnostics {
 
     /** Removes the standard-path demo card, which lives under a different tag. */
     fun clearStandard(context: Context) {
-        stopSequence()
+        stopSequence(context)
         io.github.betterzslf.schedule.scheduleLiveClearTest(context)
     }
 
@@ -213,8 +257,6 @@ internal object VendorDiagnostics {
         )
     }
 
-    private val handler = Handler(Looper.getMainLooper())
-
     /** Whole demo length. One minute: long enough to read the card, short enough to re-run. */
     const val SEQUENCE_MILLIS: Long = 60_000L
     /** Repost cadence. One second is the finest granularity worth the notification churn. */
@@ -231,6 +273,12 @@ internal object VendorDiagnostics {
     private const val DEMO_HORIZON_MINUTES: Long = 120L
 
     private const val TAG = "schedule.probe"
+    private const val PREFS = "schedule.demo"
+    private const val KEY_RUNNING = "demo.running"
+    private const val KEY_LONG_CAPSULE = "demo.long_capsule"
+    private const val KEY_STARTED_AT = "demo.started_at"
+    private const val ACTION_DEMO_TICK = "better-zslf.demo.TICK"
+    private const val DEMO_REQUEST_CODE = 0x5C4E20
     private const val DEMO_ID = 0x5C4E11
     private const val BREAK_ID = 0x5C4E12
 

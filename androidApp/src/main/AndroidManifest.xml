@@ -30,6 +30,9 @@
             android:exported="false" android:excludeFromRecents="true"
             android:theme="@style/schedule_permission_activity_theme" />
         <receiver android:name="io.github.betterzslf.schedule.ScheduleAlarmReceiver" android:exported="false" />
+        <!-- Drives the one-minute live-card demo. An alarm rather than a Handler so the demo keeps
+             running when the app is backgrounded, which is when the user is looking at it. -->
+        <receiver android:name="io.github.betterzslf.schedule.ScheduleDemoTickReceiver" android:exported="false" />
         <receiver android:name="io.github.betterzslf.schedule.ScheduleLiveDismissReceiver"
             android:exported="false" />
         <receiver android:name="io.github.betterzslf.schedule.ScheduleReconcileReceiver" android:exported="false">

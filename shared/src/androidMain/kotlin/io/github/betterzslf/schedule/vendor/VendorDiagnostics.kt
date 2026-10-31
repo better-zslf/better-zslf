@@ -36,34 +36,53 @@ internal object VendorDiagnostics {
     }
 
     /**
-     * Replays class -> break -> class over [DEMO_STEP_MILLIS] steps.
+     * Replays class -> break -> class in one minute, with the bar advancing every second.
      *
-     * Exists because a transition cannot be judged from a single frame, and the real card only
-     * reposts when a boundary alarm fires -- waiting for a real timetable to move is not a practical
-     * check. Each step replaces the previous card, so the user watches one notification change
-     * rather than hunting through several.
+     * A transition cannot be judged from a single frame, and the real card only reposts when a
+     * boundary alarm fires. Reposting once per second makes the bar move continuously instead of
+     * jumping between three fractions, which is what the sequence is for: watching the card behave
+     * like a live one rather than merely seeing three stills.
+     *
+     * Sixty seconds total, split evenly: 20s of class, 20s of break, 20s of the next class. The
+     * phase boundary is what the demo exists to show, so each phase gets equal time.
      */
     fun runSequence(context: Context, longCapsule: Boolean) {
         stopSequence()
         clear(context)
-        // Each step uses a distinctly different fraction so the bar visibly moves: with every step
-        // at the same value the sequence looked frozen even though the card was being replaced.
-        val steps: List<Pair<Long, () -> Unit>> = listOf(
-            0L to {
-                publish(context, mockState(Schedule.LIVE_TEST_COURSE, progress = 0.15f), DEMO_ID,
-                    Schedule.LIVE_TRANSITION_IN_CLASS, longCapsule)
-            },
-            DEMO_STEP_MILLIS to {
-                publish(context, mockBreakState(Schedule.LIVE_TEST_NEXT_COURSE, progress = 0.55f), DEMO_ID,
-                    Schedule.LIVE_TRANSITION_BREAK, longCapsule)
-            },
-            (DEMO_STEP_MILLIS * 2) to {
-                publish(context, mockState(Schedule.LIVE_TEST_COURSE, progress = 0.85f),
-                    DEMO_ID, Schedule.LIVE_TRANSITION_IN_CLASS, longCapsule)
-            },
-            (DEMO_STEP_MILLIS * 3) to { clear(context) },
-        )
-        steps.forEach { (delay, action) -> handler.postDelayed(action, delay) }
+        val totalTicks = SEQUENCE_MILLIS / SEQUENCE_TICK_MILLIS
+        for (tick in 0..totalTicks) {
+            handler.postDelayed({
+                val elapsed = tick * SEQUENCE_TICK_MILLIS
+                when {
+                    elapsed >= SEQUENCE_MILLIS -> clear(context)
+                    elapsed < SEQUENCE_MILLIS / 3 -> {
+                        // First class. Both the bar and the "remaining" text are derived from
+                        // elapsed time, so they cannot disagree the way they would if the minutes
+                        // were a constant while the bar moved.
+                        val fraction = 0.05f + 0.9f * (elapsed.toFloat() / (SEQUENCE_MILLIS / 3f))
+                        val minutesLeft = (DEMO_CLASS_MINUTES * (1f - fraction)).toLong().coerceAtLeast(1L)
+                        publish(context, mockState(Schedule.LIVE_TEST_COURSE, minutesLeft, fraction),
+                            DEMO_ID, Schedule.LIVE_TRANSITION_IN_CLASS, longCapsule)
+                    }
+                    elapsed < SEQUENCE_MILLIS * 2 / 3 -> {
+                        // Break: a separate bar in the phase colour, also advancing.
+                        val into = elapsed - SEQUENCE_MILLIS / 3
+                        val fraction = 0.05f + 0.9f * (into.toFloat() / (SEQUENCE_MILLIS / 3f))
+                        // Counting down to the next class, so the number shrinks as the bar fills.
+                        val minutesToStart = (DEMO_BREAK_MINUTES * (1f - fraction)).toLong().coerceAtLeast(1L)
+                        publish(context, mockBreakState(Schedule.LIVE_TEST_NEXT_COURSE, minutesToStart, fraction),
+                            DEMO_ID, Schedule.LIVE_TRANSITION_BREAK, longCapsule)
+                    }
+                    else -> {
+                        val into = elapsed - SEQUENCE_MILLIS * 2 / 3
+                        val fraction = 0.05f + 0.9f * (into.toFloat() / (SEQUENCE_MILLIS / 3f))
+                        val minutesLeft = (DEMO_CLASS_MINUTES * (1f - fraction)).toLong().coerceAtLeast(1L)
+                        publish(context, mockState(Schedule.LIVE_TEST_COURSE, minutesLeft, fraction),
+                            DEMO_ID, Schedule.LIVE_TRANSITION_IN_CLASS, longCapsule)
+                    }
+                }
+            }, tick * SEQUENCE_TICK_MILLIS)
+        }
     }
 
     /** Cancels any pending sequence step. Safe to call when nothing is running. */
@@ -172,8 +191,18 @@ internal object VendorDiagnostics {
 
     private val handler = Handler(Looper.getMainLooper())
 
-    /** Two minutes: long enough to watch a card settle, short enough to sit through three steps. */
-    const val DEMO_STEP_MILLIS: Long = 60_000L
+    /** Whole demo length. One minute: long enough to read the card, short enough to re-run. */
+    const val SEQUENCE_MILLIS: Long = 60_000L
+    /** Repost cadence. One second is the finest granularity worth the notification churn. */
+    const val SEQUENCE_TICK_MILLIS: Long = 1_000L
+    /**
+     * Class length the demo pretends to show.
+     *
+     * 45 is a real period, so the numbers on screen look like a genuine timetable rather than a
+     * made-up range; the demo simply compresses the whole period into twenty seconds.
+     */
+    private const val DEMO_CLASS_MINUTES: Long = 45L
+    private const val DEMO_BREAK_MINUTES: Long = 15L
 
     private const val TAG = "schedule.probe"
     private const val DEMO_ID = 0x5C4E11

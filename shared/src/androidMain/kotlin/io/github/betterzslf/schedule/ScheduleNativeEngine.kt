@@ -41,6 +41,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 private const val DAY = 86_400_000L
+/** Granularity of the live card's progress bar while a class is running. */
+private const val MINUTE_MILLIS = 60_000L
 private const val FUTURE_DAYS = 14L
 private const val MAX_ALARMS = 128
 private const val CHANNEL = "schedule_lessons_v1"
@@ -237,11 +239,27 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
             vendorLive.cancel(context)
         }
         if (!ScheduleWidgets.update(context, projection)) success = false
-        if (ScheduleWidgets.hasWidgets(context) || canRemind) {
-            scheduleNextBoundaryMillis(projection.occurrences, now)?.let { boundary ->
-                runCatching { alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, boundary, reconcileIntent()) }.onFailure { success = false }
-            }
-        } else alarms.cancel(reconcileIntent())
+        // Earliest of: the next schedule boundary, and -- only while a class is live -- the next
+        // whole minute, so the card's progress bar creeps forward instead of sitting still for the
+        // length of the period.
+        //
+        // Minute granularity is deliberate. The bar is decoration; the countdown that must stay
+        // accurate is the system chronometer, which SystemUI animates without waking this app. One
+        // alarm per minute, only during a class and never outside one: no polling, no service, no
+        // wakelock. A finer cadence would buy a smoother bar at a real battery cost for no
+        // information gain, since the minute reading is already exact.
+        val liveNow = liveNotifications.currentState()
+        val minuteTick = if (liveNow != null) (now / MINUTE_MILLIS + 1) * MINUTE_MILLIS else null
+        val boundary = if (ScheduleWidgets.hasWidgets(context) || canRemind) {
+            scheduleNextBoundaryMillis(projection.occurrences, now)
+        } else null
+        val nextRedraw = listOfNotNull(boundary, minuteTick).minOrNull()
+        if (nextRedraw != null) {
+            runCatching { alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextRedraw, reconcileIntent()) }
+                .onFailure { success = false }
+        } else {
+            alarms.cancel(reconcileIntent())
+        }
         needsRearm = !success
         return success
     }

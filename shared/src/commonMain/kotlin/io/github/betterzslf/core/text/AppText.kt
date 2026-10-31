@@ -929,23 +929,10 @@ object AppText {
         const val LIVE_MATRIX_CLEAR = "清除全部测试通知"
         /** Variant names for the Flyme matrix; each becomes a notification title. */
         val LIVE_MATRIX_LABELS: List<String> = listOf(
-            "A 基线 5/0/2 双视图",
-            "B 仅胶囊视图",
-            "C 无自定义视图",
-            "D capsuleType=1",
-            "E type=1",
-            "F type=10",
-            "G operation=1",
-            "H capsuleType=0",
-            // Meituan-style: feature.* payload, no RemoteViews.
-            "I 美团式 1/1/0/1",
-            "J 美团式+is_live",
-            "K 美团式 type=4",
-            "L 美团式 capType=5",
-            "M 美团式+自绘卡",
-            "N 美团式 双段文本",
-            "O 美团式 无进度",
-            "P 美团式 纯文本",
+            "A 基线",
+            "B capsuleType=5",
+            "C 进度 5%",
+            "D 进度 95%",
         )
         fun liveMatrixSummary(posted: Int, total: Int, notificationEnabled: Boolean) =
             "已投递 $posted/$total；通知总开关=$notificationEnabled"

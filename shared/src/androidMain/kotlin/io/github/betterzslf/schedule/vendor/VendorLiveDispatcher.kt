@@ -62,6 +62,7 @@ internal class VendorLiveDispatcher(private val renderers: List<VendorLiveRender
                 room = state.location,
                 periodText = state.periodText,
                 startsAtMillis = state.startsAtMillis,
+                courseName = state.courseName,
             ))
         }.getOrDefault(false)
         if (!VendorLivePolicy.mayClaim(vendor, rendererSupports = true, rendererDelivered = delivered)) {

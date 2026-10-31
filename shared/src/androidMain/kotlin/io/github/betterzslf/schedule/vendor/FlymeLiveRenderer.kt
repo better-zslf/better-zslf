@@ -150,6 +150,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             room = state.location,
             periodText = state.periodText,
             startsAtMillis = state.startsAtMillis,
+            courseName = state.courseName.ifBlank { label },
             notificationId = id,
         )
         return runCatching {
@@ -301,7 +302,9 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
      */
     private fun contentView(context: Context, views: ResolvedViews, data: VendorLiveData): RemoteViews =
         RemoteViews(context.packageName, views.contentLayout).apply {
-            setTextViewText(views.contentTitle, data.title)
+            // Headline is the course, not the notification title: the status line already says
+            // whether the class is running or upcoming.
+            setTextViewText(views.contentTitle, data.courseName.ifBlank { data.title })
             setTextViewText(views.contentStatus, data.status)
             // The right-hand status doubles as the countdown, so it takes the accent colour while
             // a class is running and a warmer one while waiting for the next one.

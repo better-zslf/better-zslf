@@ -53,6 +53,15 @@ data class ScheduleLiveState(
     val teacher: String = "",
     val location: String = "",
     val periodText: String = "",
+    /**
+     * Bare course name, without the "正在上课：" / "下节课：" prefix that [title] carries.
+     *
+     * The prefix makes sense on a notification title, where nothing else gives context. On the
+     * expanded card the status line already says what is happening, so repeating it there read as
+     * "正在上课：数据结构   剩余 33 分钟" -- the same idea twice. The card uses this field for its
+     * headline and keeps [title] for the collapsed notification only.
+     */
+    val courseName: String = "",
 ) {
     val active: Boolean get() = phase != ScheduleLivePhase.NONE
 }
@@ -131,6 +140,7 @@ fun scheduleLiveState(blocks: List<ScheduleLiveBlock>, nowMillis: Long): Schedul
             teacher = current.teacher,
             location = current.location,
             periodText = compactPeriodRange(current.periods),
+            courseName = current.title,
         )
     }
     val next = ordered.firstOrNull { it.startsAtMillis > nowMillis }
@@ -155,6 +165,7 @@ fun scheduleLiveState(blocks: List<ScheduleLiveBlock>, nowMillis: Long): Schedul
             teacher = next.teacher,
             location = next.location,
             periodText = compactPeriodRange(next.periods),
+            courseName = next.title,
         )
     }
     return ScheduleLiveState(phase = ScheduleLivePhase.NONE, title = "", text = "", progress = null)

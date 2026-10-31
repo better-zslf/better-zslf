@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Accent for the live card's progress bar and status line.
+
+  A calmer blue than the previous #3382FF: Flyme tints the card surface from the wallpaper, and
+  the saturated brand blue read as neon against the pale pink it produced. This sits closer to the
+  system's own accent so the bar looks native rather than pasted on.
+-->
+<resources>
+    <color name="schedule_flyme_accent">#4C8DFF</color>
+    <!-- Track stays a translucent version of the accent, so the empty part reads as the same bar. -->
+    <color name="schedule_flyme_track">#334C8DFF</color>
+</resources>

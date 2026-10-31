@@ -55,6 +55,11 @@ internal data class VendorLiveData(
     val periodText: String = "",
     /** Phase start/end, used for the countdown and the "开始 10:00" column. */
     val startsAtMillis: Long = 0,
+    /**
+     * Bare course name for the card headline. Falls back to [title] when blank, so a caller that
+     * only has the prefixed notification title still renders something sensible.
+     */
+    val courseName: String = "",
     val notificationId: Int = VENDOR_LIVE_NOTIFICATION_ID,
 )
 

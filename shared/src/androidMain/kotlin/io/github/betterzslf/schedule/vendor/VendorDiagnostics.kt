@@ -47,34 +47,26 @@ internal object VendorDiagnostics {
      * Index order matches [AppText.Schedule.LIVE_MATRIX_LABELS] and decides each variant's
      * notification id, so the label shown on screen always identifies the payload.
      */
+    /**
+     * The surviving matrix, after the rc19 device screenshots.
+     *
+     * Everything that produced a ring or a blank card has been removed rather than left in: those
+     * variants were diagnostics for a question that is now answered (Flyme 12.6 ignores the
+     * `feature.*` payload entirely and draws only our RemoteViews). Keeping them would keep
+     * polluting every screenshot with unreadable entries.
+     *
+     * All survivors share the shape that renders: capsule RemoteViews on, content RemoteViews on.
+     * They differ only in the two numeric fields whose effect was still unproven, plus one pair
+     * with deliberately small and large progress so the bar can be seen tracking the value.
+     */
     private val variants: List<Variant> = listOf(
-        // Baseline: exactly what the published reverse-engineering demo does.
-        Variant(1, 5, 0, 2, true, true),
-        // Only the pill, no expanded card.
-        Variant(1, 5, 0, 2, true, false),
-        // No custom views at all: if this one renders, Flyme builds its own from the bundle.
-        Variant(1, 5, 0, 2, false, false),
-        // The other demo's capsuleType value.
+        // The known-good baseline: this is the one that looked right on device.
         Variant(1, 1, 0, 2, true, true),
-        Variant(1, 5, 0, 1, true, true),
-        Variant(1, 5, 0, 10, true, true),
-        Variant(1, 5, 1, 2, true, true),
-        Variant(1, 0, 0, 2, true, true, progress = 0.05f),
-        // ---- Meituan-style probes (I..P): feature.* payload, no RemoteViews ----
-        // I: closest transcription of Meituan's call chain for a single-stage card.
-        Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false),
-        // J: same, but keeps the fake is_live flag to see whether it hurts or is ignored.
-        Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = true),
-        // K: type=4 is Meituan's other observed value (template/c).
-        Variant(1, 1, 0, 4, false, false, meituanStyle = true, withLegacyIsLive = false),
-        // L: capsuleType 5 with feature payload, isolating the capsule field from the card body.
-        Variant(1, 5, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false),
-        // M: feature payload plus the custom content view, to see which body wins.
-        Variant(1, 1, 0, 1, false, true, meituanStyle = true, withLegacyIsLive = false),
-        // N/O/P: feature payload with the dual-section (first/last) text Meituan also supports.
-        Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false),
-        Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false),
-        Variant(1, 1, 0, 1, false, false, meituanStyle = true, withLegacyIsLive = false, progress = 0.95f),
+        // capsuleType=5: the other demo's value, kept to see whether the pill changes.
+        Variant(1, 5, 0, 2, true, true),
+        // Barely-started and nearly-done, to confirm the bar tracks `progress`.
+        Variant(1, 1, 0, 2, true, true, progress = 0.05f),
+        Variant(1, 1, 0, 2, true, true, progress = 0.95f),
     )
 
     fun labels(): List<String> = AppText.Schedule.LIVE_MATRIX_LABELS
@@ -101,6 +93,7 @@ internal object VendorDiagnostics {
         teacher = AppText.Schedule.LIVE_TEST_TEACHER,
         location = AppText.Schedule.LIVE_TEST_ROOM,
         periodText = AppText.Schedule.LIVE_TEST_PERIODS,
+        courseName = AppText.Schedule.LIVE_TEST_COURSE,
     )
 
     /**
@@ -139,6 +132,7 @@ internal object VendorDiagnostics {
             teacher = AppText.Schedule.LIVE_TEST_TEACHER,
             location = AppText.Schedule.LIVE_TEST_ROOM,
             periodText = AppText.Schedule.LIVE_TEST_PERIODS,
+            courseName = AppText.Schedule.LIVE_TEST_COURSE,
         )
 
     /** Post the countdown variant on its own, on the same ids the matrix uses. */

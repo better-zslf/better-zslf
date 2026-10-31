@@ -31,20 +31,10 @@ internal object VendorDiagnostics {
         val type: Int,
         val withCapsuleRemoteView: Boolean,
         val withContentRemoteView: Boolean,
-        /** Emit the `notification.live.feature.*` block that Meituan uses, and drop RemoteViews. */
-        val meituanStyle: Boolean = false,
         /** Emit the fake `is_live` flag; Meituan never does, so probes can compare. */
         val withLegacyIsLive: Boolean = true,
         /** Overrides the mocked fraction, so a single screenshot proves the bar tracks progress. */
         val progress: Float? = null,
-        /**
-         * Use the phrase form in the capsule instead of the bare minute count.
-         *
-         * Which one Flyme's pill accepts is unverified: the phrase matches the design reference but
-         * may clip, and the short form is what the working build used. Both are posted so the
-         * choice can be made from a screenshot rather than an assumption.
-         */
-        val longCapsule: Boolean = false,
     )
 
     /**
@@ -70,10 +60,6 @@ internal object VendorDiagnostics {
     private val variants: List<Variant> = listOf(
         // The known-good baseline with the short capsule text ("33分").
         Variant(1, 1, 0, 2, true, true),
-        // Same payload, long capsule text ("数据结构 · 剩余 23 分钟"). The two are compared side by
-        // side because it is unknown whether Flyme's pill clips a longer string or is happy to
-        // grow: the reference design uses the phrase, the working build used the short form.
-        Variant(1, 1, 0, 2, true, true, longCapsule = true),
         // In-class and break phases, to confirm the bar switches blue/amber and fills in both.
         Variant(1, 1, 0, 2, true, true, progress = 0.5f),
     )
@@ -193,10 +179,8 @@ internal object VendorDiagnostics {
             liveType = variant.type,
             withCapsuleRemoteView = variant.withCapsuleRemoteView,
             withContentRemoteView = variant.withContentRemoteView,
-            meituanStyle = variant.meituanStyle,
             withLegacyIsLive = variant.withLegacyIsLive,
             progress = variant.progress,
-            longCapsule = variant.longCapsule,
         )
     }
 

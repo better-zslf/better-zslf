@@ -23,34 +23,30 @@ import kotlin.math.roundToInt
 /**
  * Meizu Flyme live-notification (实况通知) renderer.
  *
- * **Provenance: this whole path is reverse engineered.** 魅族官方没有为实况通知提供任何公开文档 or
- * SDK; every extra name below was recovered from community demos that inspected Flyme's SystemUI.
- * The demos' own notes mark several numeric fields as "idk, need int", so the values are the ones
- * those demos shipped with rather than values Meizu ever confirmed. The practical consequence is
- * that **this can stop working silently after any Flyme update**: the system drops unknown extras
- * without an error, so the card simply stops appearing and there is no exception, no log and no
- * callback to detect it. [publish] therefore reports only "handed to the system", and the caller
- * keeps the standard Android 16 card as the fallback.
+ * **Provenance: this path is reverse engineered.** Meizu publishes no documentation or SDK for it;
+ * every extra name below came from community demos that inspected Flyme's SystemUI, cross-checked
+ * against a Meituan APK. Unknown extras are dropped without an error, so **a Flyme update can make
+ * this stop working silently** -- no exception, no log, no callback. [publish] therefore reports only
+ * "handed to the system", and the caller keeps the standard card as the fallback.
  *
- * Mechanism, mirroring the reference demo:
- * 1. `notification.extras` carries a bundle with `is_live = true` -- the only master switch.
- * 2. A nested `notification.live.capsule` bundle configures the status-bar pill. Its
- *    `notification.live.capsuleStatus` must be `1`; any other value (including 0) makes the pill
- *    invisible, and that is the one parameter the demos are certain about.
- * 3. The expanded card is a [RemoteViews], installed with [Notification.Builder.setCustomContentView].
- *    Flyme renders only that view -- the notification's own title/text are ignored, which is exactly
- *    why this can never be folded into the Android 16 path: a promoted ongoing notification forbids
- *    custom content views, so the two mechanisms have to stay separate notifications.
+ * What was actually verified on a Flyme 12.6 / Android 16 device (not assumed):
+ * - a `notification.extras` bundle plus `setCustomContentView` is what makes the card appear;
+ * - the status-bar pill is drawn by Flyme from `notification.live.capsule.capsuleContent`, **not**
+ *   from our capsule RemoteViews: changing colours and wording inside that view had no effect, while
+ *   the string did reach the pill;
+ * - the `notification.live.feature.*` family (17 keys, present in Meituan's payload) is ignored
+ *   entirely. A variant carrying the full feature block but no content view rendered as a blank
+ *   card, so those keys were removed rather than left as decoration;
+ * - `capsuleType`, `operation` and `type` produced no visible difference across six combinations,
+ *   so their exact semantics remain unknown and the defaults are simply the demos' values.
  *
- * Deliberately not done here:
- * - No write to [io.github.betterzslf.schedule.ScheduleLiveNotifications]. The native card must keep
- *   carrying no RemoteViews dependency at all, so this file owns its channel, its content intent and
- *   its own cancellation.
- * - No timeline animation or per-second re-post. Flyme's pill is a static text slot; the card reposts
- *   at schedule boundaries like the standard one, and the chronometer in the shade keeps the number
- *   truthful if this process is frozen in between.
- * - No dependency on the capsule icon being drawn. `notification.live.capsuleIcon` is included
- *   because the demo includes it, but the pill also renders fine from text alone.
+ * Consequences for the implementation:
+ * - the expanded card must supply a content view: Flyme ignores the notification's own title/text,
+ *   and a promoted ongoing notification forbids custom views, which is why the Android 16 path and
+ *   this one can never be the same notification;
+ * - the pill's text comes from a single short string (`chip`), because a longer phrase did not
+ *   survive the round trip;
+ * - no timeline animation or per-second re-post; the card is re-published at schedule boundaries.
  */
 internal class FlymeLiveRenderer : VendorLiveRenderer {
 
@@ -132,10 +128,8 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         liveType: Int,
         withCapsuleRemoteView: Boolean,
         withContentRemoteView: Boolean,
-        meituanStyle: Boolean = false,
         withLegacyIsLive: Boolean = true,
         progress: Float? = null,
-        longCapsule: Boolean = false,
     ): Boolean {
         if (!isFlymeFamily() || !notificationsAllowed(context)) return false
         val views = resolve(context) ?: return false
@@ -159,7 +153,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         return runCatching {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return false
             ensureChannel(manager)
-            val capsuleViews = if (withCapsuleRemoteView) capsuleView(context, views, data, longCapsule) else null
+            val capsuleViews = if (withCapsuleRemoteView) capsuleView(context, views, data) else null
             val builder = Notification.Builder(context, channelId())
                 .setSmallIcon(notificationIcon(context))
                 .setContentTitle(label)
@@ -176,7 +170,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
                 .setShowWhen(true)
                 .setWhen(state.endsAtMillis)
                 .addExtras(liveExtras(context, data, capsuleViews, capsuleStatus, capsuleType, operation,
-                    liveType, meituanStyle, withLegacyIsLive, longCapsule))
+                    liveType, withLegacyIsLive))
             if (withContentRemoteView) builder.setCustomContentView(contentView(context, views, data))
             manager.notify(id, builder.build())
             true
@@ -198,8 +192,8 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
      *
      * The capsule bundle holds the pill: [EXTRA_CAPSULE_STATUS] is the enable switch, the colour
      * pair only styles the system-drawn chrome around the text, and the RemoteViews is what the pill
-     * actually inflates. The outer bundle is the live entry point: `is_live` turns the feature on
-     * and the capsule is attached to it by key.
+     * actually inflates. The capsule travels nested inside the outer bundle, keyed by
+     * `notification.live.capsule`.
      */
     private fun liveExtras(
         context: Context,
@@ -209,9 +203,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         capsuleType: Int = CAPSULE_TYPE_DEFAULT,
         operation: Int = LIVE_OPERATION_SHOW,
         liveType: Int = LIVE_TYPE_STANDARD,
-        meituanStyle: Boolean = false,
         withLegacyIsLive: Boolean = true,
-        longCapsule: Boolean = false,
     ): Bundle {
         val capsuleBundle = Bundle().apply {
             // 1 is the only value the demos ever saw render; everything else hides the pill.
@@ -219,11 +211,10 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             // Defaults to the demo's 5. The diagnostics probe varies it deliberately, because the
             // demos disagreed (1 vs 5) and neither explained the enum.
             putInt(EXTRA_CAPSULE_TYPE, capsuleType)
-            // The string field AND the RemoteViews both carry the same wording. Flyme is free to
-            // draw either, and on this build it appears to use the string (changing the pill's
-            // colour inside the RemoteViews had no visible effect), so putting the long form only
-            // in the RemoteViews was why the long wording never appeared on device.
-            putString(EXTRA_CAPSULE_CONTENT, capsuleText(data, long = longCapsule))
+            // The pill text is the short chip. This string is what Flyme actually renders -- the
+            // capsule RemoteViews is drawn from the system's own template -- so it is the only
+            // place the wording matters.
+            putString(EXTRA_CAPSULE_CONTENT, capsuleText(data))
             // Meituan always sets a short title beside the content ("开锁中"); we omitted it
             // entirely, so the pill had to guess. Kept to a couple of glyphs so it fits ~60dp.
             putString(EXTRA_CAPSULE_TITLE, Schedule.VENDOR_MEIZU_CAPSULE_FALLBACK)
@@ -243,58 +234,22 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             capsule?.let { putParcelable(EXTRA_CAPSULE_REMOTE_VIEW, it) }
         }
         return Bundle().apply {
-            // `is_live` is NOT part of Meituan's payload (verified by scanning all 12 of its dex
-            // files: the key appears only as `is_live_photo`). It is kept as an option because the
-            // current working build uses it, and a probe should be able to isolate its effect.
+            // Not part of Meituan's payload (its 12 dex files contain only `is_live_photo`), but the
+            // build that works on device sets it, and no probe ever isolated its effect. Kept, with
+            // the flag left in so the diagnostics path can still test the alternative.
             if (withLegacyIsLive) putBoolean(EXTRA_IS_LIVE, true)
             // 0 = show/create. The demos only ever used 0, and the value was not observed to matter.
             putInt(EXTRA_LIVE_OPERATION, operation)
             // 2 = the demo's "standard live notification" type; same caveat as capsuleType.
             putInt(EXTRA_LIVE_TYPE, liveType)
             putBundle(EXTRA_LIVE_CAPSULE, capsuleBundle)
-            if (meituanStyle) putBundle(EXTRA_LIVE_FEATURE, featureBundle(context, data))
         }
-    }
-
-    /**
-     * The `notification.live.feature.*` block: Flyme's own description of the expanded card.
-     *
-     * Meituan never supplies a RemoteViews; it fills these keys and lets Flyme draw the card, which
-     * is why its cards pick up the system's typography and wallpaper tint while ours looked
-     * hand-rolled. Key names below were extracted from Meituan's dex, not guessed.
-     */
-    private fun featureBundle(context: Context, data: VendorLiveData): Bundle {
-        val feature = Bundle().apply {
-            putString(EXTRA_FEATURE_TITLE_TEXT, data.title)
-            putString(EXTRA_FEATURE_CONTENT_TEXT, data.status)
-            val progress = data.progress
-            if (progress != null) {
-                // progress is expressed as a whole percent; progressType 1 selects the bar.
-                putInt(EXTRA_FEATURE_PROGRESS, (progress.coerceIn(0f, 1f) * PROGRESS_MAX).roundToInt())
-                putInt(EXTRA_FEATURE_PROGRESS_TYPE, PROGRESS_TYPE_BAR)
-                putInt(EXTRA_FEATURE_PROGRESS_COLOR, STATUS_IN_CLASS_COLOR)
-            }
-            // The three detail columns travel as the dual-section text Meituan also uses:
-            // first* is the left pair, last* the right pair, and the middle stays in contentText.
-            val details = listOf(data.teacher, data.room, data.periodText).filter { it.isNotBlank() }
-            if (details.isNotEmpty()) {
-                putString(EXTRA_FEATURE_FIRST_TITLE_TEXT, Schedule.LIVE_FIELD_TEACHER)
-                putString(EXTRA_FEATURE_FIRST_CONTENT_TEXT, data.teacher)
-            }
-            if (data.room.isNotBlank()) {
-                putString(EXTRA_FEATURE_LAST_TITLE_TEXT, Schedule.LIVE_FIELD_ROOM)
-                putString(EXTRA_FEATURE_LAST_CONTENT_TEXT, data.room)
-            }
-            putBoolean(EXTRA_FEATURE_SPLIT_LINE_ENABLE, true)
-            appIcon(context)?.let { putParcelable(EXTRA_FEATURE_DESC_PIC, Icon.createWithResource(context, it)) }
-        }
-        return feature
     }
 
     /** The status-bar pill. One line of chip text, nothing else fits in ~60dp. */
-    private fun capsuleView(context: Context, views: ResolvedViews, data: VendorLiveData, longCapsule: Boolean = false): RemoteViews =
+    private fun capsuleView(context: Context, views: ResolvedViews, data: VendorLiveData): RemoteViews =
         RemoteViews(context.packageName, views.capsuleLayout).apply {
-            setTextViewText(views.capsuleText, capsuleText(data, longCapsule))
+            setTextViewText(views.capsuleText, capsuleText(data))
             // Colours are re-applied from code so the pill stays legible if a Flyme build inflates
             // the layout with a different default text colour. The dark surface itself comes from
             // the XML: setBackgroundColor is a remote method some Flyme versions refuse, and losing
@@ -305,11 +260,11 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         }
 
     /**
-     * The expanded card: course name, status, progress bar, room.
+     * The expanded card: course name, status, progress bar, three detail columns.
      *
-     * The progress bar is hidden rather than zeroed during a countdown phase, because a countdown
-     * has no honest denominator -- the same rule the standard card follows. The subtitle is hidden
-     * when the caller has nothing to say instead of leaving an empty line of padding.
+     * Both phases show a bar. In class it is elapsed time; between classes it is the share of the
+     * break consumed, which has a real denominator (previous class end -> next class start). Only
+     * when that denominator is unknown is the bar hidden rather than zeroed.
      */
     private fun contentView(context: Context, views: ResolvedViews, data: VendorLiveData): RemoteViews =
         RemoteViews(context.packageName, views.contentLayout).apply {
@@ -420,19 +375,14 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
 
     /** The pill is ~60dp of chrome; a chip past a few glyphs is clipped, so keep it short. */
     /**
-     * Capsule text: the bare minute count, or the phrase form.
+     * Capsule text: the bare minute count ("33分").
      *
-     * The phrase is what the design reference shows ("数据结构 · 剩余 23 分钟") and reads much better,
-     * but the pill is roughly 60dp wide in the working build and a longer string may clip. Both
-     * forms are kept selectable so the choice is made from a device screenshot.
+     * The phrase form from the design reference ("数据结构 · 剩余 23 分钟") was tried on device and
+     * did not take: Flyme draws the pill from its own template and shows only the short string, so
+     * a longer value never reached the screen. The short form is therefore the only wording.
      */
-    private fun capsuleText(data: VendorLiveData, long: Boolean): String =
-        if (long) {
-            val course = data.courseName.ifBlank { data.title }
-            if (course.isBlank()) data.chip else Schedule.liveCapsulePhrase(course, data.chip)
-        } else {
-            data.chip.trim().ifEmpty { Schedule.VENDOR_MEIZU_CAPSULE_FALLBACK }
-        }
+    private fun capsuleText(data: VendorLiveData): String =
+        data.chip.trim().ifEmpty { Schedule.VENDOR_MEIZU_CAPSULE_FALLBACK }
 
     private fun ensureChannel(manager: NotificationManager) {
         if (manager.getNotificationChannel(channelId()) != null) return
@@ -522,20 +472,6 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         const val EXTRA_LIVE_OPERATION = "notification.live.operation"
         const val EXTRA_LIVE_TYPE = "notification.live.type"
         const val EXTRA_LIVE_CAPSULE = "notification.live.capsule"
-        const val EXTRA_LIVE_FEATURE = "notification.live.feature"
-        const val EXTRA_FEATURE_TITLE_TEXT = "notification.live.feature.titleText"
-        const val EXTRA_FEATURE_CONTENT_TEXT = "notification.live.feature.contentText"
-        const val EXTRA_FEATURE_FIRST_TITLE_TEXT = "notification.live.feature.firstTitleText"
-        const val EXTRA_FEATURE_FIRST_CONTENT_TEXT = "notification.live.feature.firstContentText"
-        const val EXTRA_FEATURE_LAST_TITLE_TEXT = "notification.live.feature.lastTitleText"
-        const val EXTRA_FEATURE_LAST_CONTENT_TEXT = "notification.live.feature.lastContentText"
-        const val EXTRA_FEATURE_PROGRESS = "notification.live.feature.progress"
-        const val EXTRA_FEATURE_PROGRESS_TYPE = "notification.live.feature.progressType"
-        const val EXTRA_FEATURE_PROGRESS_COLOR = "notification.live.feature.progressColor"
-        const val EXTRA_FEATURE_SPLIT_LINE_ENABLE = "notification.live.feature.splitLineEnable"
-        const val EXTRA_FEATURE_DESC_PIC = "notification.live.feature.descPic"
-        /** 1 selects a determinate bar in Meituan's usage. */
-        const val PROGRESS_TYPE_BAR = 1
 
 
         const val EXTRA_CAPSULE_STATUS = "notification.live.capsuleStatus"

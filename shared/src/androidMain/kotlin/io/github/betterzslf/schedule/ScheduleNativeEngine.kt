@@ -45,9 +45,6 @@ private const val FUTURE_DAYS = 14L
 private const val MAX_ALARMS = 128
 private const val CHANNEL = "schedule_lessons_v1"
 private const val TAG_PREFIX = "schedule.lesson:"
-/** Synthetic test card: 30 minutes already elapsed of a 32-minute class. */
-private const val TEST_LIVE_ELAPSED_MILLIS = 30L * 60_000L
-private const val TEST_LIVE_REMAINING_MILLIS = 90L * 1_000L
 internal const val SCHEDULE_URI_SCHEME = "better-zslf-schedule"
 internal const val SCHEDULE_OPEN_PATH = "open"
 internal const val SCHEDULE_ALARM_PATH = "remind"
@@ -370,19 +367,13 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
             liveDebug.value = "test: notifications not granted"
             return false
         }
-        val now = System.currentTimeMillis()
-        val testBlock = io.github.betterzslf.feature.schedule.ScheduleLiveBlock(
-            id = "vendor-live-test",
-            title = AppText.Schedule.LIVE_TEST_COURSE,
-            location = AppText.Schedule.LIVE_TEST_ROOM,
-            startsAtMillis = now - TEST_LIVE_ELAPSED_MILLIS,
-            endsAtMillis = now + TEST_LIVE_REMAINING_MILLIS,
+        // Build the state with every displayed field populated. Driving this through
+        // scheduleLiveState() from a bare block left teacher/location/period empty, so the vendor
+        // card rendered with three blank columns -- exactly what the matrix probe showed as fine,
+        // because the matrix constructs its state directly.
+        val state = io.github.betterzslf.schedule.vendor.VendorDiagnostics.mockState(
+            AppText.Schedule.LIVE_TEST_COURSE,
         )
-        val state = io.github.betterzslf.feature.schedule.scheduleLiveState(listOf(testBlock), now)
-        if (!state.active) {
-            liveDebug.value = "test: synthetic state inactive"
-            return false
-        }
         val vendorClaimed = vendorLive.publish(context, state, capability.vendor)
         if (vendorClaimed) {
             // Do NOT call liveNotifications.clear() here. It cancels the standard card under the

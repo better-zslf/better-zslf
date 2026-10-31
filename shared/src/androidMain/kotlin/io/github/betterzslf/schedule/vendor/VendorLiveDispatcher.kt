@@ -63,6 +63,10 @@ internal class VendorLiveDispatcher(private val renderers: List<VendorLiveRender
                 periodText = state.periodText,
                 startsAtMillis = state.startsAtMillis,
                 courseName = state.courseName,
+                // Without this the renderer infers the phase from `progress == null`, and breaks
+                // have a real fraction now, so a break would be drawn as a class: blue bar, period
+                // column instead of start time.
+                betweenClasses = state.phase == ScheduleLivePhase.BEFORE_NEXT,
             ))
         }.getOrDefault(false)
         if (!VendorLivePolicy.mayClaim(vendor, rendererSupports = true, rendererDelivered = delivered)) {

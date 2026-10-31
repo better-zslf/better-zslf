@@ -46,17 +46,19 @@ internal object VendorDiagnostics {
     fun runSequence(context: Context, longCapsule: Boolean) {
         stopSequence()
         clear(context)
+        // Each step uses a distinctly different fraction so the bar visibly moves: with every step
+        // at the same value the sequence looked frozen even though the card was being replaced.
         val steps: List<Pair<Long, () -> Unit>> = listOf(
             0L to {
-                publish(context, mockState(Schedule.LIVE_TEST_COURSE), DEMO_ID,
+                publish(context, mockState(Schedule.LIVE_TEST_COURSE, progress = 0.15f), DEMO_ID,
                     Schedule.LIVE_TRANSITION_IN_CLASS, longCapsule)
             },
             DEMO_STEP_MILLIS to {
-                publish(context, mockBreakState(Schedule.LIVE_TEST_NEXT_COURSE), DEMO_ID,
+                publish(context, mockBreakState(Schedule.LIVE_TEST_NEXT_COURSE, progress = 0.55f), DEMO_ID,
                     Schedule.LIVE_TRANSITION_BREAK, longCapsule)
             },
             (DEMO_STEP_MILLIS * 2) to {
-                publish(context, mockState(Schedule.LIVE_TEST_COURSE),
+                publish(context, mockState(Schedule.LIVE_TEST_COURSE, progress = 0.85f),
                     DEMO_ID, Schedule.LIVE_TRANSITION_IN_CLASS, longCapsule)
             },
             (DEMO_STEP_MILLIS * 3) to { clear(context) },
@@ -80,7 +82,10 @@ internal object VendorDiagnostics {
     fun clear(context: Context) {
         stopSequence()
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
-        IDS.forEach { manager.cancel(TAG, it) }
+        // Cancel without a tag, because that is how they were posted: FlymeLiveRenderer calls
+        // notify(id, ...) with no tag. The previous cancel(TAG, id) looked correct and silently
+        // matched nothing, which is why "clear all" appeared to do nothing at all.
+        IDS.forEach { manager.cancel(it) }
         // The non-vendor fallback posts through the standard path under its own tag.
         io.github.betterzslf.schedule.scheduleLiveClearTest(context)
     }
@@ -129,13 +134,13 @@ internal object VendorDiagnostics {
      * and the three columns rendered blank, which read as "the layout is broken" rather than "the
      * mock has no data".
      */
-    fun mockState(label: String, minutesLeft: Long = 33): ScheduleLiveState {
+    fun mockState(label: String, minutesLeft: Long = 33, progress: Float = 0.4f): ScheduleLiveState {
         val now = System.currentTimeMillis()
         return ScheduleLiveState(
             phase = ScheduleLivePhase.IN_CLASS,
             title = label,
             text = Schedule.liveRemaining(minutesLeft),
-            progress = 0.4f,
+            progress = progress,
             startsAtMillis = now - 20 * 60_000L,
             endsAtMillis = now + minutesLeft.coerceAtLeast(1) * 60_000L,
             chip = Schedule.liveChipMinutes(minutesLeft),
@@ -147,14 +152,14 @@ internal object VendorDiagnostics {
     }
 
     /** The between-classes state: no progress denominator, start clock in the third column. */
-    fun mockBreakState(label: String, minutesToStart: Long = 12): ScheduleLiveState {
+    fun mockBreakState(label: String, minutesToStart: Long = 12, progress: Float = 0.35f): ScheduleLiveState {
         val now = System.currentTimeMillis()
         return ScheduleLiveState(
             phase = ScheduleLivePhase.BEFORE_NEXT,
             title = label,
             text = Schedule.liveStartsIn(minutesToStart),
             // A real break has a measurable fraction (previous class ended -> next class starts).
-            progress = 0.35f,
+            progress = progress,
             startsAtMillis = now + minutesToStart.coerceAtLeast(1) * 60_000L,
             endsAtMillis = now + (minutesToStart.coerceAtLeast(1) + 40) * 60_000L,
             chip = Schedule.liveChipMinutes(minutesToStart),

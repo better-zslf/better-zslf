@@ -255,6 +255,14 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             // 2 = the demo's "standard live notification" type; same caveat as capsuleType.
             putInt(EXTRA_LIVE_TYPE, liveType)
             putBundle(EXTRA_LIVE_CAPSULE, capsuleBundle)
+            // Colour of the expanded card's own text, as Flyme sees it.
+            //
+            // Not in Meituan's payload (its dex has no such key) but present in a maintained
+            // Flyme-12 live-notification app, which sets it from the capsule background's
+            // luminance. Setting it lets the ROM recolour the card for its own surface instead of
+            // us guessing: a hard-coded near-black is invisible the moment the surface turns dark,
+            // which is exactly what happened on a device in dark mode.
+            putInt(EXTRA_LIVE_CONTENT_COLOR, LiveCard.contentColor(context))
         }
     }
 
@@ -396,6 +404,7 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         const val EXTRA_LIVE_OPERATION = "notification.live.operation"
         const val EXTRA_LIVE_TYPE = "notification.live.type"
         const val EXTRA_LIVE_CAPSULE = "notification.live.capsule"
+        const val EXTRA_LIVE_CONTENT_COLOR = "notification.live.contentColor"
 
 
         const val EXTRA_CAPSULE_STATUS = "notification.live.capsuleStatus"

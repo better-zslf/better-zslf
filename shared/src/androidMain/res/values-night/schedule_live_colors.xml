@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dark-mode values for the live card.
+
+  The card's surface is drawn by the ROM (Flyme tints it from the wallpaper, HyperOS and OriginOS
+  use their own dark surfaces). On a dark surface the same near-black text used in light mode
+  becomes invisible, which is exactly what happened before these values existed. Only the colours
+  that must flip are overridden here; the accents stay identical because they read on both.
+-->
+<resources>
+    <!-- Near-white, with a touch of transparency so it sits on the surface rather than glaring. -->
+    <color name="schedule_live_title_text">#F2FFFFFF</color>
+    <color name="schedule_live_meta_label">#A6FFFFFF</color>
+</resources>

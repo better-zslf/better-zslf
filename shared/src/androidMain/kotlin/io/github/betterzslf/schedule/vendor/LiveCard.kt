@@ -83,6 +83,24 @@ internal object LiveCard {
         }
     }
 
+    /**
+     * Text colour to hand the ROM for the expanded card.
+     *
+     * Black on a light surface, white on a dark one, decided from the device's night mode. The card
+     * has no background of its own -- the ROM paints it, and Flyme paints it from the wallpaper --
+     * so "which colour is readable" cannot be answered from our layout. Night mode is the best
+     * available proxy, and it is the same one the values-night resources use, so the two agree.
+     */
+    fun contentColor(context: Context): Int {
+        val nightMode = context.resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        return if (nightMode == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
+            0xFFFFFFFF.toInt()
+        } else {
+            0xFF1A1A1E.toInt()
+        }
+    }
+
     /** The compact status-bar text: the short chip, or the course name plus it when asked. */
     fun capsuleText(data: VendorLiveData): String {
         val short = data.chip.trim().ifEmpty { Schedule.VENDOR_MEIZU_CAPSULE_FALLBACK }

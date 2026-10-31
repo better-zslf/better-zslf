@@ -138,21 +138,24 @@ class ScheduleProbeActivity : ComponentActivity() {
         // The offset shifts the synthetic day so that `now` falls at a chosen point: -20 puts now
         // 20 minutes into the first class; 5 puts it 5 minutes before the next one starts; 120 lands
         // past the 90-minute break window, where nothing should be shown at all.
-        action("Live: in class") {
-            val ok = native.testLiveTransition(-20)
-            display("transition in-class ok=$ok")
+        // The same three demonstrations the app exposes, reachable without an account so they can
+        // be exercised straight after install.
+        action("Live: demo card") {
+            val ok = native.testLiveNotification(false)
+            display("demo ok=$ok")
             val trace = io.github.betterzslf.schedule.scheduleLiveDiagnostic(applicationContext)
             status.text = status.text.toString() + "\n" + trace
         }
-        action("Live: break (10 min to next)") {
-            display("transition break ok=${native.testLiveTransition(5)}")
+        action("Live: break card") {
+            display("break ok=${native.testBreakCard(false)}")
         }
-        action("Live: after school (expect cleared)") {
-            display("transition none ok=${native.testLiveTransition(120)}")
+        action("Live: sequence (class -> break -> class)") {
+            native.testLiveSequence(false)
+            display("sequence started")
         }
-        action("Live: lunch gap (expect cleared)") {
-            // A 120-minute offset lands past the 90-minute window, so nothing should be posted.
-            display("transition lunch ok=${native.testLiveTransition(95)}")
+        action("Live: clear all demo notifications") {
+            native.clearTestNotifications()
+            display("cleared")
         }
         action("Open exact alarm settings") { native.openExactAlarmSettings() }
         action("Seed live class spanning now") {

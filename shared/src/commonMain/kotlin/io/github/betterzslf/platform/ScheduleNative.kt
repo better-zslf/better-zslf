@@ -117,29 +117,22 @@ interface ScheduleNativeBridge {
      * Default false keeps the iOS/JVM bridges honest: they have no ongoing-notification surface, so
      * advertising a test hook there would be a lie the UI would have to work around.
      */
-    fun testLiveNotification(): Boolean = false
+    fun testLiveNotification(longCapsule: Boolean = false): Boolean = false
     /**
-     * Post one notification per vendor-payload combination so a single screenshot shows which
-     * variant the ROM honours. Only meaningful where a vendor island exists; default is a no-op.
-     * @return how many notifications the system accepted
-     */
-    fun testVendorMatrix(): Int = 0
-    /** Post exactly one vendor variant by index, clearing the others, for an unambiguous look. */
-    fun testVendorVariant(index: Int): Boolean = false
-    /** Labels of the vendor variants, in posting order. */
-    fun vendorVariantLabels(): List<String> = emptyList()
-    /** Post the between-classes variant, which the in-class matrix never reaches. */
-    fun testVendorCountdown(): Boolean = false
-    /**
-     * Replay one synthetic school day and post the live card at [minutesFromNow].
+     * Show the between-classes card so its styling can be compared with the in-class one.
      *
-     * A transition cannot be seen in a single frame, so the day is fixed relative to now and this
-     * picks the moment to render. Returns false when that moment has no live state at all, which
-     * is itself the expected answer for lunch and after school.
+     * @param longCapsule whether the status-bar pill should carry the course name as well.
      */
-    fun testLiveTransition(minutesFromNow: Long): Boolean = false
-    /** Withdraw every notification posted by [testVendorMatrix]. */
-    fun clearVendorMatrix() = Unit
+    fun testBreakCard(longCapsule: Boolean): Boolean = false
+    /**
+     * Replay class -> break -> class on one notification, one step every two minutes.
+     *
+     * A transition cannot be judged from a single frame and the real card only reposts on a
+     * schedule boundary, so this walks the sequence for the user instead of asking them to wait.
+     */
+    fun testLiveSequence(longCapsule: Boolean) = Unit
+    /** Withdraw every demonstration notification this app posted. */
+    fun clearTestNotifications() = Unit
     /** Releases app-side observers only; healthy published reminders survive app UI disposal. */
     fun close()
 }

@@ -49,7 +49,7 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                 Text(AppText.Schedule.LIVE_TEST_HINT, fontSize = 13.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 PrimaryAction(AppText.Schedule.LIVE_TEST_ACTION, onClick = {
-                    val posted = native.testLiveNotification()
+                    val posted = native.testLiveNotification(state.capsuleLongText)
                     testNotice = if (posted) AppText.Schedule.LIVE_TEST_POSTED else AppText.Schedule.LIVE_TEST_FAILED
                     native.refreshCapabilities()
                 })
@@ -59,55 +59,24 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                 }
                 testNotice?.let { message -> InfoBanner(message,
                     tone = if (message == AppText.Schedule.LIVE_TEST_POSTED) UiTone.Positive else UiTone.Warning) }
-                // Flyme's payload is reverse engineered, so rather than guess once, post every
-                // combination and let one screenshot decide. Only shown where that path exists.
-                if (capabilities.vendor == ScheduleVendor.MEIZU) {
-                    Text(AppText.Schedule.LIVE_MATRIX_HINT, fontSize = 13.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    PrimaryAction(AppText.Schedule.LIVE_MATRIX_ACTION, onClick = {
-                        val posted = native.testVendorMatrix()
-                        testNotice = AppText.Schedule.liveMatrixResult(posted, 8)
+                // Two more demonstrations, kept because they answer questions a single card cannot:
+                // what the break styling looks like beside the in-class one, and whether the card
+                // changes cleanly when a class ends and the next begins.
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(AppText.Schedule.LIVE_BREAK_ACTION, onClick = {
+                        val posted = native.testBreakCard(state.capsuleLongText)
+                        testNotice = if (posted) AppText.Schedule.LIVE_TEST_POSTED else AppText.Schedule.LIVE_TEST_FAILED
                         native.refreshCapabilities()
-                    })
-                    // One button per variant: the all-at-once run shows which payloads are
-                    // accepted, but comparing two candidate layouts needs one card on screen.
-                    val labels = remember(capabilities.vendor) { native.vendorVariantLabels() }
-                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        labels.forEachIndexed { index, label ->
-                            TextButton(label, onClick = {
-                                val ok = native.testVendorVariant(index)
-                                testNotice = AppText.Schedule.liveMatrixResult(if (ok) 1 else 0, 1)
-                                native.refreshCapabilities()
-                            }, modifier = Modifier.fillMaxWidth())
-                        }
-                    }
-                    // A transition cannot be judged from one frame, so the same synthetic day is
-                    // posted at three moments: mid-class, in the break, and after school.
-                    Text(AppText.Schedule.LIVE_TRANSITION_ACTION, fontSize = 13.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(
-                            AppText.Schedule.LIVE_TRANSITION_ACTION_A to -20L,
-                            AppText.Schedule.LIVE_TRANSITION_ACTION_B to 5L,
-                            AppText.Schedule.LIVE_TRANSITION_ACTION_C to 120L,
-                        ).forEach { (label, minutes) ->
-                            TextButton(label, onClick = {
-                                val ok = native.testLiveTransition(minutes)
-                                testNotice = if (ok) label else AppText.Schedule.LIVE_TRANSITION_NONE
-                                native.refreshCapabilities()
-                            }, modifier = Modifier.weight(1f))
-                        }
-                    }
-                    PrimaryAction(AppText.Schedule.LIVE_COUNTDOWN_PROBE_ACTION, onClick = {
-                        val ok = native.testVendorCountdown()
-                        testNotice = AppText.Schedule.liveMatrixResult(if (ok) 1 else 0, 1)
-                        native.refreshCapabilities()
-                    })
-                    TextButton(AppText.Schedule.LIVE_MATRIX_CLEAR, onClick = {
-                        native.clearVendorMatrix()
-                        testNotice = null
-                    })
+                    }, modifier = Modifier.weight(1f))
+                    TextButton(AppText.Schedule.LIVE_SEQUENCE_ACTION, onClick = {
+                        native.testLiveSequence(state.capsuleLongText)
+                        testNotice = AppText.Schedule.LIVE_SEQUENCE_STARTED
+                    }, modifier = Modifier.weight(1f))
                 }
+                TextButton(AppText.Schedule.LIVE_CLEAR_ALL, onClick = {
+                    native.clearTestNotifications()
+                    testNotice = null
+                }, modifier = Modifier.fillMaxWidth())
             } }
             if (capabilities.batteryRestricted || capabilities.vendor != ScheduleVendor.AOSP) {
                 item("reminders-vendor") { InfoBanner(vendorHint(capabilities.vendor),

@@ -51,18 +51,13 @@ private class AndroidScheduleNativeBridge(private val context: Context) : Schedu
     override fun publish(publication: ScheduleNativePublication): Boolean = engine.publish(publication)
     override fun clear(status: ScheduleNativeStatus, ownerRevision: String?) = engine.clear(status, ownerRevision)
     override fun consumeOpenRequest() = engine.consumeOpenRequest()
-    override fun testLiveNotification(): Boolean = engine.testLiveNotification()
-    override fun testVendorMatrix(): Int =
-        io.github.betterzslf.schedule.vendor.VendorDiagnostics.runFlymeMatrix(context)
-    override fun testVendorVariant(index: Int): Boolean =
-        io.github.betterzslf.schedule.vendor.VendorDiagnostics.runFlymeVariant(context, index)
-    override fun vendorVariantLabels(): List<String> =
-        io.github.betterzslf.schedule.vendor.VendorDiagnostics.labels()
-    override fun testVendorCountdown(): Boolean =
-        io.github.betterzslf.schedule.vendor.VendorDiagnostics.runCountdownProbe(context)
-    override fun testLiveTransition(minutesFromNow: Long): Boolean =
-        io.github.betterzslf.schedule.vendor.VendorDiagnostics.runTransitionProbe(context, minutesFromNow)
-    override fun clearVendorMatrix() =
+    override fun testLiveNotification(longCapsule: Boolean): Boolean =
+        io.github.betterzslf.schedule.vendor.VendorDiagnostics.runDemoCard(context, longCapsule)
+    override fun testBreakCard(longCapsule: Boolean): Boolean =
+        io.github.betterzslf.schedule.vendor.VendorDiagnostics.runBreakCard(context, longCapsule)
+    override fun testLiveSequence(longCapsule: Boolean) =
+        io.github.betterzslf.schedule.vendor.VendorDiagnostics.runSequence(context, longCapsule)
+    override fun clearTestNotifications() =
         io.github.betterzslf.schedule.vendor.VendorDiagnostics.clear(context)
     override fun close() = Unit // Native publication and its alarms intentionally outlive AppGraph's UI.
     private fun start(intent: Intent): Boolean = runCatching {

@@ -14,4 +14,13 @@
     <color name="schedule_live_track">#334C8DFF</color>
     <color name="schedule_live_accent_break">#FFB020</color>
     <color name="schedule_live_track_break">#33FFB020</color>
+    <!--
+      Card text. Set explicitly rather than inherited: on the pale wallpaper-tinted surface Flyme
+      produces, the inherited onSurface colour rendered the course name washed out and hard to
+      read, and the same happened on HyperOS/OriginOS with their own tints. A near-black keeps the
+      headline legible on any of them.
+    -->
+    <color name="schedule_live_title_text">#E61A1A1E</color>
+    <!-- Meta labels sit one step lighter than their values, matching the design reference. -->
+    <color name="schedule_live_meta_label">#8A5A5F66</color>
 </resources>

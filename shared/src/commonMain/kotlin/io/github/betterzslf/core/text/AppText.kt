@@ -916,41 +916,27 @@ object AppText {
         const val LIVE_MODE_TITLE = "上课实况显示方式"
         /** In-app test button: one synthetic class so the user can see the real card. */
         const val LIVE_TEST_ACTION = "测试上课实况"
-        const val LIVE_TEST_HINT = "发一条 90 秒的模拟上课通知，用的就是真实渲染路径；不写课表、不联网。"
+        const val LIVE_TEST_HINT = "发一条模拟上课通知，用的就是真实渲染路径；不写课表、不联网。"
         const val LIVE_TEST_COURSE = "测试课程"
+        const val LIVE_TEST_NEXT_COURSE = "下一门课"
         const val LIVE_TEST_ROOM = "测试教室 A101"
         const val LIVE_TEST_TEACHER = "李老师"
         const val LIVE_TEST_PERIODS = "3-4"
-        /** Transition probe: replay one school day and inspect a chosen moment of it. */
-        const val LIVE_TEST_NEXT_COURSE = "下一门课"
-        const val LIVE_TRANSITION_IN_CLASS = "推进：上课中"
-        const val LIVE_TRANSITION_BREAK = "推进：课间"
-        const val LIVE_TRANSITION_NONE = "推进：当前无实况（午休或已放学）"
-        const val LIVE_TRANSITION_ACTION = "推进到课间 10 分钟前"
-        const val LIVE_TRANSITION_ACTION_A = "推进到上课中"
-        const val LIVE_TRANSITION_ACTION_B = "推进到课间"
-        const val LIVE_TRANSITION_ACTION_C = "推进到放学后"
-        /** Countdown-state probe: the orange branch that the in-class matrix never reaches. */
-        const val LIVE_COUNTDOWN_PROBE_LABEL = "课间 · 下一节"
-        const val LIVE_COUNTDOWN_PROBE_ACTION = "测试课间倒计时样式"
         const val LIVE_TEST_FAILED = "本机暂时发不出实况通知：请检查通知权限，或按下方厂商说明放开后台限制。"
         const val LIVE_TEST_POSTED = "已发出，请下拉通知栏查看。"
-        /** Flyme payload matrix: one card per combination, so one screenshot decides the winner. */
-        const val LIVE_MATRIX_ACTION = "测试魅族参数矩阵（8 组）"
-        const val LIVE_MATRIX_HINT = "一次发出 8 条不同参数的通知，标题就是组合名。下拉通知栏截图即可看出哪组生效。"
-        const val LIVE_MATRIX_CLEAR = "清除全部测试通知"
+
+        /** The between-classes demonstration, for comparing its styling with the in-class one. */
+        const val LIVE_BREAK_ACTION = "课间样式"
+        /** Timed replay of class -> break -> class on one notification. */
+        const val LIVE_SEQUENCE_ACTION = "自动演示"
+        const val LIVE_SEQUENCE_STARTED = "开始演示：每分钟切换一次，共三轮。"
+        const val LIVE_CLEAR_ALL = "清除全部测试通知"
+        const val LIVE_TRANSITION_IN_CLASS = "上课中"
+        const val LIVE_TRANSITION_BREAK = "课间"
+        const val LIVE_TRANSITION_NONE = "当前无实况"
         /** Capsule wording switch, for ROMs whose pill is wide enough for the phrase. */
         const val CAPSULE_TEXT_TITLE = "胶囊显示课程名"
         const val CAPSULE_TEXT_SUMMARY = "开启后胶囊显示「数据结构 · 33分」，关闭只显示「33分」。部分机型胶囊较窄会被截断，可按实际效果选择。"
-        /** Variant names for the Flyme matrix; each becomes a notification title. */
-        val LIVE_MATRIX_LABELS: List<String> = listOf(
-            "A 基线",
-            "B 进度 50%",
-        )
-        fun liveMatrixSummary(posted: Int, total: Int, notificationEnabled: Boolean) =
-            "已投递 $posted/$total；通知总开关=$notificationEnabled"
-        fun liveMatrixResult(posted: Int, total: Int) =
-            "已投递 $posted/$total 条。若一条都没显示，说明本机 Flyme 未对该应用开放实况通知。"
         /** Course anchor for the Meizu expanded card; never a fabricated value. */
         const val VENDOR_EMPTY_SUBTITLE = ""
         /** Ardot P42 labels; ACCOUNT_FIELD above already names the field. */

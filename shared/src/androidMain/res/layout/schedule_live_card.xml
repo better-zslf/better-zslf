@@ -34,6 +34,7 @@
             android:layout_weight="1"
             android:maxLines="2"
             android:ellipsize="end"
+            android:textColor="@color/schedule_live_title_text"
             android:textSize="17sp"
             android:textStyle="bold" />
 
@@ -99,6 +100,7 @@
                 android:id="@+id/schedule_live_label_1"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:textColor="@color/schedule_live_meta_label"
                 android:textSize="11sp" />
 
             <TextView
@@ -108,6 +110,7 @@
                 android:layout_marginTop="2dp"
                 android:maxLines="1"
                 android:ellipsize="end"
+                android:textColor="@color/schedule_live_title_text"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -122,6 +125,7 @@
                 android:id="@+id/schedule_live_label_2"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:textColor="@color/schedule_live_meta_label"
                 android:textSize="11sp" />
 
             <TextView
@@ -131,6 +135,7 @@
                 android:layout_marginTop="2dp"
                 android:maxLines="1"
                 android:ellipsize="end"
+                android:textColor="@color/schedule_live_title_text"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -145,6 +150,7 @@
                 android:id="@+id/schedule_live_label_3"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:textColor="@color/schedule_live_meta_label"
                 android:textSize="11sp" />
 
             <TextView
@@ -154,6 +160,7 @@
                 android:layout_marginTop="2dp"
                 android:maxLines="1"
                 android:ellipsize="end"
+                android:textColor="@color/schedule_live_title_text"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>

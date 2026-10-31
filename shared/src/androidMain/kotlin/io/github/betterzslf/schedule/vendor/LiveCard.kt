@@ -50,15 +50,19 @@ internal object LiveCard {
                 setViewVisibility(ids.progressInClass, View.GONE)
                 setViewVisibility(ids.progressBreak, View.GONE)
             } else {
-                // Exactly one bar is visible. Two views exist because ProgressBar.setProgressTintList
-                // is not a @RemotableViewMethod, so a host drops it; the colour has to be fixed at
-                // inflate time, and two bars is the only way to have two colours.
-                val bar = if (inClass) ids.progressInClass else ids.progressBreak
+                // Both bars get the value, then visibility picks which one is drawn.
+                //
+                // Two views exist because ProgressBar.setProgressTintList is not a
+                // @RemotableViewMethod, so a host drops it and the colour must be fixed at inflate
+                // time. Setting only the visible one left the other bar stale, and when the phase
+                // flipped the newly-shown bar kept its previous value -- the demo's break phase
+                // therefore appeared frozen. Writing both costs one extra remote call and removes
+                // any dependence on which bar was touched last.
+                val value = (progress * PROGRESS_MAX).roundToInt()
+                setInt(ids.progressInClass, "setProgress", value)
+                setInt(ids.progressBreak, "setProgress", value)
                 setViewVisibility(ids.progressInClass, if (inClass) View.VISIBLE else View.GONE)
                 setViewVisibility(ids.progressBreak, if (inClass) View.GONE else View.VISIBLE)
-                // setProgress is annotated @RemotableViewMethod; RemoteViews.setProgressBar is not,
-                // which is why the value is pushed as a plain setInt.
-                setInt(bar, "setProgress", (progress * PROGRESS_MAX).roundToInt())
             }
 
             val columns = listOf(

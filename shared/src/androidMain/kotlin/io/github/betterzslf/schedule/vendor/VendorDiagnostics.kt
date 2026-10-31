@@ -49,6 +49,7 @@ internal object VendorDiagnostics {
     fun runSequence(context: Context, longCapsule: Boolean) {
         stopSequence()
         clear(context)
+        lastSequenceTick = ""
         val totalTicks = SEQUENCE_MILLIS / SEQUENCE_TICK_MILLIS
         for (tick in 0..totalTicks) {
             handler.postDelayed({
@@ -61,8 +62,9 @@ internal object VendorDiagnostics {
                         // were a constant while the bar moved.
                         val fraction = 0.05f + 0.9f * (elapsed.toFloat() / (SEQUENCE_MILLIS / 3f))
                         val minutesLeft = (DEMO_CLASS_MINUTES * (1f - fraction)).toLong().coerceAtLeast(1L)
-                        publish(context, mockState(Schedule.LIVE_TEST_COURSE, minutesLeft, fraction),
-                            DEMO_ID, Schedule.LIVE_TRANSITION_IN_CLASS, longCapsule)
+                        record(elapsed, Schedule.LIVE_TRANSITION_IN_CLASS, publish(
+                            context, mockState(Schedule.LIVE_TEST_COURSE, minutesLeft, fraction),
+                            DEMO_ID, Schedule.LIVE_TRANSITION_IN_CLASS, longCapsule))
                     }
                     elapsed < SEQUENCE_MILLIS * 2 / 3 -> {
                         // Break: a separate bar in the phase colour, also advancing.
@@ -70,20 +72,35 @@ internal object VendorDiagnostics {
                         val fraction = 0.05f + 0.9f * (into.toFloat() / (SEQUENCE_MILLIS / 3f))
                         // Counting down to the next class, so the number shrinks as the bar fills.
                         val minutesToStart = (DEMO_BREAK_MINUTES * (1f - fraction)).toLong().coerceAtLeast(1L)
-                        publish(context, mockBreakState(Schedule.LIVE_TEST_NEXT_COURSE, minutesToStart, fraction),
-                            DEMO_ID, Schedule.LIVE_TRANSITION_BREAK, longCapsule)
+                        record(elapsed, Schedule.LIVE_TRANSITION_BREAK, publish(
+                            context, mockBreakState(Schedule.LIVE_TEST_NEXT_COURSE, minutesToStart, fraction),
+                            DEMO_ID, Schedule.LIVE_TRANSITION_BREAK, longCapsule))
                     }
                     else -> {
                         val into = elapsed - SEQUENCE_MILLIS * 2 / 3
                         val fraction = 0.05f + 0.9f * (into.toFloat() / (SEQUENCE_MILLIS / 3f))
                         val minutesLeft = (DEMO_CLASS_MINUTES * (1f - fraction)).toLong().coerceAtLeast(1L)
-                        publish(context, mockState(Schedule.LIVE_TEST_COURSE, minutesLeft, fraction),
-                            DEMO_ID, Schedule.LIVE_TRANSITION_IN_CLASS, longCapsule)
+                        record(elapsed, Schedule.LIVE_TRANSITION_IN_CLASS, publish(
+                            context, mockState(Schedule.LIVE_TEST_COURSE, minutesLeft, fraction),
+                            DEMO_ID, Schedule.LIVE_TRANSITION_IN_CLASS, longCapsule))
                     }
                 }
             }, tick * SEQUENCE_TICK_MILLIS)
         }
     }
+
+    private fun record(elapsed: Long, phase: String, posted: Boolean) {
+        lastSequenceTick = "$phase t=${elapsed / 1000}s ok=$posted"
+    }
+
+    /**
+     * Last tick's outcome, for the diagnostics line.
+     *
+     * A silently failed post is indistinguishable from a frozen card, so the demo reports each
+     * tick rather than relying on the screenshot alone.
+     */
+    var lastSequenceTick: String = ""
+        private set
 
     /** Cancels any pending sequence step. Safe to call when nothing is running. */
     fun stopSequence() {
@@ -161,7 +178,9 @@ internal object VendorDiagnostics {
             text = Schedule.liveRemaining(minutesLeft),
             progress = progress,
             startsAtMillis = now - 20 * 60_000L,
-            endsAtMillis = now + minutesLeft.coerceAtLeast(1) * 60_000L,
+            // Fixed horizon for the same reason as the break state: a deadline that moves with the
+            // shrinking minute label would re-arm setTimeoutAfter on every redraw.
+            endsAtMillis = now + DEMO_HORIZON_MINUTES * 60_000L,
             chip = Schedule.liveChipMinutes(minutesLeft),
             teacher = Schedule.LIVE_TEST_TEACHER,
             location = Schedule.LIVE_TEST_ROOM,
@@ -180,7 +199,12 @@ internal object VendorDiagnostics {
             // A real break has a measurable fraction (previous class ended -> next class starts).
             progress = progress,
             startsAtMillis = now + minutesToStart.coerceAtLeast(1) * 60_000L,
-            endsAtMillis = now + (minutesToStart.coerceAtLeast(1) + 40) * 60_000L,
+            // Fixed far-future deadline, not one derived from the shrinking countdown.
+            //
+            // The renderer turns this into setTimeoutAfter, so a deadline that moved every second
+            // meant re-arming the timeout on every tick. Keeping it stable leaves the post itself
+            // as the only thing that changes, which is what a redraw should be.
+            endsAtMillis = now + DEMO_HORIZON_MINUTES * 60_000L,
             chip = Schedule.liveChipMinutes(minutesToStart),
             teacher = Schedule.LIVE_TEST_TEACHER,
             location = Schedule.LIVE_TEST_ROOM,
@@ -203,6 +227,8 @@ internal object VendorDiagnostics {
      */
     private const val DEMO_CLASS_MINUTES: Long = 45L
     private const val DEMO_BREAK_MINUTES: Long = 15L
+    /** Stable deadline for the demo cards, so a redraw never re-arms the notification timeout. */
+    private const val DEMO_HORIZON_MINUTES: Long = 120L
 
     private const val TAG = "schedule.probe"
     private const val DEMO_ID = 0x5C4E11

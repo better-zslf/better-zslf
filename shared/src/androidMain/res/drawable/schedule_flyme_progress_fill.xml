@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Solid fill overdrawn on top of the track; width is set from code. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <corners android:radius="3dp" />
+    <solid android:color="#3382FF" />
+</shape>

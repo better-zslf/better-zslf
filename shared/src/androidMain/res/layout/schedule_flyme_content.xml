@@ -47,28 +47,28 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- Progress bar: hidden while counting down to the next class -->
     <!--
-      No `style` attribute on purpose.
+      Progress track drawn with plain views instead of a ProgressBar.
 
-      The platform horizontal style ships its own progressDrawable and applies an internal
-      scale/inset wrapper; overriding progressDrawable while keeping the style made the clip
-      layer render at full width, so every variant showed a completely filled bar regardless of
-      the progress value pushed via setProgressBar. Declaring the drawable on a bare
-      ProgressBar makes the clip honour `progress`.
-
-      `indeterminate=false` is explicit because without a style the default is indeterminate,
-      which would spin instead of showing the fraction.
+      A ProgressBar in a RemoteViews is unreliable here: with the platform style the clip layer
+      rendered at full width regardless of `progress`, and without the style Flyme fell back to an
+      indeterminate spinner (a small circle). Both are the host's inflation behaviour, not our
+      values. Two nested views sidestep it entirely: the track is a fixed rounded rectangle and the
+      fill is a sibling whose width is set from code via setViewLayoutWidth.
     -->
-    <ProgressBar
-        android:id="@+id/schedule_flyme_progress"
+    <FrameLayout
+        android:id="@+id/schedule_flyme_progress_track"
         android:layout_width="match_parent"
         android:layout_height="6dp"
         android:layout_marginTop="10dp"
-        android:indeterminate="false"
-        android:max="100"
-        android:progress="0"
-        android:progressDrawable="@drawable/schedule_flyme_progress_track" />
+        android:background="@drawable/schedule_flyme_progress_track">
+
+        <View
+            android:id="@+id/schedule_flyme_progress_fill"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:background="@drawable/schedule_flyme_progress_fill" />
+    </FrameLayout>
 
     <!-- Detail row: three equal columns, blank cells simply empty -->
     <LinearLayout

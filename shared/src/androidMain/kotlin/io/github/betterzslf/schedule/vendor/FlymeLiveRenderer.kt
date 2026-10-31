@@ -137,6 +137,12 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             progress = progress ?: state.progress,
             chip = state.chip,
             deadlineAtMillis = state.endsAtMillis,
+            // The detail columns and start clock have to be copied here explicitly: dropping them
+            // was why the three-column card stayed blank even after the mock state was filled.
+            teacher = state.teacher,
+            room = state.location,
+            periodText = state.periodText,
+            startsAtMillis = state.startsAtMillis,
             notificationId = id,
         )
         return runCatching {
@@ -297,9 +303,12 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             val progress = data.progress?.coerceIn(0f, 1f)
             if (progress == null) {
                 // No honest percentage before a class starts; hiding beats a bar stuck at zero.
-                setViewVisibility(views.contentProgress, View.GONE)
+                setViewVisibility(views.progressTrack, View.GONE)
             } else {
-                setProgressBar(views.contentProgress, PROGRESS_MAX, (progress * PROGRESS_MAX).roundToInt(), false)
+                setViewVisibility(views.progressTrack, View.VISIBLE)
+                // The fill is a plain View, so its width is ours to compute. A ProgressBar in this
+                // host either ignored `progress` (always full) or span as an indeterminate ring.
+                setViewLayoutWidth(views.progressFill, progress * PROGRESS_TRACK_WIDTH_DP, 1)
             }
 
             // Three columns. In class they are teacher / room / period; between classes the third
@@ -346,16 +355,17 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         val capsuleText = id(ID_CAPSULE_TEXT)
         val contentTitle = id(ID_CONTENT_TITLE)
         val contentStatus = id(ID_CONTENT_STATUS)
-        val contentProgress = id(ID_CONTENT_PROGRESS)
+        val progressTrack = id(ID_PROGRESS_TRACK)
+        val progressFill = id(ID_PROGRESS_FILL)
         val label1 = id(ID_LABEL_1); val value1 = id(ID_VALUE_1)
         val label2 = id(ID_LABEL_2); val value2 = id(ID_VALUE_2)
         val label3 = id(ID_LABEL_3); val value3 = id(ID_VALUE_3)
         val ids = listOf(capsuleLayout, contentLayout, capsuleText, contentTitle, contentStatus,
-            contentProgress, label1, value1, label2, value2, label3, value3)
+            progressTrack, progressFill, label1, value1, label2, value2, label3, value3)
         if (ids.any { it == 0 }) return null
         return ResolvedViews(
             capsuleLayout, contentLayout, capsuleText,
-            contentTitle, contentStatus, contentProgress,
+            contentTitle, contentStatus, progressTrack, progressFill,
             label1, value1, label2, value2, label3, value3,
         )
     }
@@ -366,7 +376,8 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         val capsuleText: Int,
         val contentTitle: Int,
         val contentStatus: Int,
-        val contentProgress: Int,
+        val progressTrack: Int,
+        val progressFill: Int,
         val label1: Int, val value1: Int,
         val label2: Int, val value2: Int,
         val label3: Int, val value3: Int,
@@ -477,6 +488,15 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         const val EXTRA_FEATURE_DESC_PIC = "notification.live.feature.descPic"
         /** 1 selects a determinate bar in Meituan's usage. */
         const val PROGRESS_TYPE_BAR = 1
+        /**
+         * Nominal track width in dp for the fill fraction.
+         *
+         * RemoteViews cannot measure, so the width has to be resolved against a fixed reference.
+         * The card is a third of a 360dp screen minus padding, hence ~220dp; being a little wide
+         * only means a full bar clips at the track edge, which `clipChildren` in the layout
+         * already handles.
+         */
+        const val PROGRESS_TRACK_WIDTH_DP = 220
 
         const val EXTRA_CAPSULE_STATUS = "notification.live.capsuleStatus"
         const val EXTRA_CAPSULE_TYPE = "notification.live.capsuleType"
@@ -506,7 +526,8 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         const val ID_CAPSULE_TEXT = "schedule_flyme_capsule_text"
         const val ID_CONTENT_TITLE = "schedule_flyme_title"
         const val ID_CONTENT_STATUS = "schedule_flyme_status"
-        const val ID_CONTENT_PROGRESS = "schedule_flyme_progress"
+        const val ID_PROGRESS_TRACK = "schedule_flyme_progress_track"
+        const val ID_PROGRESS_FILL = "schedule_flyme_progress_fill"
         const val ID_LABEL_1 = "schedule_flyme_label_1"
         const val ID_VALUE_1 = "schedule_flyme_value_1"
         const val ID_LABEL_2 = "schedule_flyme_label_2"

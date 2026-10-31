@@ -108,6 +108,10 @@ interface ScheduleNativeBridge {
      * @return how many notifications the system accepted
      */
     fun testVendorMatrix(): Int = 0
+    /** Post exactly one vendor variant by index, clearing the others, for an unambiguous look. */
+    fun testVendorVariant(index: Int): Boolean = false
+    /** Labels of the vendor variants, in posting order. */
+    fun vendorVariantLabels(): List<String> = emptyList()
     /** Withdraw every notification posted by [testVendorMatrix]. */
     fun clearVendorMatrix() = Unit
     /** Releases app-side observers only; healthy published reminders survive app UI disposal. */

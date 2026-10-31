@@ -54,6 +54,10 @@ private class AndroidScheduleNativeBridge(private val context: Context) : Schedu
     override fun testLiveNotification(): Boolean = engine.testLiveNotification()
     override fun testVendorMatrix(): Int =
         io.github.betterzslf.schedule.vendor.VendorDiagnostics.runFlymeMatrix(context)
+    override fun testVendorVariant(index: Int): Boolean =
+        io.github.betterzslf.schedule.vendor.VendorDiagnostics.runFlymeVariant(context, index)
+    override fun vendorVariantLabels(): List<String> =
+        io.github.betterzslf.schedule.vendor.VendorDiagnostics.labels()
     override fun clearVendorMatrix() =
         io.github.betterzslf.schedule.vendor.VendorDiagnostics.clear(context)
     override fun close() = Unit // Native publication and its alarms intentionally outlive AppGraph's UI.

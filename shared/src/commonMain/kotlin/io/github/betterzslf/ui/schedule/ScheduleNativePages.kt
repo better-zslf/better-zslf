@@ -14,6 +14,7 @@ import io.github.betterzslf.platform.ScheduleWidgetKind
 import io.github.betterzslf.ui.*
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -68,6 +69,18 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                         testNotice = AppText.Schedule.liveMatrixResult(posted, 8)
                         native.refreshCapabilities()
                     })
+                    // One button per variant: the all-at-once run shows which payloads are
+                    // accepted, but comparing two candidate layouts needs one card on screen.
+                    val labels = remember(capabilities.vendor) { native.vendorVariantLabels() }
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        labels.forEachIndexed { index, label ->
+                            TextButton(label, onClick = {
+                                val ok = native.testVendorVariant(index)
+                                testNotice = AppText.Schedule.liveMatrixResult(if (ok) 1 else 0, 1)
+                                native.refreshCapabilities()
+                            }, modifier = Modifier.fillMaxWidth())
+                        }
+                    }
                     TextButton(AppText.Schedule.LIVE_MATRIX_CLEAR, onClick = {
                         native.clearVendorMatrix()
                         testNotice = null

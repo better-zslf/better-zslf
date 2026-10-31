@@ -385,7 +385,10 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
         }
         val vendorClaimed = vendorLive.publish(context, state, capability.vendor)
         if (vendorClaimed) {
-            liveNotifications.clear()
+            // Do NOT call liveNotifications.clear() here. It cancels the standard card under the
+            // same tag, and on a vendor ROM the vendor card is a different notification -- so the
+            // clear ran immediately after a successful post and the user saw nothing. The vendor
+            // dispatcher already stands the standard card down on its own path.
             liveDebug.value = "test: vendor=" + capability.vendor
             return true
         }

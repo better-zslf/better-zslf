@@ -392,7 +392,7 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
     }
 
     /** Debug-only: the live-notification decision trace. */
-    fun liveTrace(): String = liveDebug.value
+    fun liveTrace(): String = liveDebug.value + " | reason=" + liveNotifications.lastReason
 
     private fun liveBlocksFor(view: ScheduleNativeView, nowMillis: Long): List<io.github.betterzslf.feature.schedule.ScheduleLiveBlock> {
         val today = io.github.betterzslf.feature.schedule.scheduleSchoolDate(nowMillis).toString()

@@ -145,29 +145,35 @@ internal object VendorDiagnostics {
      *
      * @param minutesFromNow negative means earlier; the whole day shifts with it.
      */
-    fun runTransitionProbe(context: Context, minutesFromNow: Long): Boolean {
-        val flyme = FlymeLiveRenderer()
-        if (!flyme.isSupported(context)) return false
+    fun runTransitionProbe(context: Context, minutesIntoDay: Long): Boolean {
         clear(context)
         val now = System.currentTimeMillis()
-        val at = now + minutesFromNow * 60_000L
-        // Two 45-minute classes with a 10-minute break between them, anchored so that `at` falls
-        // where the caller asked. Periods are consecutive numbers of the SAME course, matching the
-        // "one course is two periods" rule.
+        // One fixed synthetic day, expressed relative to `now`: the first class runs from
+        // (now - minutesIntoDay - 45min) to (now - minutesIntoDay), so the caller's value says how
+        // far past the first class's end we are. That makes the three interesting moments explicit:
+        //   -20  the class is still running (20 min left)
+        //      5  five minutes into the break
+        //    120  well past the 90-minute break window, so nothing should be shown
+        val firstClassEnd = now - minutesIntoDay * 60_000L
         val day = listOf(
             ScheduleLiveBlock(
                 id = "probe-a", title = AppText.Schedule.LIVE_TEST_COURSE, location = AppText.Schedule.LIVE_TEST_ROOM,
-                startsAtMillis = at - 45 * 60_000L, endsAtMillis = at,
+                startsAtMillis = firstClassEnd - 45 * 60_000L, endsAtMillis = firstClassEnd,
                 teacher = AppText.Schedule.LIVE_TEST_TEACHER, periods = listOf(1, 2),
             ),
             ScheduleLiveBlock(
                 id = "probe-b", title = AppText.Schedule.LIVE_TEST_NEXT_COURSE, location = AppText.Schedule.LIVE_TEST_ROOM,
-                startsAtMillis = at + 10 * 60_000L, endsAtMillis = at + 55 * 60_000L,
+                startsAtMillis = firstClassEnd + 10 * 60_000L, endsAtMillis = firstClassEnd + 55 * 60_000L,
                 teacher = AppText.Schedule.LIVE_TEST_TEACHER, periods = listOf(3, 4),
             ),
         )
-        val state = scheduleLiveState(day, at)
+        val state = scheduleLiveState(day, now)
         if (state.phase == ScheduleLivePhase.NONE) {
+            // Clearing is the whole point of this case: "nothing is happening now" must withdraw the
+            // card, not leave the previous phase's card on screen. Returning false without cancelling
+            // made the lunch and after-school probes look like they did nothing.
+            FlymeLiveRenderer().cancel(context)
+            io.github.betterzslf.schedule.scheduleLiveClearTest(context)
             lastRunSummary = AppText.Schedule.LIVE_TRANSITION_NONE
             return false
         }
@@ -176,14 +182,31 @@ internal object VendorDiagnostics {
             ScheduleLivePhase.BEFORE_NEXT -> AppText.Schedule.LIVE_TRANSITION_BREAK
             ScheduleLivePhase.NONE -> ""
         }
-        val ok = flyme.publishVariant(
-            context = context, state = state, id = PROBE_ID_BASE + COUNTDOWN_INDEX, label = label,
-            capsuleStatus = 1, capsuleType = 1, operation = 0, liveType = 2,
-            withCapsuleRemoteView = false, withContentRemoteView = true,
-        )
-        lastRunSummary = label + " · " + state.courseName
-        return ok
+        // Vendor first, standard second.
+        //
+        // The transition shape is decided by the shared state machine, not by the ROM, so this has
+        // to be observable on any device -- including an emulator, where no vendor renderer claims
+        // support and the earlier version simply returned false without posting anything.
+        val vendorPosted = FlymeLiveRenderer().let { flyme ->
+            if (!flyme.isSupported(context)) false
+            else flyme.publishVariant(
+                context = context, state = state, id = PROBE_ID_BASE + COUNTDOWN_INDEX, label = label,
+                capsuleStatus = 1, capsuleType = 1, operation = 0, liveType = 2,
+                withCapsuleRemoteView = false, withContentRemoteView = true,
+            )
+        }
+        // Both branches are attempted and both results recorded: `||` short-circuited on the vendor
+        // result, so when the vendor renderer reported success the standard path never ran and the
+        // reason stayed stale from an unrelated reconcile.
+        val standard = if (vendorPosted) false else standardPosted(context, state)
+        lastRunSummary = label + " · " + state.courseName +
+            " | vendor=" + vendorPosted + " standard=" + standard
+        return vendorPosted || standard
     }
+
+    /** Posts through the platform Live Update path, so a non-vendor device still shows the card. */
+    private fun standardPosted(context: Context, state: ScheduleLiveState): Boolean =
+        io.github.betterzslf.schedule.scheduleLivePostTest(context, state)
 
     /** Post the countdown variant on its own, on the same ids the matrix uses. */
     fun runCountdownProbe(context: Context): Boolean {

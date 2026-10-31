@@ -135,8 +135,14 @@ class ScheduleProbeActivity : ComponentActivity() {
         // Live-card transitions. Each replays the same synthetic day at a different moment, because
         // a transition cannot be judged from a single frame and the real card only reposts when the
         // schedule boundary alarm fires.
+        // The offset shifts the synthetic day so that `now` falls at a chosen point: -20 puts now
+        // 20 minutes into the first class; 5 puts it 5 minutes before the next one starts; 120 lands
+        // past the 90-minute break window, where nothing should be shown at all.
         action("Live: in class") {
-            display("transition in-class ok=${native.testLiveTransition(-20)}")
+            val ok = native.testLiveTransition(-20)
+            display("transition in-class ok=$ok")
+            val trace = io.github.betterzslf.schedule.scheduleLiveDiagnostic(applicationContext)
+            status.text = status.text.toString() + "\n" + trace
         }
         action("Live: break (10 min to next)") {
             display("transition break ok=${native.testLiveTransition(5)}")

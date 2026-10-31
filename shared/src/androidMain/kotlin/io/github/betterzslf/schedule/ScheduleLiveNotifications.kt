@@ -107,10 +107,20 @@ internal class ScheduleLiveNotifications(private val context: Context) {
             lastReason = "test: notifications disabled"
             return false
         }
-        val result = runCatching { notifications.notify(TAG, NOTIFICATION_ID, build(state, "test")) }
+        // A separate id, not the live one.
+        //
+        // Posting the probe under NOTIFICATION_ID meant the real reconcile -- which runs on every
+        // schedule tick -- immediately overwrote it, so the probe's content was never observable.
+        // Its own id also keeps a debug post from disturbing the production card.
+        val result = runCatching { notifications.notify(TAG_TEST, TEST_NOTIFICATION_ID, build(state, "test")) }
         lastPostFailed = result.isFailure
+        // Record what the platform reported, including the channel's state at post time: a notify()
+        // call can succeed while nothing appears (channel blocked, importance NONE), and without
+        // these values a silent no-op looks identical to success.
         lastReason = result.exceptionOrNull()?.let { it::class.java.simpleName + ": " + (it.message ?: "") }
-            ?: ("test-posted:" + state.phase.name)
+            ?: ("test-posted:" + state.phase.name +
+                " channel=" + (notifications.getNotificationChannel(CHANNEL)?.importance ?: -1) +
+                " enabled=" + notifications.areNotificationsEnabled())
         return result.isSuccess
     }
 
@@ -274,6 +284,9 @@ internal class ScheduleLiveNotifications(private val context: Context) {
     fun available(): Boolean = Build.VERSION.SDK_INT >= 26
 
     internal companion object {
+        /** Debug probe id and tag; deliberately distinct from the production live card. */
+        const val TAG_TEST = "schedule.live.test"
+        const val TEST_NOTIFICATION_ID = 0x5C5E99
         const val CHANNEL = "schedule_live_v1"
         const val TAG = "schedule.live"
         const val NOTIFICATION_ID = 1
@@ -310,5 +323,30 @@ class ScheduleLiveDismissReceiver : android.content.BroadcastReceiver() {
     private companion object {
         /** Anything arriving this close to the deadline is an expiry, not a user action. */
         const val TIMEOUT_SLACK_MILLIS = 1_500L
+    }
+}
+
+/**
+ * Debug-only: post one caller-supplied state through the standard Live Update path.
+ *
+ * Exists so the transition probe can be observed on devices where no vendor renderer applies --
+ * an emulator, or any ROM using the native API. Top-level and public for the same reason as
+ * [scheduleLiveDiagnostic]: the probe lives in a different module, and widening the engine type
+ * just for a debug hook would leak into the release contract.
+ */
+fun scheduleLivePostTest(context: android.content.Context, state: io.github.betterzslf.feature.schedule.ScheduleLiveState): Boolean =
+    ScheduleLiveNotifications(context).publishTest(state)
+
+/**
+ * Debug-only: withdraw the probe card posted by [scheduleLivePostTest].
+ *
+ * Needed because the probe owns its own tag and id to stay out of the production card's way, so
+ * the engine's normal cancel path does not reach it. Without this, "nothing is happening now"
+ * would leave the previous phase's probe card on screen.
+ */
+fun scheduleLiveClearTest(context: android.content.Context) {
+    runCatching {
+        context.getSystemService(android.app.NotificationManager::class.java)
+            ?.cancel(ScheduleLiveNotifications.TAG_TEST, ScheduleLiveNotifications.TEST_NOTIFICATION_ID)
     }
 }

@@ -58,6 +58,21 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                 }
                 testNotice?.let { message -> InfoBanner(message,
                     tone = if (message == AppText.Schedule.LIVE_TEST_POSTED) UiTone.Positive else UiTone.Warning) }
+                // Flyme's payload is reverse engineered, so rather than guess once, post every
+                // combination and let one screenshot decide. Only shown where that path exists.
+                if (capabilities.vendor == ScheduleVendor.MEIZU) {
+                    Text(AppText.Schedule.LIVE_MATRIX_HINT, fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    PrimaryAction(AppText.Schedule.LIVE_MATRIX_ACTION, onClick = {
+                        val posted = native.testVendorMatrix()
+                        testNotice = AppText.Schedule.liveMatrixResult(posted, 8)
+                        native.refreshCapabilities()
+                    })
+                    TextButton(AppText.Schedule.LIVE_MATRIX_CLEAR, onClick = {
+                        native.clearVendorMatrix()
+                        testNotice = null
+                    })
+                }
             } }
             if (capabilities.batteryRestricted || capabilities.vendor != ScheduleVendor.AOSP) {
                 item("reminders-vendor") { InfoBanner(vendorHint(capabilities.vendor),

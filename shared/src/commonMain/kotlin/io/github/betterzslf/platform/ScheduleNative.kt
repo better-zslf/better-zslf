@@ -102,6 +102,14 @@ interface ScheduleNativeBridge {
      * advertising a test hook there would be a lie the UI would have to work around.
      */
     fun testLiveNotification(): Boolean = false
+    /**
+     * Post one notification per vendor-payload combination so a single screenshot shows which
+     * variant the ROM honours. Only meaningful where a vendor island exists; default is a no-op.
+     * @return how many notifications the system accepted
+     */
+    fun testVendorMatrix(): Int = 0
+    /** Withdraw every notification posted by [testVendorMatrix]. */
+    fun clearVendorMatrix() = Unit
     /** Releases app-side observers only; healthy published reminders survive app UI disposal. */
     fun close()
 }

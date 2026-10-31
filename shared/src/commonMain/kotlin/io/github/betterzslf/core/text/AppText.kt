@@ -913,6 +913,25 @@ object AppText {
         const val LIVE_TEST_ROOM = "测试教室 A101"
         const val LIVE_TEST_FAILED = "本机暂时发不出实况通知：请检查通知权限，或按下方厂商说明放开后台限制。"
         const val LIVE_TEST_POSTED = "已发出，请下拉通知栏查看。"
+        /** Flyme payload matrix: one card per combination, so one screenshot decides the winner. */
+        const val LIVE_MATRIX_ACTION = "测试魅族参数矩阵（8 组）"
+        const val LIVE_MATRIX_HINT = "一次发出 8 条不同参数的通知，标题就是组合名。下拉通知栏截图即可看出哪组生效。"
+        const val LIVE_MATRIX_CLEAR = "清除全部测试通知"
+        /** Variant names for the Flyme matrix; each becomes a notification title. */
+        val LIVE_MATRIX_LABELS: List<String> = listOf(
+            "A 基线 5/0/2 双视图",
+            "B 仅胶囊视图",
+            "C 无自定义视图",
+            "D capsuleType=1",
+            "E type=1",
+            "F type=10",
+            "G operation=1",
+            "H capsuleType=0",
+        )
+        fun liveMatrixSummary(posted: Int, total: Int, notificationEnabled: Boolean) =
+            "已投递 $posted/$total；通知总开关=$notificationEnabled"
+        fun liveMatrixResult(posted: Int, total: Int) =
+            "已投递 $posted/$total 条。若一条都没显示，说明本机 Flyme 未对该应用开放实况通知。"
         /** Course anchor for the Meizu expanded card; never a fabricated value. */
         const val VENDOR_EMPTY_SUBTITLE = ""
         /** Ardot P42 labels; ACCOUNT_FIELD above already names the field. */

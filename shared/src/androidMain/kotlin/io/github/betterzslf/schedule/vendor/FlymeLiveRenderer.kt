@@ -15,6 +15,7 @@ import android.view.View
 import android.widget.RemoteViews
 import io.github.betterzslf.core.text.AppText.NativeSchedule
 import io.github.betterzslf.core.text.AppText.Schedule
+import io.github.betterzslf.feature.schedule.ScheduleLiveState
 import kotlin.math.roundToInt
 
 /**
@@ -104,6 +105,56 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
         }.getOrDefault(false)
     }
 
+    /**
+     * Post one diagnostic variant with explicit knob values.
+     *
+     * Kept next to the real [publish] so both build the notification the same way; the only
+     * difference is that these knobs come from the probe's matrix instead of the constants.
+     * A failed variant returns false and does not disturb the others.
+     */
+    internal fun publishVariant(
+        context: Context,
+        state: ScheduleLiveState,
+        id: Int,
+        label: String,
+        capsuleStatus: Int,
+        capsuleType: Int,
+        operation: Int,
+        liveType: Int,
+        withCapsuleRemoteView: Boolean,
+        withContentRemoteView: Boolean,
+    ): Boolean {
+        if (!isFlymeFamily() || !notificationsAllowed(context)) return false
+        val views = resolve(context) ?: return false
+        val data = VendorLiveData(
+            title = label,
+            subtitle = state.title,
+            status = state.text,
+            progress = state.progress,
+            chip = state.chip,
+            deadlineAtMillis = state.endsAtMillis,
+            notificationId = id,
+        )
+        return runCatching {
+            val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+            ensureChannel(manager)
+            val capsuleViews = if (withCapsuleRemoteView) capsuleView(context, views, data) else null
+            val builder = Notification.Builder(context, channelId())
+                .setSmallIcon(notificationIcon(context))
+                .setContentTitle(label)
+                .setContentText(state.text)
+                .setContentIntent(openIntent(context))
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setShowWhen(true)
+                .setWhen(state.endsAtMillis)
+                .addExtras(liveExtras(context, data, capsuleViews, capsuleStatus, capsuleType, operation, liveType))
+            if (withContentRemoteView) builder.setCustomContentView(contentView(context, views, data))
+            manager.notify(id, builder.build())
+            true
+        }.getOrDefault(false)
+    }
+
     override fun cancel(context: Context) {
         // Cancel the id that was actually posted plus the shared default: a replay of an old alarm
         // or a process restart can leave a card behind under either.
@@ -122,13 +173,21 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
      * actually inflates. The outer bundle is the live entry point: `is_live` turns the feature on
      * and the capsule is attached to it by key.
      */
-    private fun liveExtras(context: Context, data: VendorLiveData, capsule: RemoteViews): Bundle {
+    private fun liveExtras(
+        context: Context,
+        data: VendorLiveData,
+        capsule: RemoteViews?,
+        capsuleStatus: Int = CAPSULE_STATUS_ENABLED,
+        capsuleType: Int = CAPSULE_TYPE_DEFAULT,
+        operation: Int = LIVE_OPERATION_SHOW,
+        liveType: Int = LIVE_TYPE_STANDARD,
+    ): Bundle {
         val capsuleBundle = Bundle().apply {
             // 1 is the only value the demos ever saw render; everything else hides the pill.
-            putInt(EXTRA_CAPSULE_STATUS, CAPSULE_STATUS_ENABLED)
-            // Kept at the demo's 5 although it was observed to make no difference: inventing another
-            // number would be a blind guess against an undocumented enum.
-            putInt(EXTRA_CAPSULE_TYPE, CAPSULE_TYPE_DEFAULT)
+            putInt(EXTRA_CAPSULE_STATUS, capsuleStatus)
+            // Defaults to the demo's 5. The diagnostics probe varies it deliberately, because the
+            // demos disagreed (1 vs 5) and neither explained the enum.
+            putInt(EXTRA_CAPSULE_TYPE, capsuleType)
             putString(EXTRA_CAPSULE_CONTENT, chipText(data))
             putInt(EXTRA_CAPSULE_BG_COLOR, CAPSULE_BG_COLOR)
             putInt(EXTRA_CAPSULE_CONTENT_COLOR, CAPSULE_TEXT_COLOR)
@@ -138,14 +197,16 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             // does not exist in this app and fail the whole pill. Without an app icon the pill falls
             // back to the demo's text-only form, which is what it already looks like at 60dp.
             appIcon(context)?.let { putParcelable(EXTRA_CAPSULE_ICON, Icon.createWithResource(context, it)) }
-            putParcelable(EXTRA_CAPSULE_REMOTE_VIEW, capsule)
+            // Null means "let Flyme build its own pill from the bundle" -- one of the probe's
+            // questions, since a rejected RemoteViews would otherwise hide the whole capsule.
+            capsule?.let { putParcelable(EXTRA_CAPSULE_REMOTE_VIEW, it) }
         }
         return Bundle().apply {
             putBoolean(EXTRA_IS_LIVE, true)
             // 0 = show/create. The demos only ever used 0, and the value was not observed to matter.
-            putInt(EXTRA_LIVE_OPERATION, LIVE_OPERATION_SHOW)
+            putInt(EXTRA_LIVE_OPERATION, operation)
             // 2 = the demo's "standard live notification" type; same caveat as capsuleType.
-            putInt(EXTRA_LIVE_TYPE, LIVE_TYPE_STANDARD)
+            putInt(EXTRA_LIVE_TYPE, liveType)
             putBundle(EXTRA_LIVE_CAPSULE, capsuleBundle)
         }
     }
@@ -239,13 +300,18 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
             NotificationChannel(
                 channelId(),
                 Schedule.VENDOR_LIVE_CHANNEL_MEIZU,
-                NotificationManager.IMPORTANCE_DEFAULT,
+                // HIGH, matching the only known-working reference implementation. Flyme decides
+                // whether to host a capsule from the channel, so a lower importance risks the pill
+                // never being created at all; sound and vibration stay off so it is still silent.
+                NotificationManager.IMPORTANCE_HIGH,
             ).apply {
                 description = Schedule.VENDOR_LIVE_CHANNEL_DESCRIPTION_MEIZU
                 setShowBadge(false)
                 enableVibration(false)
                 setSound(null, null)
-                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+                // PUBLIC: the capsule is also meant to show on the lock screen, and a PRIVATE
+                // channel visibility suppresses exactly that surface.
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             },
         )
     }

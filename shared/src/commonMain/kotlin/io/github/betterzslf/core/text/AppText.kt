@@ -656,6 +656,20 @@ object AppText {
         const val CAPSULE_TEXT_SUMMARY = "开启后胶囊显示「数据结构 · 33分」，关闭只显示「33分」。部分机型胶囊较窄会被截断，可按实际效果选择。"
         /** Shown when the capsule wording cannot be stored, so the switch is not silently inert. */
         const val CAPSULE_TEXT_UNSAVED = "暂时无法保存：请先绑定教务账号。"
+
+        /**
+         * Names the layer that refused the write.
+         *
+         * A single generic message was not enough to act on: the record guard, a missing native
+         * bridge and a storage error all looked the same, and each needs a different fix.
+         */
+        fun capsuleUnsaved(reason: String): String = when (reason) {
+            "no-record" -> "暂时无法保存：还没有绑定教务账号。"
+            "unsupported" -> "当前设备不支持实况通知，该设置不会生效。"
+            "stale-session" -> "保存被拒绝：账号状态刚发生变化，请重试。"
+            "store" -> "写入本地存储失败，请检查可用空间后重试。"
+            else -> "暂时无法保存，请稍后重试。"
+        }
         /** Course anchor for the Meizu expanded card; never a fabricated value. */
         const val VENDOR_EMPTY_SUBTITLE = ""
         /** Ardot P42 labels; ACCOUNT_FIELD above already names the field. */

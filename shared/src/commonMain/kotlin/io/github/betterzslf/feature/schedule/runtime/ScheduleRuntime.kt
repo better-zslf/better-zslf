@@ -347,13 +347,24 @@ class ScheduleRuntime(
      * the UI could not tell the difference between "saved" and "ignored".
      */
     suspend fun setCapsuleLongText(long: Boolean): Boolean {
-        val current = stored ?: return false
-        if (!native.supported) return false
-        if (!save(current.copy(capsuleLongText = long))) return false
+        val current = stored ?: run { capsuleFailure = "no-record"; return false }
+        if (!native.supported) { capsuleFailure = "unsupported"; return false }
+        if (!save(current.copy(capsuleLongText = long))) {
+            // Two causes look identical from the UI: the guard rejected this write because the
+            // session changed underneath, or the store threw. Recording which one turns a dead
+            // switch into a diagnosable one.
+            capsuleFailure = if (mutableState.value.storageFailure) "store" else "stale-session"
+            return false
+        }
+        capsuleFailure = ""
         showRecord(stored!!)
         publishNative(cached = true)
         return true
     }
+
+    /** Why the last [setCapsuleLongText] failed, for the settings screen. Empty on success. */
+    var capsuleFailure: String = ""
+        private set
 
     suspend fun updatePeriods(periods: List<SchedulePeriod>): Boolean {
         val current = stored ?: return false

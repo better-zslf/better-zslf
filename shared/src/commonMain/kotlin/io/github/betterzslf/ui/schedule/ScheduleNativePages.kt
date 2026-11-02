@@ -117,10 +117,11 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                             scope.launch {
                                 try {
                                     val saved = runtime.setCapsuleLongText(long)
-                                    // Say so when the write is refused instead of leaving the
-                                    // switch looking broken: without a bound record there is nothing
-                                    // to persist the preference against.
-                                    if (!saved) notice = AppText.Schedule.CAPSULE_TEXT_UNSAVED
+                                    // Report the concrete cause, not just "failed": the switch was
+                                    // silent for two rounds precisely because every failure looked
+                                    // the same from here.
+                                    notice = if (saved) null else AppText.Schedule.capsuleUnsaved(
+                                        runtime.capsuleFailure)
                                 } finally { applying = false }
                             }
                         } })

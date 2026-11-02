@@ -60,11 +60,13 @@ internal class SchedulePersistence(private val storage: KeyValueStore) {
         val encoded = storage.get(DATA_KEY) ?: return null
         return try {
             val record = json.decodeFromString<StoredSchedule>(encoded)
-            require(record.schema == 1 && record.snapshots.size <= MAX_TERMS && record.dailyAttempts.size <= MAX_ATTEMPTS &&
+            val usable = record.schema == 1 && record.snapshots.size <= MAX_TERMS && record.dailyAttempts.size <= MAX_ATTEMPTS &&
                 record.owner.isNotBlank() && record.account.isNotBlank() && record.password.isNotEmpty() &&
-                record.bindingRevision.isNotBlank() && validateSchedulePeriods(record.periods)) { "Invalid timetable cache" }
-            record
+                record.bindingRevision.isNotBlank() && validateSchedulePeriods(record.periods)
+            record.takeIf { usable }
         } catch (_: Exception) {
+            // A corrupt or undecryptable slot reads as "nothing stored"; callers fall back to the
+            // binding form rather than crashing.
             null
         }
     }

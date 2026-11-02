@@ -40,7 +40,12 @@ fun ScheduleBindingPrompt(graph: AppGraph, onBind: () -> Unit) {
  * longer depends on a campus login, also directly from the login screen's 教务系统 entry.
  */
 @Composable
-fun ScheduleBindingPage(runtime: ScheduleRuntime, updatingPassword: Boolean, onBack: () -> Unit) {
+fun ScheduleBindingPage(
+    runtime: ScheduleRuntime,
+    updatingPassword: Boolean,
+    onBack: () -> Unit,
+    onBound: (() -> Unit)? = null,
+) {
     val state by runtime.state.collectAsState()
     val scope = rememberCoroutineScope()
     var draft by remember(runtime, state.owner) {
@@ -50,6 +55,12 @@ fun ScheduleBindingPage(runtime: ScheduleRuntime, updatingPassword: Boolean, onB
     var saving by remember(runtime, state.owner) { mutableStateOf(false) }
     var testing by remember(runtime, state.owner) { mutableStateOf(false) }
     var notice by remember(runtime, state.owner) { mutableStateOf<String?>(null) }
+    // The runtime is pointed at its slot once per process, so a page that opens later may be
+    // looking at an empty in-memory record even though the binding is on disk. Re-read before
+    // drawing the form so an already-confirmed account is never presented as a blank form.
+    LaunchedEffect(runtime, state.owner) {
+        runtime.reloadFromStorage()
+    }
     DisposableEffect(runtime, state.owner) { onDispose { runtime.cancelVerification() } }
     val back = { runtime.cancelVerification(); onBack() }
     val canConfirm = draft.canConfirm(state.verifiedAccount, state.busy || state.verifying || testing || saving) && !state.storageFailure
@@ -120,7 +131,11 @@ fun ScheduleBindingPage(runtime: ScheduleRuntime, updatingPassword: Boolean, onB
                             try {
                                 if (runtime.confirmBinding()) {
                                     draft = ScheduleBindingDraft()
-                                    onBack()
+                                    // Callers that host this form outside the timetable (the login
+                                    // screen) need to leave the login surface on success; inside the
+                                    // timetable the form simply pops back.
+                                    val leave = onBound
+                                    if (leave != null) leave() else onBack()
                                 } else {
                                     notice = AppText.Common.LOCAL_DATA_SAVE_FAILED
                                 }

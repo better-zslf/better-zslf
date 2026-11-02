@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -32,7 +33,8 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
-fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit, onWater: (() -> Unit)? = null, onResetPassword: (() -> Unit)? = null) {
+fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit, onWater: (() -> Unit)? = null,
+                onResetPassword: (() -> Unit)? = null, onEnter: () -> Unit = {}) {
     // The login surface is a two-step flow: first choose which account to sign in with, then the
     // form for that choice. Dormitory network is a secondary option, so it stays a small link
     // rather than a third card. Anything that signs in ends up in the same session gate.
@@ -47,9 +49,12 @@ fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit, onWater: (() -> U
     when (stage) {
         LoginStage.Chooser -> LoginChooser(
             showDormLink = true,
+            campusBound = graph.sessions.session.collectAsState().value != null,
+            academicBound = graph.schedule.state.collectAsState().value.boundAccount != null,
             onCampus = { stage = LoginStage.Campus },
             onAcademic = { stage = LoginStage.Academic },
             onDorm = { stage = LoginStage.Dorm },
+            onEnter = onEnter,
             onDocument = onDocument,
         )
         LoginStage.Campus -> LoginForm(
@@ -90,6 +95,9 @@ fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit, onWater: (() -> U
             runtime = graph.schedule,
             updatingPassword = false,
             onBack = { stage = LoginStage.Chooser },
+            // Returning to the chooser is deliberate: the chooser is where the account list lives,
+            // and it now shows an explicit way in once at least one account is bound.
+            onBound = { stage = LoginStage.Chooser },
         )
         LoginStage.Dorm -> LoginUnavailable(
             title = AppText.Auth.ENTRY_DORM_LINK,
@@ -105,11 +113,15 @@ private enum class LoginStage { Chooser, Campus, Academic, Dorm }
 @Composable
 private fun LoginChooser(
     showDormLink: Boolean,
+    campusBound: Boolean,
+    academicBound: Boolean,
     onCampus: () -> Unit,
     onAcademic: () -> Unit,
     onDorm: () -> Unit,
+    onEnter: () -> Unit,
     onDocument: (String) -> Unit,
 ) {
+    val canEnter = campusBound || academicBound
     Scaffold(containerColor = MiuixTheme.colorScheme.surface) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
@@ -133,6 +145,7 @@ private fun LoginChooser(
                     accent = AppUiTokens.Primary,
                     icon = MiuixIcons.Contacts,
                     testTag = "entryCampus",
+                    bound = campusBound,
                     onClick = onCampus,
                 )
             }
@@ -143,6 +156,7 @@ private fun LoginChooser(
                     accent = AppUiTokens.Positive,
                     icon = MiuixIcons.Notes,
                     testTag = "entryAcademic",
+                    bound = academicBound,
                     onClick = onAcademic,
                 )
             }
@@ -164,6 +178,15 @@ private fun LoginChooser(
                         .testTag("entryDorm"),
                 )
             }
+            if (canEnter) item {
+                // Only appears once something is actually usable, so the chooser never offers a way
+                // into an app that would have nothing to show.
+                PrimaryAction(
+                    text = AppText.Auth.ENTER_APP,
+                    modifier = Modifier.fillMaxWidth().padding(top = AppUiTokens.SectionGap).testTag("enterApp"),
+                    onClick = onEnter,
+                )
+            }
             item {
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.Center) {
                     TextButton(AppText.App.USER_AGREEMENT_DISPLAY_LABEL, onClick = { onDocument(AppText.Document.USER_AGREEMENT) })
@@ -181,6 +204,7 @@ private fun LoginEntryCard(
     accent: Color,
     icon: ImageVector,
     testTag: String,
+    bound: Boolean,
     onClick: () -> Unit,
 ) {
     Card(
@@ -196,10 +220,20 @@ private fun LoginEntryCard(
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                Text(subtitle, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Text(
+                    if (bound) subtitle + AppText.Auth.ENTRY_BOUND_SUFFIX else subtitle,
+                    fontSize = 13.sp,
+                    color = if (bound) AppUiTokens.Positive else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
             }
-            Icon(BackChevron, contentDescription = null, tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                modifier = Modifier.size(20.dp).rotate(180f))
+            if (bound) {
+                // A filled dot replaces the chevron so the bound state reads at a glance, not only
+                // through the subtitle text.
+                Box(Modifier.size(10.dp).clip(CircleShape).background(AppUiTokens.Positive))
+            } else {
+                Icon(BackChevron, contentDescription = null, tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.size(20.dp).rotate(180f))
+            }
         }
     }
 }

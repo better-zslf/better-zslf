@@ -342,6 +342,49 @@ class ScheduleRuntimeTest {
         runtime.close()
     }
 
+    /**
+     * A page that opens after the process-start `setOwner` must still see the stored binding.
+     *
+     * The runtime is pointed at its slot once, so a later visit can find `stored == null` while the
+     * record is on disk. Without a re-read the form rendered blank and the confirmed binding looked
+     * lost.
+     */
+    @Test fun reloadFromStorageRecoversABindingThatMemoryNoLongerHolds() = runTest {
+        val store = Store()
+        val first = runtime(Backend(listOf(term), ::snapshot), store)
+        first.setOwner("local-timetable")
+        bind(first)
+        first.close()
+
+        val reopened = runtime(Backend(listOf(term), ::snapshot), store)
+        // Simulate "the page opens later": the owner is set, but nothing was restored in memory.
+        reopened.setOwner("local-timetable")
+        assertEquals("academic-fixture", reopened.state.value.boundAccount)
+        reopened.reloadFromStorage()
+        assertEquals("academic-fixture", reopened.state.value.boundAccount)
+        assertNotNull(reopened.state.value.snapshot)
+        reopened.close()
+    }
+
+    /** A pending revocation must not be undone by a reload. */
+    @Test fun reloadFromStorageDoesNotReviveARevokedBinding() = runTest {
+        val store = Store()
+        val first = runtime(Backend(listOf(term), ::snapshot), store)
+        first.setOwner("local-timetable")
+        bind(first)
+        store.failRemove = true
+        assertFalse(first.unbind())
+        first.close()
+        store.failRemove = false
+
+        val reopened = runtime(Backend(listOf(term), ::snapshot), store)
+        reopened.setOwner("local-timetable")
+        reopened.reloadFromStorage()
+        assertNull(reopened.state.value.boundAccount)
+        assertNull(reopened.state.value.snapshot)
+        reopened.close()
+    }
+
     @Test fun temporaryCampusExpiryRetainsEncryptedBindingButExplicitLogoutDeletesIt() = runTest {
         val store = Store()
         val runtime = runtime(Backend(listOf(term), ::snapshot), store)

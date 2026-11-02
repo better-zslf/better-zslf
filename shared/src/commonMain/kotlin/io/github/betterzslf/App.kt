@@ -74,6 +74,9 @@ class AppGraph(val platform: PlatformServices) {
         // made the academic entry unreachable for anyone who had not signed in to 掌上莲峰 first.
         applicationScope.launch {
             schedule.setOwner(ScheduleSlotKey)
+            // A confirmed binding lives on disk; restore it before the shell decides whether the
+            // timetable has anything to show, otherwise a restart looked like "never bound".
+            schedule.reloadFromStorage()
             schedule.onForeground()
         }
         applicationScope.launch {
@@ -180,6 +183,8 @@ fun MutableList<NavKey>.reconcileLoggedOutRoute() {
     }
 }
 
+
+
 @Composable
 fun App(platform: PlatformServices = remember { createPlatformServices() }, graphProvider: (() -> AppGraph)? = null) {
     var startupAttempt by remember { mutableIntStateOf(0) }
@@ -198,6 +203,10 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
     }
     DisposableEffect(graph, graphProvider) { onDispose { if (graphProvider == null) graph.close() } }
     val session by graph.sessions.session.collectAsState()
+    // A confirmed academic binding is an independent way into the app: it has its own credentials
+    // and must not require a campus login just to reach the timetable.
+    val scheduleState by graph.schedule.state.collectAsState()
+    val hasAcademicBinding = scheduleState.boundAccount != null
     val settings by graph.settings.settings.collectAsState()
     val mode = when (settings.theme) {
         "Light" -> if (settings.dynamicColor) ColorSchemeMode.MonetLight else ColorSchemeMode.Light
@@ -277,11 +286,20 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
             onBack = { if (root.size > 1 && root.last() != Route.Login) root.removeLastOrNull() },
             transition = NavTransitions.MiuixDefault, effects = NavDisplayEffects(cornerClipRadius = 0.dp)) {
             entry<Route.Main> {
-                if (session != null) MainShell(graph, selected, { selected = it }, tabStacks,
+                // The timetable is usable without a campus session, so "signed in" is no longer the
+                // only way in: a confirmed academic binding also unlocks the shell. Feature pages
+                // that genuinely need a campus session still guard themselves.
+                if (session != null || hasAcademicBinding) MainShell(graph, selected, { selected = it }, tabStacks,
                     onAccountRecovery = { root.pushUnique(Route.Page("resetpassword", title = AppText.Recovery.RECOVER_PASSWORD_TITLE)) })
             }
             entry<Route.Login> {
                 LoginScreen(graph, onDocument = { root.pushUnique(Route.Page("document", it, it)) },
+                    onEnter = {
+                        // Entering from the chooser replaces the login surface with the shell; the
+                        // academic binding it was gated on is already stored on this device.
+                        root.clear()
+                        root.add(Route.Main)
+                    },
                     onWater = if (EditionAccess.waterEnabled) ({ root.pushUnique(Route.Page("water")) }) else null,
                     onResetPassword = { root.pushUnique(Route.Page("resetpassword", title = AppText.Recovery.RECOVER_PASSWORD_TITLE)) })
             }

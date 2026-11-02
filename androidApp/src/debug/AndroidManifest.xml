@@ -6,6 +6,16 @@
             android:launchMode="singleTask" android:label="Local capability probe" />
         <activity android:name=".ScheduleProbeActivity" android:exported="true"
             android:enableOnBackInvokedCallback="true" android:windowSoftInputMode="adjustResize"
-            android:label="Offline synthetic schedule probe" />
+            android:label="Offline synthetic schedule probe">
+            <!--
+              Launcher entry on purpose: the probe has no in-app route, so without an icon the only
+              way in was `am start`, which is not available on a remote device service. The release
+              manifest has no such entry, and this whole file is debug-only.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

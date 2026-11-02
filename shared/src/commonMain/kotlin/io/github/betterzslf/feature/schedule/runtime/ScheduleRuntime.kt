@@ -116,6 +116,33 @@ class ScheduleRuntime(
         mutableState.value = mutableState.value.copy(showBindingPrompt = false)
     }
 
+    /**
+     * Re-reads the slot from storage without disturbing the current session.
+     *
+     * The runtime is only pointed at its slot once, at process start. After a confirmed binding the
+     * page navigates away and comes back to a runtime whose in-memory record may already have been
+     * dropped (a failed refresh, a cleanup retry, or simply a later `setOwner` early-return), which
+     * left the form blank and looked like the binding had not been saved. Callers that are about to
+     * show the binding form or the timetable can ask for one cheap re-read instead of relying on
+     * process-start state.
+     */
+    fun reloadFromStorage() {
+        val owner = mutableState.value.owner ?: return
+        if (closed) return
+        if (stored != null) return
+        val record = try {
+            persistence.adoptLegacyOwner(owner)
+            persistence.peek()?.takeIf { persistence.restorable(it.owner) }
+        } catch (e: Exception) {
+            mutableState.value = mutableState.value.copy(storageFailure = true, message = AppText.Schedule.STORAGE_FAILURE)
+            return
+        }
+        if (record == null) return
+        stored = record
+        revision = record.bindingRevision
+        showRecord(record)
+    }
+
     fun courseIdForOccurrence(id: String): String? {
         val record = stored ?: return null
         val snapshot = record.snapshots.firstOrNull { it.term.id == record.sourceTermId } ?: return null

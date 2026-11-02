@@ -91,6 +91,8 @@ object AppText {
         const val ENTRY_DORM_LINK: String = "宿舍网络登录"
         const val ENTRY_LOGGED_IN_SUFFIX: String = " · 已登录"
         const val ENTRY_BACK_CONTENT_DESCRIPTION: String = "返回登录方式选择"
+        const val ENTRY_BOUND_SUFFIX: String = " · 已绑定"
+        const val ENTER_APP: String = "进入应用"
         const val STAGE_NOT_READY_HINT: String = "这一种登录方式还在接入中。当前可以先用掌上莲峰登录，进入后功能不受影响。"
 
         // Feature/model display copy; protocol values remain at their source.

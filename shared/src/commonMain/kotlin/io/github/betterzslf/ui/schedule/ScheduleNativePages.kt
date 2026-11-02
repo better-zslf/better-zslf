@@ -82,6 +82,12 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                 item("reminders-vendor") { InfoBanner(vendorHint(capabilities.vendor),
                     title = AppText.Schedule.BATTERY_OPTIMIZATION, tone = UiTone.Neutral) }
             }
+            // Fluid Cloud has its own two-level switch on ColorOS. Without this the user finds only
+            // the master toggle and concludes the app does not support live notifications at all.
+            if (capabilities.vendor == ScheduleVendor.OPPO || capabilities.vendor == ScheduleVendor.ONEPLUS) {
+                item("reminders-fluid-cloud") { InfoBanner(AppText.Schedule.VENDOR_OPPO_FLUID_HINT,
+                    title = AppText.Schedule.VENDOR_MODE_OPPO, tone = UiTone.Neutral) }
+            }
             // Capsule wording: only meaningful on a ROM whose pill we draw, so it is shown solely
             // where a vendor island exists.
             if (capabilities.vendor != ScheduleVendor.AOSP) {
@@ -92,7 +98,15 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                         enabled = state.owner != null && !state.busy && !applying,
                         onCheckedChange = { long -> if (!applying) {
                             applying = true
-                            scope.launch { try { runtime.setCapsuleLongText(long) } finally { applying = false } }
+                            scope.launch {
+                                try {
+                                    val saved = runtime.setCapsuleLongText(long)
+                                    // Say so when the write is refused instead of leaving the
+                                    // switch looking broken: without a bound record there is nothing
+                                    // to persist the preference against.
+                                    if (!saved) notice = AppText.Schedule.CAPSULE_TEXT_UNSAVED
+                                } finally { applying = false }
+                            }
                         } })
                 } }
             }
@@ -242,5 +256,10 @@ private fun vendorLiveMode(vendor: ScheduleVendor): String = when (vendor) {
     ScheduleVendor.XIAOMI -> AppText.Schedule.VENDOR_MODE_XIAOMI
     ScheduleVendor.VIVO -> AppText.Schedule.VENDOR_MODE_VIVO
     ScheduleVendor.MEIZU -> AppText.Schedule.VENDOR_MODE_MEIZU
+    // OPPO maps Android's Live Updates onto 流体云, so the mechanism is the standard one but the
+    // name the user needs to look for is different. Saying "标准实况通知" here would send them
+    // hunting for a setting ColorOS does not name that way.
+    ScheduleVendor.OPPO -> AppText.Schedule.VENDOR_MODE_OPPO
+    ScheduleVendor.ONEPLUS -> AppText.Schedule.VENDOR_MODE_OPPO
     else -> AppText.Schedule.VENDOR_MODE_STANDARD
 }

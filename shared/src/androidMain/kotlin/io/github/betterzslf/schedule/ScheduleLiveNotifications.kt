@@ -175,7 +175,13 @@ internal class ScheduleLiveNotifications(private val context: Context) {
         val builder = Notification.Builder(context, CHANNEL)
             .setSmallIcon(icon)
             .setContentTitle(state.title)
-            .setContentText(state.text)
+            // The body carries the class context, not the countdown.
+            //
+            // The chronometer below already renders a live "1:59:51", and ColorOS's Fluid Cloud
+            // shows both: with state.text in the body the capsule read "测试课程 1:59:51 / 剩余 33
+            // 分钟", the same fact twice in two formats. The body therefore describes the location
+            // and phase instead, and the countdown stays where it is authoritative.
+            .setContentText(bodyText(state))
             .setContentIntent(openIntent(revision))
             .setDeleteIntent(dismissIntent(state))
             .setCategory(Notification.CATEGORY_PROGRESS)
@@ -216,6 +222,20 @@ internal class ScheduleLiveNotifications(private val context: Context) {
             putBoolean(EXTRA_REQUEST_PROMOTED_ONGOING, true)
         })
         return builder.build()
+    }
+
+    /**
+     * Body line: what this card is about, without repeating the chronometer.
+     *
+     * Falls back to the location when there is one, otherwise to the phase wording, so the line is
+     * never empty even for a course with no recorded room.
+     */
+    private fun bodyText(state: ScheduleLiveState): String {
+        val inClass = state.phase == ScheduleLivePhase.IN_CLASS
+        val phase = if (inClass) NativeSchedule.LIVE_IN_CLASS else NativeSchedule.LIVE_NEXT_CLASS
+        return listOf(phase, state.location.takeIf { it.isNotBlank() })
+            .filterNotNull()
+            .joinToString(" · ")
     }
 
     /**

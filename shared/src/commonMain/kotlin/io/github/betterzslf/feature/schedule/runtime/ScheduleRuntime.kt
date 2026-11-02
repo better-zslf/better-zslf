@@ -339,13 +339,20 @@ class ScheduleRuntime(
      * Republishing is deliberate: the pill is drawn from the notification's extras, so the change
      * only becomes visible after the card is posted again.
      */
-    suspend fun setCapsuleLongText(long: Boolean) {
-        val current = stored ?: return
-        if (!native.supported) return
-        if (save(current.copy(capsuleLongText = long))) {
-            showRecord(stored!!)
-            publishNative(cached = true)
-        }
+    /**
+     * Switch the vendor capsule between the short minute count and the course-name phrase.
+     *
+     * Returns whether the setting was actually stored. The earlier version returned nothing and
+     * gave up silently when there was no bound record, so tapping the switch did nothing at all and
+     * the UI could not tell the difference between "saved" and "ignored".
+     */
+    suspend fun setCapsuleLongText(long: Boolean): Boolean {
+        val current = stored ?: return false
+        if (!native.supported) return false
+        if (!save(current.copy(capsuleLongText = long))) return false
+        showRecord(stored!!)
+        publishNative(cached = true)
+        return true
     }
 
     suspend fun updatePeriods(periods: List<SchedulePeriod>): Boolean {

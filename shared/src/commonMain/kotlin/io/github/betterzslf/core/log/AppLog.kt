@@ -3,6 +3,7 @@ package io.github.betterzslf.core.log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlin.time.Clock
 
 /**
@@ -16,22 +17,24 @@ object AppLog {
     /** Enough context for a debugging session without growing the process unbounded. */
     const val MAX_ENTRIES: Int = 2000
 
-    private val lock = Any()
-    private var entries: List<LogEntry> = emptyList()
-    private val enabledFlow = MutableStateFlow(false)
-    val enabled: StateFlow<Boolean> = enabledFlow.asStateFlow()
-    /** Emits a new read-only snapshot whenever the buffer changes, so the viewer recomposes. */
+    /**
+     * Guards nothing: the buffer lives in a StateFlow and every mutation goes through its atomic
+     * `update`. `synchronized` is JVM-only and `Mutex.lock` suspends, so neither fits these plain
+     * (non-suspend) callers; StateFlow gives a lock-free update that behaves the same on every
+     * target and keeps `snapshot()` a plain read.
+     */
     private val entriesFlow = MutableStateFlow<List<LogEntry>>(emptyList())
     val records: StateFlow<List<LogEntry>> = entriesFlow.asStateFlow()
+    private val enabledFlow = MutableStateFlow(false)
+    val enabled: StateFlow<Boolean> = enabledFlow.asStateFlow()
 
-    private var clock: () -> Long = { Clock.System.now().toEpochMilliseconds() }
+    private val clockFlow = MutableStateFlow<() -> Long>({ Clock.System.now().toEpochMilliseconds() })
 
     /** Test seam: production always uses the monotonic-free wall clock above. */
-    internal fun useClock(source: () -> Long) { synchronized(lock) { clock = source } }
+    internal fun useClock(source: () -> Long) { clockFlow.value = source }
 
     fun setEnabled(value: Boolean) {
-        if (!value) synchronized(lock) { entries = emptyList() }
-        entriesFlow.value = snapshot()
+        if (!value) entriesFlow.value = emptyList()
         enabledFlow.value = value
     }
 
@@ -60,10 +63,9 @@ object AppLog {
         record(LogLevel.INFO, "http", "$method $cleanPath -> $result ${durationMillis}ms$size")
     }
 
-    fun snapshot(): List<LogEntry> = synchronized(lock) { entries }
+    fun snapshot(): List<LogEntry> = entriesFlow.value
 
     fun clear() {
-        synchronized(lock) { entries = emptyList() }
         entriesFlow.value = emptyList()
     }
 
@@ -88,18 +90,19 @@ object AppLog {
         if (!isEnabled) return
         val safeTag = LogRedaction.apply(tag).take(48)
         val safeMessage = LogRedaction.apply(message).take(4_000)
-        val entry = runCatching { LogEntry(level, safeTag, safeMessage, clock()) }.getOrNull() ?: return
-        synchronized(lock) {
-            val next = entries + entry
-            entries = if (next.size > MAX_ENTRIES) next.subList(next.size - MAX_ENTRIES, next.size) else next
-            entriesFlow.value = entries
+        val entry = runCatching { LogEntry(level, safeTag, safeMessage, clockFlow.value()) }.getOrNull() ?: return
+        entriesFlow.update { current ->
+            val next = current + entry
+            if (next.size > MAX_ENTRIES) next.subList(next.size - MAX_ENTRIES, next.size) else next
         }
     }
 
     /** UTC `yyyy-MM-dd HH:mm:ss.SSS`, implemented without java.time so it works on every target. */
     fun formatLogTimestamp(millis: Long): String {
         var remaining = millis
-        val days = Math.floorDiv(millis, 86_400_000L)
+        // Kotlin's Long division truncates toward zero, and `Math.floorDiv` is JVM-only. Both
+        // algorithms below need floor semantics, so shift the dividend when it is negative.
+        val days = floorDiv(millis, 86_400_000L)
         remaining -= days * 86_400_000L
         val hours = (remaining / 3_600_000L).toInt()
         remaining -= hours * 3_600_000L
@@ -119,10 +122,16 @@ object AppLog {
         }
     }
 
+    /** Floor division for a positive divisor, matching `Math.floorDiv` for every Long input. */
+    private fun floorDiv(value: Long, divisor: Long): Long {
+        val quotient = value / divisor
+        return if (value % divisor != 0L && (value < 0) != (divisor < 0)) quotient - 1 else quotient
+    }
+
     /** Howard Hinnant's days-to-civil algorithm; no timezone database needed for UTC output. */
     private fun civilFromDays(days: Long): Triple<Long, Int, Int> {
         val z = days + 719_468
-        val era = Math.floorDiv(z, 146_097L)
+        val era = floorDiv(z, 146_097L)
         val doe = z - era * 146_097
         val yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365
         val y = yoe + era * 400

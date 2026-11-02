@@ -104,10 +104,13 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                     }, modifier = Modifier.fillMaxWidth())
                 } }
             }
-            // Capsule wording: only meaningful on a ROM whose pill we draw, so it is shown solely
-            // where a vendor island exists.
-            if (capabilities.vendor != ScheduleVendor.AOSP) {
-                item("reminders-capsule-text") { Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues()) {
+            // Capsule wording.
+            //
+            // Shown everywhere, not only on a vendor ROM: the status-bar chip exists on plain AOSP
+            // as well (it is what setShortCriticalText feeds), and the preference is harmless when
+            // nothing reads it. Gating it on the vendor family made the switch impossible to reach
+            // in the mock build, which is where it most needs testing.
+            item("reminders-capsule-text") { Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues()) {
                     SwitchPreference(checked = state.capsuleLongText,
                         title = AppText.Schedule.CAPSULE_TEXT_TITLE,
                         summary = AppText.Schedule.CAPSULE_TEXT_SUMMARY,
@@ -124,9 +127,8 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                                         runtime.capsuleFailure)
                                 } finally { applying = false }
                             }
-                        } })
-                } }
-            }
+                    } })
+            } }
             item("reminders-switch") { Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues()) {
                 SwitchPreference(checked = state.remindersEnabled,
                     title = AppText.Schedule.REMINDERS_SWITCH, summary = AppText.Schedule.REMINDER_RULES,

@@ -196,7 +196,10 @@ internal class ScheduleLiveNotifications(private val context: Context) {
         val inClass = state.phase == ScheduleLivePhase.IN_CLASS
         val builder = Notification.Builder(context, CHANNEL)
             .setSmallIcon(icon)
-            .setContentTitle(state.title)
+            // The bare course name. state.title carries a "正在上课：" prefix for the collapsed
+            // form, but that prefix is exactly what subText now says -- keeping both printed the
+            // phase twice, which read as "正在上课：合成课程9 / 正在上课".
+            .setContentTitle(courseTitle(state))
             // Four fields, four jobs -- the split a comparable app uses, and the reason its card
             // reads cleanly at every size:
             //   title    the course name
@@ -252,6 +255,15 @@ internal class ScheduleLiveNotifications(private val context: Context) {
         })
         return builder.build()
     }
+
+    /**
+     * Bare course name for the headline.
+     *
+     * Falls back to the prefixed title only when the state carries no courseName, so a state built
+     * by an older caller still shows something rather than an empty headline.
+     */
+    private fun courseTitle(state: ScheduleLiveState): String =
+        state.courseName.ifBlank { state.title }
 
     /** Body line: the room, or nothing. The phase lives in subText and the count in the chip. */
     private fun locationText(state: ScheduleLiveState): String =

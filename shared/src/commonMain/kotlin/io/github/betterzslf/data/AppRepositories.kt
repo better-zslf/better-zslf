@@ -9,11 +9,7 @@ class AppRepositories(private val api: ApiClient, sessionStore: SessionStore) {
     val auth = AuthRepository(api, sessionStore)
     val profile = ProfileRepository(api)
     val content = ContentRepository(api)
-    val notices = NoticeRepository(api)
-    val discover = DiscoverRepository(api)
     val run = RunRepository(api)
-    val venues = VenueRepository(api)
-    val fitness = FitnessRepository(api)
     val campusNetwork = CampusNetworkRepository(api)
     val updates = UpdateRepository(api)
 

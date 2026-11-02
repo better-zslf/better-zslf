@@ -1,12 +1,17 @@
 package io.github.betterzslf.ui.campusnet
 
 import io.github.betterzslf.core.text.AppText
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
@@ -28,9 +33,75 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/** Dorm-network link state as the user sees it. Absent wiring is surfaced, never faked. */
+internal enum class CampusConnectionState { NotSignedIn, Offline, Connecting, Online, Failed, NotOnCampus }
+
+/**
+ * The connection card that sits above the broadband-account section.
+ *
+ * Dorm network sign-in is optional in this app's scope, so this card owns its own honest state:
+ * today only the sign-in provider can be absent, and the card says so instead of showing a
+ * disabled-looking "connect" button that would do nothing.
+ */
+@Composable
+private fun CampusConnectionCard(
+    state: CampusConnectionState,
+    detail: String = "",
+    onSignIn: (() -> Unit)? = null,
+) {
+    val dark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
+    val accent = when (state) {
+        CampusConnectionState.NotSignedIn -> MiuixTheme.colorScheme.onSurfaceVariantSummary
+        CampusConnectionState.Offline -> MiuixTheme.colorScheme.onSurfaceVariantSummary
+        CampusConnectionState.Connecting -> MiuixTheme.colorScheme.primary
+        CampusConnectionState.Online -> if (dark) AppUiTokens.PositiveDark else AppUiTokens.Positive
+        CampusConnectionState.Failed -> if (dark) AppUiTokens.NegativeDark else AppUiTokens.Negative
+        CampusConnectionState.NotOnCampus -> if (dark) AppUiTokens.WarningDark else AppUiTokens.Warning
+    }
+    val title = when (state) {
+        CampusConnectionState.NotSignedIn -> AppText.CampusNetwork.STATUS_NOT_SIGNED_IN
+        CampusConnectionState.Offline -> AppText.CampusNetwork.STATUS_OFFLINE
+        CampusConnectionState.Connecting -> AppText.CampusNetwork.STATUS_CONNECTING
+        CampusConnectionState.Online -> AppText.CampusNetwork.STATUS_ONLINE
+        CampusConnectionState.Failed -> AppText.CampusNetwork.STATUS_FAILED
+        CampusConnectionState.NotOnCampus -> AppText.CampusNetwork.STATUS_NOT_ON_CAMPUS
+    }
+    val defaultHint = when (state) {
+        CampusConnectionState.NotSignedIn -> AppText.CampusNetwork.STATUS_NOT_SIGNED_IN_HINT
+        CampusConnectionState.Offline -> AppText.CampusNetwork.STATUS_OFFLINE_HINT
+        CampusConnectionState.Connecting -> AppText.CampusNetwork.STATUS_CONNECTING_HINT
+        CampusConnectionState.Online -> ""
+        CampusConnectionState.Failed -> ""
+        CampusConnectionState.NotOnCampus -> AppText.CampusNetwork.STATUS_NOT_ON_CAMPUS_HINT
+    }
+    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+        insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (state == CampusConnectionState.Connecting) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+            } else {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(accent))
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                val hint = detail.ifBlank { defaultHint }
+                if (hint.isNotBlank()) {
+                    Text(hint, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            onSignIn?.let { open ->
+                TextButton(text = AppText.CampusNetwork.ACTION_SIGN_IN, onClick = open,
+                    minHeight = 36.dp, cornerRadius = AppUiTokens.ButtonRadius)
+            }
+        }
+    }
+}
+
 /** Lead wires this entry into campusnet; creating the page never checks a phone or changes a password. */
 @Composable
-fun CampusNetworkFeaturePage(graph: AppGraph, onBack: () -> Unit) {
+fun CampusNetworkFeaturePage(graph: AppGraph, onBack: (() -> Unit)?) {
     val session by graph.sessions.session.collectAsState()
     // A different owner OR token gets entirely new, unsaved inputs and an opaque request capability.
     key(session) {
@@ -42,7 +113,7 @@ fun CampusNetworkFeaturePage(graph: AppGraph, onBack: () -> Unit) {
 }
 
 @Composable
-private fun CampusNetworkPage(controller: CampusNetworkController, onBack: () -> Unit) {
+private fun CampusNetworkPage(controller: CampusNetworkController, onBack: (() -> Unit)?) {
     val state by controller.state.collectAsState()
     val scope = rememberCoroutineScope()
     // Deliberately not saveable: no phone, account, or password is prefilled or persisted.
@@ -76,6 +147,12 @@ private fun CampusNetworkPage(controller: CampusNetworkController, onBack: () ->
             refreshTexts = io.github.betterzslf.ui.appRefreshTexts()) {
             LazyColumn(Modifier.fillMaxSize().imePadding(), contentPadding = listPadding,
                 verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
+                item("connection") {
+                    // The dorm-network sign-in provider is not wired yet (see the campus-network
+                    // research notes). The card states that plainly rather than offering a button
+                    // that cannot succeed.
+                    CampusConnectionCard(CampusConnectionState.NotSignedIn)
+                }
                 item("scope") { InfoBanner(AppText.CampusNetwork.NOT_SCHOOL_LOGIN_PASSWORD_TITLE, tone = UiTone.Warning) }
                 item("account-heading") { SectionTitle(AppText.CampusNetwork.PROVISIONED_BROADBAND_ACCOUNTS_TITLE) }
                 item("account-scope") {

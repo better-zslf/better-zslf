@@ -20,7 +20,11 @@ import coil3.memory.MemoryCache
 import coil3.request.*
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.Route
+import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.feature.profile.*
+import io.github.betterzslf.feature.runui.RunDataDecoder
+import kotlinx.serialization.json.JsonElement
+import io.github.betterzslf.feature.schedule.scheduleCoursesForWeek
 import io.github.betterzslf.ui.AppUiTokens
 import io.github.betterzslf.ui.ConfirmDialog
 import io.github.betterzslf.ui.InfoBanner
@@ -92,10 +96,22 @@ private fun ProfileOwnerScreen(graph: AppGraph, open: (Route) -> Unit) {
                 }
             }
             item("statistics") {
-                val stats = state.statistics
+                // The scope was cut to four features, so the strip no longer measures community
+                // activity (history was a browsing counter, not a run count). It now reads the
+                // user's own run records once and reports real totals. Until that read finishes
+                // both cells show "not provided" rather than an invented zero.
+                val runs by produceState<ApiResult<JsonElement>?>(null, graph) {
+                    val owner = graph.sessions.session.value?.userId ?: return@produceState
+                    val bound = graph.repositories.run.boundToCurrentSession() ?: return@produceState
+                    value = bound.records(owner)
+                }
+                val totals = remember(runs) { runTotals(runs) }
                 MetricStrip(listOf(
-                    UiMetric(stats?.history?.toString() ?: AppText.Common.NOT_PROVIDED, AppText.Profile.BROWSING_HISTORY_LABEL),
-                ), onClick = { _ -> open(Route.Page("history", title = AppText.Content.BROWSING_HISTORY_TITLE)) })
+                    UiMetric(totals?.let { runDistanceText(it.distance) } ?: AppText.Common.NOT_PROVIDED,
+                        AppText.Profile.TOTAL_DISTANCE_LABEL),
+                    UiMetric(totals?.count?.toString() ?: AppText.Common.NOT_PROVIDED,
+                        AppText.Profile.RUN_RECORDS_LABEL),
+                ), onClick = { open(Route.Page("runs", title = AppText.Navigation.CAMPUS_RUN)) })
             }
             if (state.loading) item("loading") {
                 LinearProgressIndicator()
@@ -199,6 +215,33 @@ private fun ProfileAvatar(state: ProfileAvatarState, loader: ImageLoader, contro
         }
         if (state == ProfileAvatarState.Loading || image != null && !decoded) CircularProgressIndicator()
     }
+}
+
+/** Totals read from the user's own run records; null when the read failed or never started. */
+private data class RunTotals(val distance: Double, val count: Int)
+
+/**
+ * Reads the user-wide record list through the shared, already-audited decoder.
+ *
+ * The wire envelope is `userErrandTrackRecord`. An empty list is a real answer ("no runs yet"),
+ * so it reports zero; only a failed read reports nothing. Conflating the two made a fresh account
+ * look like a broken request.
+ */
+private fun runTotals(result: ApiResult<JsonElement>?): RunTotals? {
+    val data = (result as? ApiResult.Success)?.data ?: return null
+    val items = RunDataDecoder.records(data).items
+    val metres = items.sumOf { item ->
+        item.distanceMeters?.takeIf { value -> value.isFinite() && value >= 0 } ?: 0.0
+    }
+    return RunTotals(distance = metres, count = items.size)
+}
+
+// String.format is JVM-only, so the decimal point is built by hand for the common source set.
+private fun runDistanceText(metres: Double): String {
+    if (!metres.isFinite() || metres < 0) return AppText.Common.NOT_PROVIDED
+    if (metres < 1000) return "${metres.toLong()} m"
+    val tenths = (metres / 100.0).toLong()
+    return "${tenths / 10}.${tenths % 10} km"
 }
 
 private fun avatarSummary(state: ProfileAvatarState): String = when (state) {

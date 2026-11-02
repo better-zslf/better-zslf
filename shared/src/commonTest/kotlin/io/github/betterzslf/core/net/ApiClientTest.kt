@@ -131,10 +131,9 @@ class ApiClientTest {
     }
 
     @Test
-    fun emptyIncreaseHitsIsSuccessButOtherEmptyResponsesAreNot() = runTest {
+    fun emptyResponseBodyIsADecodeFailureForRetainedEndpoints() = runTest {
         val fixture = ApiTestFixture(MockEngine { respond("") })
         try {
-            assertEquals(JsonNull, assertIs<ApiResult.Success<*>>(fixture.repositories.content.increaseHits("fixture-article")).data)
             assertIs<ApiError.Decode>(assertIs<ApiResult.Failure>(fixture.repositories.profile.photo()).error)
         } finally { fixture.close() }
     }
@@ -176,7 +175,8 @@ class ApiClientTest {
             respond("{\"code\":200,\"data\":{}}")
         })
         try {
-            assertIs<ApiResult.Success<*>>(fixture.repositories.content.history(buildJsonObject {
+            assertIs<ApiResult.Success<*>>(fixture.api.execute(ApiEndpoint.DOCUMENT, query = buildJsonObject {
+                put("articleName", "用户协议")
                 put("tags", buildJsonArray { add(JsonPrimitive("one")); add(JsonPrimitive("two&other=not-a-param")) })
                 put("filter", objectValue)
                 put("text", "a+b !@#$,[] 中文")
@@ -204,13 +204,8 @@ class ApiClientTest {
         val fixture = ApiTestFixture(MockEngine { calls++; error("Invalid input should stay local") })
         try {
             val failures = listOf(
-                fixture.repositories.venues.selectTime("", ""),
-                fixture.repositories.venues.application(" "),
-                fixture.repositories.venues.relate("venue", ""),
                 fixture.repositories.run.addTrack(JsonObject(emptyMap())),
                 fixture.repositories.run.tasks(""),
-                fixture.repositories.content.articles("column", -1, 0),
-                fixture.repositories.fitness.enrol(JsonObject(emptyMap())),
                 fixture.api.execute(ApiEndpoint.RUN_SYNC, query = queryParameters("trid" to "task")),
                 fixture.api.execute(ApiEndpoint.RESET_PASSWORD, body = queryParameters("userId" to "fixture")),
                 fixture.api.execute(ApiEndpoint.UPLOAD),

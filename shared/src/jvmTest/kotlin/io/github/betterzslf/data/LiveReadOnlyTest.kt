@@ -53,24 +53,11 @@ class LiveReadOnlyTest {
             report(ApiEndpoint.USER_INFO, repos.profile.userInfo())
             report(ApiEndpoint.USER_PHOTO, repos.profile.photo())
             report(ApiEndpoint.USER_STATISTICS, repos.profile.statistics())
-            report(ApiEndpoint.UNREAD, repos.notices.unread())
-            report(ApiEndpoint.ANNOUNCEMENTS, repos.notices.announcements())
-            report(ApiEndpoint.NOTICES, repos.notices.list("1"))
 
-            val columns = report(ApiEndpoint.CMS_COLUMNS, repos.content.columns("学校动态"))
-            val columnId = ((columns as? JsonObject)?.get("cmsColumn") as? JsonObject)
-                ?.get("id").stringValue()
-            assertTrue(!columnId.isNullOrBlank(), "${ApiEndpoint.CMS_COLUMNS.path} code=MISSING_COLUMN_ID")
-            report(ApiEndpoint.CMS_ARTICLES, repos.content.articles(columnId, offset = 0, limit = 3))
             report(ApiEndpoint.RUN_TASKS, repos.run.tasks(userId, offset = 0, limit = 5, isFinish = "0"))
 
-            report(ApiEndpoint.SITE_LIST, repos.venues.list("1"))
-            report(ApiEndpoint.PHYSICAL_COUNTS, repos.fitness.counts())
-            report(ApiEndpoint.PHYSICAL_ITEMS, repos.fitness.items())
             report(ApiEndpoint.CAMPUS_ACCOUNTS, repos.campusNetwork.accounts())
             report(ApiEndpoint.CHECK_VERSION, repos.updates.check())
-            // A known backend database-pool failure is accepted only for this endpoint.
-            report(ApiEndpoint.PHYSICAL_TESTS, repos.fitness.tests(), acceptedBackendCodes = setOf(400, 500))
         } finally {
             sessions.clear()
             api.close()

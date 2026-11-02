@@ -131,34 +131,6 @@ class ApiClient(
         }
     }
 
-    /**
-     * Verified venue-specific route/fields. Empty 2xx is transport success only; a nonempty
-     * body must be a successful envelope. Unknown bodies remain Decode/uncertain, never retried.
-     * The caller must subsequently reload fileList to establish attachment linkage.
-     */
-    suspend fun uploadVenueAttachment(file: UploadFile, applyId: String, userId: String): ApiResult<JsonElement> {
-        val invalidFields = buildList {
-            if (file.bytes.isEmpty()) add("file")
-            if (file.name.isBlank() || file.name.any { it in "\r\n\u0000\"\\/" }) add("filename")
-            if (applyId.isBlank()) add("applyId")
-            if (userId.isBlank()) add("userId")
-            if (file.contentType.any { it == '\r' || it == '\n' }) add("contentType")
-        }
-        if (invalidFields.isNotEmpty()) return invalid(invalidFields)
-        try { ContentType.parse(file.contentType) }
-        catch (_: IllegalArgumentException) { return invalid(listOf("contentType")) }
-        return perform(ApiEndpoint.SITE_UPLOAD) {
-            setBody(MultiPartFormDataContent(formData {
-                append("applyId", applyId)
-                append("userId", userId)
-                append("file", file.bytes, Headers.build {
-                    append(HttpHeaders.ContentType, file.contentType)
-                    append(HttpHeaders.ContentDisposition, "filename=\"${file.name}\"")
-                })
-            }))
-        }
-    }
-
     /** Only server-relative userfiles paths are accepted, never an arbitrary remote URL. */
     fun fileUrl(relativePath: String): String? {
         val path = relativePath.trim().trimStart('/')

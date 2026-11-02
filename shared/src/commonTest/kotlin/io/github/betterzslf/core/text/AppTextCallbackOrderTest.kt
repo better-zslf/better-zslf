@@ -6,23 +6,6 @@ import kotlin.test.assertEquals
 /** Pure fake-event checks only: no repository, account mutation, clock or real transport. */
 class AppTextCallbackOrderTest {
     @Test
-    fun constructingAnActionDoesNotRunItsBodyOrItsDisplayFormatting() {
-        val events = mutableListOf<String>()
-        val action = {
-            events += "callback-enter"
-            val label = AppText.Booking.contactPhoneLine(run {
-                events += "mask"
-                "138••••00"
-            })
-            events += label
-            events += "fake-request"
-        }
-        assertEquals(emptyList(), events)
-        action()
-        assertEquals(listOf("callback-enter", "mask", "联系电话：138••••00", "fake-request"), events)
-    }
-
-    @Test
     fun formattingArgumentsRemainLeftToRightAndExactlyOnce() {
         val events = mutableListOf<String>()
         fun part(event: String, value: String): String { events += event; return value }

@@ -27,6 +27,7 @@ import io.github.betterzslf.platform.NativeAppUpdater
 import io.github.betterzslf.platform.createNativeAppUpdater
 import io.github.betterzslf.platform.createLocationTracker
 import io.github.betterzslf.ui.run.RunTaskList
+import io.github.betterzslf.ui.campusnet.CampusNetworkFeaturePage
 import kotlin.time.Clock
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
@@ -192,11 +193,12 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
     val root = rememberNavBackStack<Route>(Route.Main)
     // Keep tab navigation outside the login-gated subtree, including across a 401.
     var selected by rememberSaveable { mutableIntStateOf(0) }
-    val home = rememberNavBackStack<Route>(Route.TabRoot(0))
+    // Tab order: 0 课程表 (the app's landing surface), 1 校园跑, 2 校园网, 3 我的.
+    val timetable = rememberNavBackStack<Route>(Route.TabRoot(0))
     val run = rememberNavBackStack<Route>(Route.TabRoot(1))
-    val timetable = rememberNavBackStack<Route>(Route.TabRoot(2))
+    val campusNetwork = rememberNavBackStack<Route>(Route.TabRoot(2))
     val profile = rememberNavBackStack<Route>(Route.TabRoot(3))
-    val tabStacks = listOf(home, run, timetable, profile)
+    val tabStacks = listOf(timetable, run, campusNetwork, profile)
     val nativeOpenRequest by graph.schedule.native.openRequests.collectAsState()
     LaunchedEffect(nativeOpenRequest, session?.userId) {
         val request = nativeOpenRequest ?: return@LaunchedEffect
@@ -206,11 +208,11 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
         if (graph.schedule.state.value.owner != session?.userId) return@LaunchedEffect
         val courseId = request.occurrenceId?.let(graph.schedule::courseIdForOccurrence)
         graph.schedule.state.value.sourceTermId?.let { graph.schedule.selectTerm(it) }
-        selected = 2
+        selected = 0
         root.removeAll { it != Route.Main }
         if (root.isEmpty()) root.add(Route.Main)
         timetable.clear()
-        timetable.add(Route.TabRoot(2))
+        timetable.add(Route.TabRoot(0))
         if (courseId != null) timetable.pushUnique(Route.Page("scheduledetail", courseId, AppText.Schedule.DETAILS_TITLE))
     }
     // The root stack owns a single route while a tab is open, so the platform back gesture must
@@ -271,7 +273,7 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
         }
         if (session != null && root.lastOrNull() == Route.Main) {
             ScheduleBindingPrompt(graph) {
-                selected = 2
+                selected = 0
                 timetable.pushUnique(Route.Page("schedulebind", title = AppText.Schedule.BIND_TITLE))
             }
         }
@@ -286,8 +288,8 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
     val open: (Route) -> Unit = { route ->
         if (route is Route.Page && route.kind == "resetpassword") onAccountRecovery() else stack.pushUnique(route)
     }
-    val titles = listOf(AppText.Navigation.HOME, AppText.Navigation.CAMPUS_RUN, AppText.Navigation.SCHEDULE, AppText.Navigation.PROFILE)
-    val icons = listOf(MiuixIcons.Home, MiuixIcons.Location, MiuixIcons.Notes, MiuixIcons.Contacts)
+    val titles = listOf(AppText.Navigation.SCHEDULE, AppText.Navigation.CAMPUS_RUN, AppText.Navigation.CAMPUS_NETWORK, AppText.Navigation.PROFILE)
+    val icons = listOf(MiuixIcons.Notes, MiuixIcons.Location, MiuixIcons.Carrier, MiuixIcons.Contacts)
     val showBottomNavigation = stack.lastOrNull() is Route.TabRoot
     // Miuix measures the whole bottomBar before composing its body. Its padding includes the
     // pill, outer spacing and system navigation area, unlike measuring inside padding modifiers.
@@ -342,9 +344,9 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
                         effects = NavDisplayEffects(cornerClipRadius = 0.dp)) {
                         entry<Route.TabRoot> { route ->
                             when (route.index) {
-                                0 -> HomeScreen(graph, open)
+                                0 -> ScheduleRootPage(graph, open)
                                 1 -> RunTaskList(graph, open)
-                                2 -> ScheduleRootPage(graph, open)
+                                2 -> CampusNetworkFeaturePage(graph, onBack = null)
                                 3 -> ProfileScreen(graph, open)
                             }
                         }

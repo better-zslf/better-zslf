@@ -42,6 +42,24 @@ private class AndroidScheduleNativeBridge(private val context: Context) : Schedu
     override fun openExactAlarmSettings(): Boolean = start(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
         Uri.parse("package:" + context.packageName)))
     override fun openBatteryOptimizationSettings(): Boolean = start(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+    /**
+     * The promoted-notification grant screen.
+     *
+     * The action is written as a literal because there is no public `Settings.ACTION_*` constant
+     * for it -- the same approach a comparable app uses. Every step falls through to the next, so
+     * an OEM that renamed or removed the screen still lands the user somewhere useful rather than
+     * on nothing.
+     */
+    override fun openPromotedNotificationSettings(): Boolean {
+        val candidates = listOf(
+            Intent("android.settings.MANAGE_APP_PROMOTED_NOTIFICATIONS")
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+        )
+        return candidates.any { start(it) }
+    }
+
     override fun requestPinWidget(kind: ScheduleWidgetKind): Boolean = runCatching {
         val manager = AppWidgetManager.getInstance(context)
         if (!manager.isRequestPinAppWidgetSupported) return@runCatching false

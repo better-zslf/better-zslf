@@ -61,6 +61,7 @@ class ScheduleRuntimeTest {
         override fun openNotificationSettings() = true
         override fun openExactAlarmSettings() = true
         override fun openBatteryOptimizationSettings() = true
+        override fun openPromotedNotificationSettings() = true
         override fun requestPinWidget(kind: ScheduleWidgetKind) = true
         override fun publish(publication: ScheduleNativePublication): Boolean {
             if (publication.ownerRevision != lease || rejectPublication) return false

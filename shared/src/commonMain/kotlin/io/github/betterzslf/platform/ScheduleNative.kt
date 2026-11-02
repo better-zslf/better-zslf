@@ -79,6 +79,22 @@ data class ScheduleNativeCapabilities(
      * user has to change instead of leaving them with a generic "restricted" hint.
      */
     val vendor: ScheduleVendor = ScheduleVendor.AOSP,
+    /**
+     * Whether the platform will even consider promoting this app's live notification.
+     *
+     * `NotificationManager.canPostPromotedNotifications()` on API 36+. False means the user has not
+     * granted the promoted-notification appop, which on ColorOS surfaces as an empty entry in
+     * 流体云 -- indistinguishable, from the outside, from "this app does not support it".
+     */
+    val promotedAllowed: Boolean = false,
+    /**
+     * Whether the last posted live card actually carried promotion characteristics.
+     *
+     * `Notification.hasPromotableCharacteristics()`. Kept beside [promotedAllowed] because the two
+     * failures look identical to a user but need opposite fixes: permission missing versus the
+     * notification shape being wrong.
+     */
+    val lastCardPromotable: Boolean = false,
 )
 
 /**
@@ -100,6 +116,14 @@ interface ScheduleNativeBridge {
     fun openNotificationSettings(): Boolean
     fun openExactAlarmSettings(): Boolean
     fun openBatteryOptimizationSettings(): Boolean
+    /**
+     * Open the system screen that grants promoted-notification access.
+     *
+     * On ColorOS this is the per-app 流体云 control; on AOSP it is the app's live-notification
+     * permission. Falls back to the ordinary notification settings when the platform has no such
+     * screen, so the button never dead-ends on an older device.
+     */
+    fun openPromotedNotificationSettings(): Boolean
     fun requestPinWidget(kind: ScheduleWidgetKind): Boolean
     /** Returns false for a stale/missing owner lease or invalid/out-of-bounds publication. */
     fun publish(publication: ScheduleNativePublication): Boolean
@@ -148,6 +172,7 @@ internal class UnsupportedScheduleNativeBridge : ScheduleNativeBridge {
     override fun requestNotificationPermission(): Boolean = false
     override fun openNotificationSettings(): Boolean = false
     override fun openExactAlarmSettings(): Boolean = false
+    override fun openPromotedNotificationSettings(): Boolean = false
     override fun openBatteryOptimizationSettings(): Boolean = false
     override fun requestPinWidget(kind: ScheduleWidgetKind): Boolean = false
     override fun publish(publication: ScheduleNativePublication): Boolean = false

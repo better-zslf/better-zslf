@@ -6,6 +6,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import android.graphics.drawable.Icon
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -89,11 +90,23 @@ internal class ScheduleLiveNotifications(private val context: Context) {
             return
         }
         // Record the exact platform outcome; a swallowed post failure is undebuggable.
-        val result = runCatching { notifications.notify(TAG, NOTIFICATION_ID, build(state, stored.revision)) }
+        val built = runCatching { build(state, stored.revision) }
+        lastCardPromotable = built.getOrNull()?.let(::isPromotable) ?: false
+        val result = built.mapCatching { notifications.notify(TAG, NOTIFICATION_ID, it) }
         lastPostFailed = result.isFailure
         lastReason = result.exceptionOrNull()?.let { it::class.java.simpleName + ": " + (it.message ?: "") }
             ?: ("posted:" + state.phase.name)
     }
+
+    /**
+     * Did this card carry the characteristics the platform needs before promoting it?
+     *
+     * `hasPromotableCharacteristics()` is API 36-only, and the concept does not exist below that,
+     * so an older device reports false rather than claiming a capability it cannot check.
+     */
+    private fun isPromotable(notification: Notification): Boolean =
+        Build.VERSION.SDK_INT >= 36 && runCatching { notification.hasPromotableCharacteristics() }
+            .getOrDefault(false)
 
     /**
      * Post a caller-supplied state directly, bypassing the stored-block lookup.
@@ -123,6 +136,15 @@ internal class ScheduleLiveNotifications(private val context: Context) {
                 " enabled=" + notifications.areNotificationsEnabled())
         return result.isSuccess
     }
+
+    /**
+     * Whether the most recently built card was promotable.
+     *
+     * Reported to the reminder screen so "fluid cloud shows nothing" can be split into its two
+     * real causes: the permission is missing, or the notification shape does not qualify.
+     */
+    var lastCardPromotable: Boolean = false
+        private set
 
     /** True when the most recent [reconcile] tried to post and the platform refused it. */
     var lastPostFailed: Boolean = false
@@ -175,16 +197,22 @@ internal class ScheduleLiveNotifications(private val context: Context) {
         val builder = Notification.Builder(context, CHANNEL)
             .setSmallIcon(icon)
             .setContentTitle(state.title)
-            // The body carries the class context, not the countdown.
-            //
-            // The chronometer below already renders a live "1:59:51", and ColorOS's Fluid Cloud
-            // shows both: with state.text in the body the capsule read "测试课程 1:59:51 / 剩余 33
-            // 分钟", the same fact twice in two formats. The body therefore describes the location
-            // and phase instead, and the countdown stays where it is authoritative.
-            .setContentText(bodyText(state))
+            // Four fields, four jobs -- the split a comparable app uses, and the reason its card
+            // reads cleanly at every size:
+            //   title    the course name
+            //   body     where it happens (room), never the countdown
+            //   subText  the phase (正在上课 / 下节课)
+            //   chip     the minute count, in the status-bar capsule
+            // The chronometer renders a live "1:59:51" on its own; repeating that in words is the
+            // duplicate this arrangement exists to avoid.
+            .setContentText(locationText(state))
+            .setSubText(phaseText(state))
             .setContentIntent(openIntent(revision))
             .setDeleteIntent(dismissIntent(state))
             .setCategory(Notification.CATEGORY_PROGRESS)
+            // The platform tints the card's accents with this; without it the bar and chip fall
+            // back to the system default and stop matching the progress segments we set below.
+            .setColor(accentColor())
             .setVisibility(Notification.VISIBILITY_PRIVATE)
             .setPublicVersion(publicVersion)
             .setOngoing(true)
@@ -216,6 +244,7 @@ internal class ScheduleLiveNotifications(private val context: Context) {
             runCatching { builder.setShortCriticalText(state.chip) }
         }
         applyProgressStyle(builder, state)
+        applyLegacyStyle(builder, state)
         // Promotion is an explicit request, not a side effect of using ProgressStyle: without
         // this extra the notification stays a plain ongoing one even on Android 16.
         builder.addExtras(android.os.Bundle().apply {
@@ -224,40 +253,55 @@ internal class ScheduleLiveNotifications(private val context: Context) {
         return builder.build()
     }
 
-    /**
-     * Body line: what this card is about, without repeating the chronometer.
-     *
-     * Falls back to the location when there is one, otherwise to the phase wording, so the line is
-     * never empty even for a course with no recorded room.
-     */
-    private fun bodyText(state: ScheduleLiveState): String {
-        val inClass = state.phase == ScheduleLivePhase.IN_CLASS
-        val phase = if (inClass) NativeSchedule.LIVE_IN_CLASS else NativeSchedule.LIVE_NEXT_CLASS
-        return listOf(phase, state.location.takeIf { it.isNotBlank() })
-            .filterNotNull()
-            .joinToString(" · ")
-    }
+    /** Body line: the room, or nothing. The phase lives in subText and the count in the chip. */
+    private fun locationText(state: ScheduleLiveState): String =
+        state.location.ifBlank { NativeSchedule.OPEN_TIMETABLE }
+
+    /** Sub-text: which phase the card is describing. */
+    private fun phaseText(state: ScheduleLiveState): String =
+        if (state.phase == ScheduleLivePhase.IN_CLASS) NativeSchedule.LIVE_IN_CLASS else NativeSchedule.LIVE_NEXT_CLASS
 
     /**
      * On API 36 the promoted Live Update treatment needs ProgressStyle. Below that the style class
      * does not exist, so the builder keeps the plain ongoing notification; the runtime check is a
      * version test, not a compile-time assumption, because minSdk is 33.
      */
+    /**
+     * Accent colour, following the system theme.
+     *
+     * Brightened in dark mode because a brand blue that reads well on white goes muddy on a dark
+     * shade, and the tint is also handed to `setColor` so the whole card picks it up.
+     */
+    private fun accentColor(): Int = if (isNight()) 0xFF5B9DFF.toInt() else 0xFF3382FF.toInt()
+
+    /** Track behind the progress: dimmed in dark mode so it does not outshine the progress itself. */
+    private fun trackColor(): Int = if (isNight()) 0xFF2A3A55.toInt() else 0xFFD6E5FF.toInt()
+
+    private fun isNight(): Boolean =
+        (context.resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+
+    private fun drawableId(name: String): Int =
+        context.resources.getIdentifier(name, "drawable", context.packageName)
+
+    /**
+     * API 36 path: ProgressStyle, which is what the platform promotes.
+     *
+     * The three end-point icons are part of the template rather than decoration -- they are what
+     * turns a bare bar into a track with a start, a current position and an end, which is how a
+     * live progress card reads as a timeline instead of a percentage.
+     */
     private fun applyProgressStyle(builder: Notification.Builder, state: ScheduleLiveState) {
         if (Build.VERSION.SDK_INT < 36) return
         val progress = state.progress ?: return
         runCatching {
-            val percent = (progress * 100f).toInt().coerceIn(0, 100)
-            val done = percent
-            val left = 100 - percent
-            val night = (context.resources.configuration.uiMode and
-                android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-                android.content.res.Configuration.UI_MODE_NIGHT_YES
-            // Two segments that always sum to 100: the finished part in the accent colour and the
-            // remainder in a track that is dimmed in dark mode, otherwise a pale track outshines
-            // the progress it is supposed to sit behind.
-            val accent = if (night) 0xFF5B9DFF.toInt() else 0xFF3382FF.toInt()
-            val track = if (night) 0xFF2A3A55.toInt() else 0xFFD6E5FF.toInt()
+            val done = (progress * 100f).toInt().coerceIn(0, 100)
+            // Two segments that always sum to 100: no stray track at the end, no 1% sliver at the
+            // start, so the bar never looks like it is pointing at nothing.
+            val left = 100 - done
+            val accent = accentColor()
+            val track = trackColor()
             val style = Notification.ProgressStyle()
                 .setStyledByProgress(true)
                 .setProgress(done)
@@ -267,8 +311,26 @@ internal class ScheduleLiveNotifications(private val context: Context) {
                         if (left > 0) add(Notification.ProgressStyle.Segment(left).setColor(track))
                     },
                 )
+            // Only icon resources from this package may be used; a framework id would make
+            // SystemUI look up a drawable that does not exist here and fail the whole card.
+            drawableId("schedule_live_tracker").takeIf { it != 0 }
+                ?.let { style.setProgressTrackerIcon(Icon.createWithResource(context, it)) }
+            drawableId("schedule_live_start").takeIf { it != 0 }
+                ?.let { style.setProgressStartIcon(Icon.createWithResource(context, it)) }
+            drawableId("schedule_live_end").takeIf { it != 0 }
+                ?.let { style.setProgressEndIcon(Icon.createWithResource(context, it)) }
             builder.setStyle(style)
         }
+    }
+
+    /**
+     * Below API 36 there is no chip and no progress template, so the card keeps its four fields and
+     * expands the body instead. Without this the older path showed a one-line card that lost the
+     * room text entirely.
+     */
+    private fun applyLegacyStyle(builder: Notification.Builder, state: ScheduleLiveState) {
+        if (Build.VERSION.SDK_INT >= 36) return
+        runCatching { builder.setStyle(Notification.BigTextStyle().bigText(locationText(state))) }
     }
 
     /**

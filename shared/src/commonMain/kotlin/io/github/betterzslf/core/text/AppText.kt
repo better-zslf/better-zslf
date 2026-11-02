@@ -511,6 +511,11 @@ object AppText {
         const val VENDOR_OPPO_FLUID_HINT =
             "实况通知在 ColorOS 上叫「流体云」：设置 → 通知与控制中心 → 流体云，先确认总开关已开，再在下方应用列表里把本应用单独打开。若列表里没有本应用，还需在 设置 → 权限管理 → 特殊应用权限 中允许「实时流体云」。"
         const val VENDOR_MODE_OPPO = "当前使用「流体云」（系统标准实况通知）"
+        /** Opens the platform screen that grants promoted-notification access. */
+        const val PROMOTED_SETTINGS_TITLE = "实况通知授权"
+        const val PROMOTED_SETTINGS_ALLOWED = "已允许，系统可以提升本应用的通知"
+        const val PROMOTED_SETTINGS_BLOCKED = "未允许，因此不会出现胶囊；点此前往授权"
+        const val PROMOTED_SETTINGS_SHAPE_BAD = "已允许，但当前通知未达到系统提升条件"
         const val VENDOR_VIVO_HINT = "vivo / iQOO：设置 → 电池 → 后台耗电管理 → 本应用 → 选择「允许后台高耗电」；i管家 → 应用管理 → 自启动 → 允许本应用。"
         const val VENDOR_MEIZU_HINT = "魅族 Flyme：设置 → 辅助功能 → 电池管理 → 性能模式；同一页「待机耗电管理 / 受保护应用」勾选本应用；设置 → 应用 → 本应用 → 电池 → 打开「耗电提醒」与「息屏后保持运行」。Flyme 没有开发者侧的对接接口，这些只能在系统设置里手动开启。"
         const val VENDOR_SAMSUNG_HINT = "三星：设置 → 电池 → 后台使用限制 → 把本应用加入「从没进入休眠的应用」；设置 → 应用 → 本应用 → 电池 → 选「不受限制」。"

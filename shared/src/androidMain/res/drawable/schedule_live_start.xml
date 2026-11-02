@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Start-of-progress marker: the outlined square the platform draws at the left end.
+
+  Outline rather than fill, so it reads differently from the tracker dot at a glance; both are
+  rendered at a few dp and a solid square would be indistinguishable from a round one.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.5"
+        android:pathData="M8,8h8v8h-8z" />
+</vector>

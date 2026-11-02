@@ -85,8 +85,24 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
             // Fluid Cloud has its own two-level switch on ColorOS. Without this the user finds only
             // the master toggle and concludes the app does not support live notifications at all.
             if (capabilities.vendor == ScheduleVendor.OPPO || capabilities.vendor == ScheduleVendor.ONEPLUS) {
-                item("reminders-fluid-cloud") { InfoBanner(AppText.Schedule.VENDOR_OPPO_FLUID_HINT,
-                    title = AppText.Schedule.VENDOR_MODE_OPPO, tone = UiTone.Neutral) }
+                item("reminders-fluid-cloud") { SchedulePanel {
+                    InfoBanner(AppText.Schedule.VENDOR_OPPO_FLUID_HINT,
+                        title = AppText.Schedule.VENDOR_MODE_OPPO, tone = UiTone.Neutral)
+                    // The two failures look identical to a user but need opposite fixes, so the
+                    // screen states which one this device is in rather than a generic hint.
+                    val allowed = capabilities.promotedAllowed
+                    val shapeOk = capabilities.lastCardPromotable
+                    val status = when {
+                        !allowed -> AppText.Schedule.PROMOTED_SETTINGS_BLOCKED
+                        !shapeOk -> AppText.Schedule.PROMOTED_SETTINGS_SHAPE_BAD
+                        else -> AppText.Schedule.PROMOTED_SETTINGS_ALLOWED
+                    }
+                    InfoBanner(status, title = AppText.Schedule.PROMOTED_SETTINGS_TITLE,
+                        tone = if (allowed && shapeOk) UiTone.Positive else UiTone.Warning)
+                    TextButton(AppText.Schedule.PROMOTED_SETTINGS_TITLE, onClick = {
+                        request(native::openPromotedNotificationSettings)
+                    }, modifier = Modifier.fillMaxWidth())
+                } }
             }
             // Capsule wording: only meaningful on a ROM whose pill we draw, so it is shown solely
             // where a vendor island exists.

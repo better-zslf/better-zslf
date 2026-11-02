@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Current-position marker on the live progress bar.
+
+  A small filled circle, deliberately plain: it is drawn by SystemUI at 12-16dp and any detail
+  below that reads as a smudge. The shape is white so the accent colour shows through the ring
+  around it, which is how the platform's own trackers look.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,12m-7,0a7,7 0,1 1,14 0a7,7 0,1 1,-14 0" />
+</vector>

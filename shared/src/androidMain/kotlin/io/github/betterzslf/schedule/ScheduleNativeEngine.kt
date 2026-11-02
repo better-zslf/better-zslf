@@ -13,6 +13,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.PowerManager
 import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.core.text.AppText.NativeSchedule
@@ -133,6 +134,12 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
             batteryRestricted = activity.isBackgroundRestricted || power.isPowerSaveMode || !power.isIgnoringBatteryOptimizations(context.packageName),
             pinWidgetsSupported = AppWidgetManager.getInstance(context).isRequestPinAppWidgetSupported,
             vendor = detectVendor(),
+            // Both are API 36 surface; below that the concepts do not exist, so false rather than a
+            // misleading "not allowed".
+            promotedAllowed = if (Build.VERSION.SDK_INT >= 36) {
+                runCatching { notifications.canPostPromotedNotifications() }.getOrDefault(false)
+            } else false,
+            lastCardPromotable = liveNotifications.lastCardPromotable,
         )
     }
 

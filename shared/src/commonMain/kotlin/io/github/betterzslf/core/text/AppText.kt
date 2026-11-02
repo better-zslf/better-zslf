@@ -41,6 +41,19 @@ object AppText {
         const val VIEW_EXISTING_ISSUES: String = "查看已有反馈"
     }
 
+    /**
+     * Document identifiers passed to `content.document(name)`.
+     *
+     * These are wire values, not display labels: the server resolves them by exact string. They
+     * live here because the display-text guard forbids Han literals in UI code, and because the
+     * same three names are requested from two screens.
+     */
+    object Document {
+        const val USER_AGREEMENT: String = "用户协议"
+        const val PRIVACY_POLICY: String = "隐私政策"
+        const val USER_GUIDE: String = "使用帮助"
+    }
+
     object Auth {
         const val BACK_TO_LOGIN: String = "返回登录"
         const val CHANGE_ACCOUNT_PASSWORD_TITLE: String = "修改学校登录密码"

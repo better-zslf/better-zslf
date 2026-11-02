@@ -165,7 +165,11 @@ private fun ProfileOwnerScreen(graph: AppGraph, open: (Route) -> Unit) {
             item("help-heading") { SectionTitle(AppText.App.AGREEMENTS_AND_HELP_SECTION_TITLE) }
             item("help-actions") {
                 Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
-                    listOf("用户协议" to AppText.App.USER_AGREEMENT_DISPLAY_LABEL, "隐私政策" to AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, "使用帮助" to AppText.App.USER_GUIDE_DISPLAY_LABEL).forEach { (documentId, title) ->
+                    listOf(
+                        AppText.Document.USER_AGREEMENT to AppText.App.USER_AGREEMENT_DISPLAY_LABEL,
+                        AppText.Document.PRIVACY_POLICY to AppText.App.PRIVACY_POLICY_DISPLAY_LABEL,
+                        AppText.Document.USER_GUIDE to AppText.App.USER_GUIDE_DISPLAY_LABEL,
+                    ).forEach { (documentId, title) ->
                         ArrowPreference(title, onClick = { open(Route.Page("document", documentId, title)) })
                     }
                     // Moved here from the removed Community tab, which was this entry's only host.

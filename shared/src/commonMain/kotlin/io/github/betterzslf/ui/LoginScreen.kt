@@ -166,8 +166,8 @@ private fun LoginChooser(
             }
             item {
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.Center) {
-                    TextButton(AppText.App.USER_AGREEMENT_DISPLAY_LABEL, onClick = { onDocument("用户协议") })
-                    TextButton(AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, onClick = { onDocument("隐私政策") })
+                    TextButton(AppText.App.USER_AGREEMENT_DISPLAY_LABEL, onClick = { onDocument(AppText.Document.USER_AGREEMENT) })
+                    TextButton(AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, onClick = { onDocument(AppText.Document.PRIVACY_POLICY) })
                 }
             }
         }
@@ -304,8 +304,8 @@ private fun LoginForm(
             if (EditionAccess.waterEnabled) onWater?.let { openWater -> item { graph.editionFeatures.LoginEntry(openWater) } }
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    TextButton(AppText.App.USER_AGREEMENT_DISPLAY_LABEL, onClick = { onDocument("用户协议") })
-                    TextButton(AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, onClick = { onDocument("隐私政策") })
+                    TextButton(AppText.App.USER_AGREEMENT_DISPLAY_LABEL, onClick = { onDocument(AppText.Document.USER_AGREEMENT) })
+                    TextButton(AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, onClick = { onDocument(AppText.Document.PRIVACY_POLICY) })
                 }
             }
         }

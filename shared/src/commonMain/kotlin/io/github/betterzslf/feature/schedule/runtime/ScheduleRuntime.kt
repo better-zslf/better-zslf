@@ -55,7 +55,18 @@ class ScheduleRuntime(
         val account: String, val password: String, val source: AcademicSource,
     ) { override fun toString() = "Verification(<redacted>)" }
 
-    /** null is an expired/absent campus session, not an instruction to delete encrypted credentials. */
+    /**
+     * Points the runtime at a timetable slot.
+     *
+     * `owner` is a *slot identifier*, not the campus session id. The timetable is usable without
+     * a campus login: the academic system has its own credentials, and the only thing the slot id
+     * still does is attribute the stored record so revocation and cleanup stay unambiguous. The
+     * app therefore passes a stable local slot key rather than `session.userId`.
+     *
+     * A null owner means "no slot yet" and is used before any binding exists. Once a record is
+     * bound, the runtime keeps that record's own owner even if the slot key changes, so a campus
+     * login or logout can never orphan an existing binding.
+     */
     fun setOwner(owner: String?, force: Boolean = false) {
         if (closed || (!force && mutableState.value.owner == owner)) return
         if (owner != null) cleanupOwner = owner
@@ -66,8 +77,21 @@ class ScheduleRuntime(
         if (pendingCleanup != null && !retryPendingCleanup()) return
         val nativeOk = runCatching { native.clear(if (owner == null) ScheduleNativeStatus.UNAUTHENTICATED else ScheduleNativeStatus.UNBOUND, if (owner == null) null else revision) }.isSuccess
         if (owner == null) return
-        try {
-            val record = persistence.restore(owner)
+        // Every storage touch below can fail on an unreadable store; the caller must see that as
+        // `storageFailure` on the binding prompt, never as a thrown exception.
+        val effectiveOwner = try {
+            // Adopt a record written when the slot key was still the campus user id, so upgrading
+            // users keep the binding they already confirmed instead of signing in again.
+            persistence.adoptLegacyOwner(owner)
+            // A record already on disk wins over the incoming slot key: the binding it carries is
+            // the source of truth for whose credentials and timetable these are. Migration above
+            // re-stamped any legacy owner, so a surviving record is this slot's; only a newer
+            // revocation can still disqualify it.
+            val current = persistence.peek()
+            val onDisk = current?.takeIf { persistence.restorable(it.owner) }
+            val resolved = onDisk?.owner ?: current?.owner ?: owner
+            if (resolved != owner) mutableState.value = mutableState.value.copy(owner = resolved)
+            val record = onDisk
             stored = record
             if (record != null) {
                 revision = record.bindingRevision
@@ -75,14 +99,17 @@ class ScheduleRuntime(
                 showRecord(record, resetWeek = true)
                 publishNative(cached = true)
             } else {
-                val prompt = !persistence.hasSeenPrompt(owner)
-                if (prompt) persistence.markPromptSeen(owner)
+                val prompt = !persistence.hasSeenPrompt(resolved)
+                if (prompt) persistence.markPromptSeen(resolved)
                 mutableState.value = mutableState.value.copy(showBindingPrompt = prompt)
             }
             if (!nativeOk) nativeFailure()
+            resolved
         } catch (_: Exception) {
             mutableState.value = ScheduleState(owner = owner, storageFailure = true, message = AppText.Schedule.STORAGE_FAILURE)
+            return
         }
+        if (effectiveOwner.isEmpty()) return
     }
 
     fun dismissBindingPrompt() {
@@ -107,6 +134,8 @@ class ScheduleRuntime(
     }
 
     suspend fun verifyBinding(account: String, password: String): Boolean {
+        // A slot id is all this needs. It deliberately does not consult any campus session: the
+        // academic system authenticates with its own credentials.
         val owner = mutableState.value.owner ?: return false
         if (pendingCleanup != null || mutableState.value.storageFailure) return false
         cancelVerification()
@@ -439,7 +468,7 @@ class ScheduleRuntime(
     private fun recoverStorage(): Boolean {
         val owner = mutableState.value.owner ?: return false
         return try {
-            val restored = persistence.restore(owner)
+            val restored = persistence.peek()?.takeIf { persistence.restorable(it.owner) }
             if (restored?.bindingRevision != stored?.bindingRevision) {
                 invalidateRequests()
                 stored = restored

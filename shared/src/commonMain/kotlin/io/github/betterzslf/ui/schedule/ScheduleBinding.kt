@@ -35,8 +35,12 @@ fun ScheduleBindingPrompt(graph: AppGraph, onBind: () -> Unit) {
     }
 }
 
+/**
+ * The academic credential form. Reached from the timetable itself and, since the timetable no
+ * longer depends on a campus login, also directly from the login screen's 教务系统 entry.
+ */
 @Composable
-internal fun ScheduleBindingPage(runtime: ScheduleRuntime, updatingPassword: Boolean, onBack: () -> Unit) {
+fun ScheduleBindingPage(runtime: ScheduleRuntime, updatingPassword: Boolean, onBack: () -> Unit) {
     val state by runtime.state.collectAsState()
     val scope = rememberCoroutineScope()
     var draft by remember(runtime, state.owner) {

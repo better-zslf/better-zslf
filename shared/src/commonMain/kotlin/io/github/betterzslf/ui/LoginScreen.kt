@@ -86,10 +86,10 @@ fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit, onWater: (() -> U
             },
             submitEnabled = username.isNotBlank() && password.isNotEmpty(),
         )
-        LoginStage.Academic -> LoginUnavailable(
-            title = AppText.Auth.ENTRY_ACADEMIC_TITLE,
+        LoginStage.Academic -> io.github.betterzslf.ui.schedule.ScheduleBindingPage(
+            runtime = graph.schedule,
+            updatingPassword = false,
             onBack = { stage = LoginStage.Chooser },
-            onDocument = onDocument,
         )
         LoginStage.Dorm -> LoginUnavailable(
             title = AppText.Auth.ENTRY_DORM_LINK,

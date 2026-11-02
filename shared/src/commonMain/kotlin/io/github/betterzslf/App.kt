@@ -51,6 +51,15 @@ import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
 import top.yukonga.miuix.kmp.nav.transition.NavTransitions
 import top.yukonga.miuix.kmp.theme.*
 
+/**
+ * Slot identifier for the single local timetable record.
+ *
+ * It is deliberately a constant rather than the campus user id: the academic system has its own
+ * credentials, so the timetable must remain usable with no campus account at all. The value is
+ * stable across installs and versions, which is what keeps an existing binding attributable.
+ */
+internal const val ScheduleSlotKey: String = "local-timetable"
+
 class AppGraph(val platform: PlatformServices) {
     val sessions = SessionStore(platform.storage)
     val settings = SettingsStore(platform.storage)
@@ -60,9 +69,15 @@ class AppGraph(val platform: PlatformServices) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val schedule = ScheduleRuntime(applicationScope, platform.storage, { createAcademicSource(platform.httpClient()) })
     init {
+        // The timetable has its own slot and does not wait for a campus login. The academic system
+        // authenticates with separate credentials, so gating timetable access on a campus session
+        // made the academic entry unreachable for anyone who had not signed in to 掌上莲峰 first.
+        applicationScope.launch {
+            schedule.setOwner(ScheduleSlotKey)
+            schedule.onForeground()
+        }
         applicationScope.launch {
             sessions.session.collect { session ->
-                schedule.setOwner(session?.userId)
                 if (session != null) onForeground()
             }
         }
@@ -98,9 +113,10 @@ class AppGraph(val platform: PlatformServices) {
         private set
     fun clearStorageNotice() { storageNotice = null }
     fun logout() {
-        val timetableOk = schedule.clearForLogout()
+        // Campus logout must NOT clear the timetable: the academic binding has its own credentials
+        // and survives a campus session ending. Only an explicit local-data wipe removes it.
         val sessionOk = runCatching { repositories.auth.logout() }.isSuccess
-        if (!timetableOk || !sessionOk) {
+        if (!sessionOk) {
             storageNotice = AppText.App.SESSION_CLEANUP_FAILED_OLD_SESSION_MAY_REAPPEAR_HINT
         }
     }
@@ -125,6 +141,8 @@ class AppGraph(val platform: PlatformServices) {
                 val storageOk = runCatching { platform.storage.clear() }.isSuccess
                 val settingsOk = settings.reset()
                 runRuntimeInstance = null
+                // Storage is empty now; re-arm the timetable slot so the academic entry still opens.
+                schedule.setOwner(ScheduleSlotKey, force = true)
                 storageNotice = if (scheduleOk && sessionOk && storageOk && settingsOk) null else AppText.App.PARTIAL_LOCAL_DATA_CLEAR_FAILED
             } finally {
                 clearingLocalData = false

@@ -252,6 +252,12 @@ class ScheduleRuntimeTest {
         runtime.close()
     }
 
+    /**
+     * The slot id is an attribution stamp, not an isolation boundary: pointing the runtime at a new
+     * slot re-stamps the existing binding instead of discarding it. What must still hold is that a
+     * reply from the previous slot's in-flight request never writes into the record or the native
+     * lease after the switch.
+     */
     @Test fun delayedOldOwnerReplyCannotWriteToNewOwnerOrNativeLease() = runTest {
         val backend = Backend(listOf(term), ::snapshot)
         val store = Store()
@@ -268,11 +274,71 @@ class ScheduleRuntimeTest {
         val newLease = native.lease
         backend.fetchGate!!.complete(Unit)
         request.join()
+        // The binding survives the slot switch and is re-attributed to the new slot.
         assertEquals("owner-b", runtime.state.value.owner)
-        assertNull(runtime.state.value.snapshot)
-        assertNull(runtime.state.value.boundAccount)
-        assertEquals(saved, store.get(SchedulePersistence.DATA_KEY))
+        val after = store.get(SchedulePersistence.DATA_KEY)
+        assertNotNull(after)
+        // Only the attribution stamp may differ; credentials and snapshots are untouched.
+        assertEquals(saved!!.replace("\"owner\":\"owner-a\"", "\"owner\":\"owner-b\""), after)
         assertEquals(newLease, native.lease)
+        runtime.close()
+    }
+
+    /**
+     * Data-preservation guarantee for the slot-key migration.
+     *
+     * Records written before the timetable was decoupled from the campus session carry
+     * `owner = userId`. On upgrade the app points the runtime at the fixed local slot key, so
+     * without migration every existing binding would look foreign and be dropped, silently asking
+     * the user to sign in to the academic system again. This asserts the record survives with its
+     * credentials and snapshot intact and only its attribution stamp rewritten.
+     */
+    @Test fun legacyOwnerRecordIsAdoptedWithCredentialsAndSnapshotIntact() = runTest {
+        val store = Store()
+        val seed = runtime(Backend(listOf(term), ::snapshot), store)
+        seed.setOwner("2026010401004")
+        bind(seed)
+        val legacy = store.get(SchedulePersistence.DATA_KEY)
+        assertNotNull(legacy)
+        assertTrue(legacy!!.contains("\"owner\":\"2026010401004\""))
+        // A captured snapshot must survive the migration untouched, not be re-fetched.
+        assertTrue(legacy.contains("fixture-course"))
+        seed.close()
+
+        // A fresh process points at the slot key, exactly as AppGraph does on startup.
+        val runtime = runtime(Backend(listOf(term), ::snapshot), store)
+        runtime.setOwner("local-timetable")
+
+        assertEquals("local-timetable", runtime.state.value.owner)
+        assertEquals("academic-fixture", runtime.state.value.boundAccount)
+        assertNotNull(runtime.state.value.snapshot)
+        assertEquals("fixture-course", runtime.state.value.snapshot?.courses?.single()?.id)
+
+        val migrated = store.get(SchedulePersistence.DATA_KEY)
+        assertNotNull(migrated)
+        // Only the owner stamp changed; every other field, including the secret, is byte-identical.
+        assertEquals(legacy.replace("\"owner\":\"2026010401004\"", "\"owner\":\"local-timetable\""), migrated)
+        assertTrue(migrated!!.contains("\"password\":\"fixture-password\""))
+        runtime.close()
+    }
+
+    /** A revoked legacy record must stay dead instead of being revived by migration. */
+    @Test fun migrationNeverRevivesARevokedLegacyRecord() = runTest {
+        val store = Store()
+        val seed = runtime(Backend(listOf(term), ::snapshot), store)
+        seed.setOwner("2026010401004")
+        bind(seed)
+        // Leaving the runtime before cleanup completes leaves a revocation marker behind.
+        store.failRemove = true
+        assertFalse(seed.unbind())
+        assertNotNull(store.get(SchedulePersistence.REVOKED_KEY))
+        seed.close()
+        store.failRemove = false
+
+        val runtime = runtime(Backend(listOf(term), ::snapshot), store)
+        runtime.setOwner("local-timetable")
+        assertNull(runtime.state.value.boundAccount)
+        assertNull(runtime.state.value.snapshot)
         runtime.close()
     }
 
@@ -371,9 +437,9 @@ class ScheduleRuntimeTest {
         backend.fetchGate!!.complete(Unit)
         old.join()
         assertEquals(authBefore, backend.authCalls)
+        // The binding follows the slot rather than the campus session, so it survives the switch.
         assertEquals("owner-b", runtime.state.value.owner)
         assertFalse(runtime.state.value.reauthenticating)
-        assertNull(runtime.state.value.snapshot)
         runtime.close()
     }
 

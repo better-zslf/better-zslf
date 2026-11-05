@@ -177,3 +177,46 @@ class DormSignInPreconditionsTest {
         assertTrue(ticketUrl.contains("wlanacip=10.9.8.1"), ticketUrl)
     }
 }
+
+/** The keep-alive interval must come from the login reply, not from a constant. */
+class DormKeepAlivePropagationTest {
+
+    private val algo = "319FC5AB-EC0E-46B9-A252-2285F9DAE813"
+    private val fields = DormXmlFields("ua", "cid", "t")
+    private val portal = PortalAddress("10.0.0.2", "10.0.0.1")
+
+    private fun controller(keepRetry: String) = DormSignInController(
+        transport = DormTransport { url, _, algoId, _ ->
+            if (algoId == DORM_NIL_ALGO_ID) return@DormTransport DormRoundResult.CipherUpdate(algo)
+            val xml = if (url.contains("ticket.cgi")) "<request><ticket>T</ticket></request>"
+            else "<response><code>0</code><keep-retry>$keepRetry</keep-retry></response>"
+            DormRoundResult.Reply("200", "",
+                io.github.betterzslf.feature.campusnet.crypto.DormCipher
+                    .encryptHex(algoId, xml.encodeToByteArray())!!.encodeToByteArray())
+        },
+        fields = { fields }, servers = DORM_AUTH_SERVERS,
+        portalAddress = { portal }, schoolIdentity = { null })
+
+    @Test fun theAdvertisedIntervalReachesTheSession() = runTest {
+        val c = controller(keepRetry = "600")
+        assertTrue(c.signIn("13800138000", "pw"))
+        // 600 advertised, minus the safety margin the reference applies.
+        assertEquals(570_000L, c.keepAliveMillis)
+        c.signOut()
+    }
+
+    @Test fun aShortAdvertisedIntervalIsFlooredNotTrusted() = runTest {
+        // A tiny value would become a tight loop against a rate-limited gateway.
+        val c = controller(keepRetry = "40")
+        assertTrue(c.signIn("13800138000", "pw"))
+        assertTrue(c.keepAliveMillis >= 60_000L, "keep-alive ${c.keepAliveMillis} is too aggressive")
+        c.signOut()
+    }
+
+    @Test fun aSilentGatewayFallsBackToTheDefault() = runTest {
+        val c = controller(keepRetry = "")
+        assertTrue(c.signIn("13800138000", "pw"))
+        assertEquals(300_000L, c.keepAliveMillis)
+        c.signOut()
+    }
+}

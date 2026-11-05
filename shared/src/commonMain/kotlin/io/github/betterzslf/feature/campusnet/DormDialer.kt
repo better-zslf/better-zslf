@@ -42,7 +42,16 @@ fun interface DormTransport {
 /** Terminal states of an attempt. Each maps to a distinct thing the user is told. */
 sealed interface DormAttemptResult {
     /** Signed in. [ticket] is needed for the heartbeat and the sign-out. */
-    data class Connected(val ticket: String, val algoId: String) : DormAttemptResult
+    data class Connected(
+        val ticket: String,
+        val algoId: String,
+        /**
+         * The keep-alive interval the login reply advertised, already adjusted. Carried out of the
+         * dial because the reply is the only place it appears; the session would otherwise have to
+         * guess.
+         */
+        val keepRetrySeconds: Int = 300,
+    ) : DormAttemptResult
 
     /** The gateway refused. [error] carries its classification so the caller knows if retrying is safe. */
     data class Rejected(val error: DormError) : DormAttemptResult
@@ -132,7 +141,8 @@ class DormDialer(
                 val plain = decrypt(round, algoId) ?: return classify(round, algoId)
                 // Success is the absence of an error code AND a decodable reply; the reference then
                 // considers the session authenticated and starts heartbeats.
-                if (isSuccess(plain, round)) DormAttemptResult.Connected(ticket, algoId)
+                if (isSuccess(plain, round)) DormAttemptResult.Connected(
+                    ticket, algoId, dormKeepRetryFrom(plain))
                 else DormAttemptResult.Rejected(gatewayError(round, plain))
             }
             is DormRoundResult.CipherUpdate -> DormAttemptResult.Unreadable

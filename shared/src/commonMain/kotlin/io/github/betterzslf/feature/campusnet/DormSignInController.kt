@@ -84,13 +84,24 @@ class DormSignInController(
             }
             val identity = schoolIdentity()
             if (identity != null) recordDormSchoolIdentity(identity.first, identity.second, identity.third)
-            val base = fields().copy(ipv4 = address.clientIp, gwip = address.acIp)
+            // A fresh pseudo-identity per attempt: the reference regenerates it every session so a
+            // re-dial after a dropped link is not refused as a duplicate client.
+            val client = newDormClientIdentity()
+            val base = fields().copy(
+                ipv4 = address.clientIp,
+                gwip = address.acIp,
+                hostName = client.hostName,
+                mac = client.mac,
+                ostag = client.ostag,
+            )
             val dialer = DormDialer(transport, server, base, server.baseUrl)
             return when (val result = dialer.dial(plainPhone, password)) {
                 is DormAttemptResult.Connected -> {
                     session?.close()
+                    // Use the interval the login reply advertised; the default only covers a
+                    // gateway that said nothing.
                     session = DormSession(transport, server, base.clientId,
-                        result.ticket, result.algoId, base, dormKeepRetryFrom(null))
+                        result.ticket, result.algoId, base, result.keepRetrySeconds)
                     mutable.value = DormSignInState(DormSignInPhase.Connected,
                         AppText.CampusNetwork.DORM_SIGNED_IN, result.algoId, connected = true)
                     true

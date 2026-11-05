@@ -74,6 +74,12 @@ class AppGraph(val platform: PlatformServices) {
     val portalProbe: io.github.betterzslf.feature.campusnet.KtorPortalProbe
         get() = portalProbeInstance
             ?: io.github.betterzslf.feature.campusnet.KtorPortalProbe(platform.httpClient()).also { portalProbeInstance = it }
+    // The cipher-negotiation handshake. Same cleartext allowlist as the probe: it only ever talks
+    // to the two fixed carrier auth servers on port 7001 that the user's own network resolves.
+    private var dormHandshakeInstance: io.github.betterzslf.feature.campusnet.KtorDormHandshake? = null
+    val dormHandshake: io.github.betterzslf.feature.campusnet.KtorDormHandshake
+        get() = dormHandshakeInstance
+            ?: io.github.betterzslf.feature.campusnet.KtorDormHandshake(platform.httpClient()).also { dormHandshakeInstance = it }
     init {
         // The timetable has its own slot and does not wait for a campus login. The academic system
         // authenticates with separate credentials, so gating timetable access on a campus session

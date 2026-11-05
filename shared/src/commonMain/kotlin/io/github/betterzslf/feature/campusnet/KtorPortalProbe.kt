@@ -11,11 +11,21 @@ import kotlinx.coroutines.CancellationException
 
 /** What the portal probe learned. Every branch is a real outcome, not a swallowed failure. */
 sealed interface PortalProbeResult {
-    /** The portal redirected; this is the URL to hand back to the school backend. */
-    data class Redirected(val url: String) : PortalProbeResult
-
-    /** No 3xx: the portal answered directly, so the original address is already the final one. */
-    data class NotRedirected(val url: String) : PortalProbeResult
+    /**
+     * The portal answered. [url] is what to hand back to the school backend.
+     *
+     * The identity fields come from the portal's own response headers and are needed for the
+     * carrier dialer, not for the mediated path: `ticket.cgi` rejects every request that omits them
+     * (verified against the live gateway: `Error-Code` walks 1 → 13 → 12 → 15 as each header is
+     * added). They are empty when the portal did not send them.
+     */
+    data class Answered(
+        val url: String,
+        val redirected: Boolean,
+        val schoolId: String = "",
+        val domain: String = "",
+        val area: String = "",
+    ) : PortalProbeResult
 
     /** The address is not plain HTTP to an allowlisted host; nothing was requested. */
     data object Blocked : PortalProbeResult
@@ -72,13 +82,19 @@ class KtorPortalProbe(ownerClient: HttpClient) {
             }
             val status = response.status.value
             val location = response.headers[HttpHeaders.Location]
+            // Header names are case-insensitive on the wire; Ktor's map already folds them.
+            val schoolId = response.headers["schoolid"].orEmpty()
+            val domain = response.headers["domain"].orEmpty()
+            val area = response.headers["area"].orEmpty()
             // The body is never read: this is a redirect probe, not a page fetch.
             response.bodyAsChannel().cancel(null)
             when {
-                status in 300..399 -> location?.takeIf { it.isNotBlank() }
-                    ?.let { PortalProbeResult.Redirected(it) }
-                    ?: PortalProbeResult.MissingLocation
-                else -> PortalProbeResult.NotRedirected(portalUrl)
+                status in 300..399 -> {
+                    val target = location?.takeIf { it.isNotBlank() }
+                    if (target == null) PortalProbeResult.MissingLocation
+                    else PortalProbeResult.Answered(target, redirected = true, schoolId, domain, area)
+                }
+                else -> PortalProbeResult.Answered(portalUrl, redirected = false, schoolId, domain, area)
             }
         } catch (cancelled: CancellationException) {
             throw cancelled

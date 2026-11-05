@@ -20,11 +20,16 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.*
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.edition.EditionAccess
 import io.github.betterzslf.core.result.ApiResult
+import io.github.betterzslf.feature.campusnet.CampusDiagnosisController
+import io.github.betterzslf.feature.campusnet.CampusDiagnosisHandshake
+import io.github.betterzslf.feature.campusnet.CampusDiagnosisProbe
+import io.github.betterzslf.feature.campusnet.campusAlgoStatusText
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -289,9 +294,17 @@ private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
     // The only request this page makes, and only when 掌上莲峰 is signed in. It is a read: the
     // account list endpoint takes no parameters and changes nothing.
     LaunchedEffect(boundSessionKey(session), campusBound) {
-        if (!campusBound) { taken = null; queryFailed = false; return@LaunchedEffect }
+        if (!campusBound) {
+            taken = null
+            queryFailed = false
+            return@LaunchedEffect
+        }
         val bound = graph.repositories.campusNetwork.boundToCurrentSession()
-        if (bound == null) { taken = null; queryFailed = true; return@LaunchedEffect }
+        if (bound == null) {
+            taken = null
+            queryFailed = true
+            return@LaunchedEffect
+        }
         when (val response = bound.accounts()) {
             is ApiResult.Success -> {
                 val rows = (response.data as? kotlinx.serialization.json.JsonObject)
@@ -304,7 +317,10 @@ private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
                 }
                 queryFailed = false
             }
-            is ApiResult.Failure -> { taken = null; queryFailed = true }
+            is ApiResult.Failure -> {
+                taken = null
+                queryFailed = true
+            }
         }
     }
 
@@ -370,6 +386,7 @@ private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
                 InfoBanner(AppText.CampusNetwork.DORM_DIALER_UNAVAILABLE_HINT,
                     title = AppText.CampusNetwork.DORM_DIALER_UNAVAILABLE_TITLE, tone = UiTone.Warning)
             }
+            item { CampusDiagnosisPanel(graph, onOpenUrl = graph.platform::openPortalGateway) }
             item {
                 Text(AppText.CampusNetwork.NOT_SCHOOL_LOGIN_PASSWORD_TITLE, fontSize = 12.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
@@ -381,6 +398,117 @@ private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
 /** A session change must not carry a typed phone across owners. */
 private fun boundSessionKey(session: io.github.betterzslf.core.model.Session?): String =
     session?.let { "${it.userId}:${it.token.hashCode()}" }.orEmpty()
+
+/**
+ * On-campus diagnosis panel.
+ *
+ * The carrier dialer is blocked on one value the gateway only issues on campus (`algo_id`), plus the
+ * school identity it demands alongside it. Asking the user to run `curl` would be a poor trade when
+ * the app is already on the network, so this panel does the two reads and shows the raw result to
+ * copy. It is explicitly read-only: no account, no password, no retry.
+ */
+@Composable
+private fun CampusDiagnosisPanel(graph: AppGraph, onOpenUrl: (String) -> Boolean) {
+    val scope = rememberCoroutineScope()
+    val session by graph.sessions.session.collectAsState()
+    val controller = remember(graph, session) {
+        CampusDiagnosisController(
+            // The school hands us the address; asking again per run avoids a stale gateway.
+            portalAddress = {
+                val bound = graph.repositories.campusPortal.boundToCurrentSession()
+                bound?.redirectTarget()?.let { it as? ApiResult.Success }
+                    ?.data?.let { (it as? kotlinx.serialization.json.JsonObject)
+                        ?.get("addr") as? kotlinx.serialization.json.JsonPrimitive }
+                    ?.content
+            },
+            probe = CampusDiagnosisProbe { graph.portalProbe.probe(it) },
+            handshake = CampusDiagnosisHandshake { server, address, schoolId, domain, area ->
+                graph.dormHandshake.negotiate(server, address, schoolId, domain, area)
+            },
+        )
+    }
+    val state by controller.state.collectAsState()
+    val clipboard = graph.platform
+    var copied by remember(controller) { mutableStateOf(false) }
+    var copyAttempted by remember(controller) { mutableStateOf(false) }
+
+    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+        insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
+            Text(AppText.CampusNetwork.DIAGNOSIS_TITLE, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(AppText.CampusNetwork.DIAGNOSIS_HINT, fontSize = 12.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            TextButton(
+                text = if (state.running) AppText.CampusNetwork.DIAGNOSIS_RUNNING
+                else AppText.CampusNetwork.DIAGNOSIS_RUN,
+                enabled = !state.running,
+                modifier = Modifier.fillMaxWidth().testTag("diagnosisRun"),
+                minHeight = AppUiTokens.ButtonHeight,
+                cornerRadius = AppUiTokens.ButtonRadius,
+                onClick = { copied = false; scope.launch { controller.run() } },
+            )
+            val diagnosis = state.diagnosis
+            if (state.hasResult) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    DiagnosisRow(AppText.CampusNetwork.DIAGNOSIS_PORTAL_LABEL, diagnosis.portalAddress)
+                    DiagnosisRow(AppText.CampusNetwork.DIAGNOSIS_PROBED_LABEL, diagnosis.probedUrl)
+                    DiagnosisRow(AppText.CampusNetwork.DIAGNOSIS_SCHOOL_LABEL, diagnosis.schoolId)
+                    DiagnosisRow(AppText.CampusNetwork.DIAGNOSIS_ALGO_LABEL, diagnosis.algoId)
+                    // The gateway's raw code, only when there is one to show.
+                    DiagnosisRow(AppText.CampusNetwork.DIAGNOSIS_ERROR_LABEL,
+                        diagnosis.errorCode.takeIf { it.isNotBlank() && it != "-" }.orEmpty())
+                }
+            }
+            if (state.message.isNotBlank()) {
+                InfoBanner(state.message, tone = UiTone.Warning)
+            }
+            if (state.hasResult) {
+                // Only when there is something to conclude. "Not run" belongs to the message banner,
+                // which explains why (no campus portal, no identity, and so on).
+                val status = campusAlgoStatusText(diagnosis)
+                if (diagnosis.hasAlgoId || diagnosis.errorCode.isNotBlank()) {
+                    Text(status, fontSize = 12.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                }
+                // Nothing was read, so there is nothing worth copying: hide the whole report block
+                // instead of offering an empty string to paste back.
+                if (diagnosis.hasAnyReading()) {
+                    Text(diagnosis.reportLine(), fontSize = 11.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.testTag("diagnosisReport"))
+                    TextButton(
+                        text = if (copied) AppText.CampusNetwork.DIAGNOSIS_COPIED
+                        else AppText.CampusNetwork.DIAGNOSIS_COPY,
+                        modifier = Modifier.fillMaxWidth(),
+                        minHeight = 40.dp, cornerRadius = AppUiTokens.ButtonRadius,
+                        onClick = { copyAttempted = true; copied = clipboard.copyToClipboard(diagnosis.reportLine()) },
+                    )
+                    // Only after an attempt, so it cannot appear before the user has tried.
+                    if (copyAttempted && !copied) {
+                        Text(AppText.CampusNetwork.DIAGNOSIS_COPY_FAILED, fontSize = 11.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    }
+                }
+            }
+            // The portal itself is the fallback when the identity headers are missing.
+            diagnosis.portalAddress.takeIf { it.isNotBlank() }?.let { address ->
+                TextButton(AppText.CampusNetwork.OPEN_PORTAL_ACTION, modifier = Modifier.fillMaxWidth(),
+                    minHeight = 40.dp, cornerRadius = AppUiTokens.ButtonRadius,
+                    onClick = { onOpenUrl(address) })
+            }
+        }
+    }
+}
+
+/** The label/value line the diagnosis report is built from. */
+@Composable
+private fun DiagnosisRow(label: String, value: String) {
+    if (value.isBlank()) return
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        Text(value, fontSize = 11.sp, maxLines = 2,
+            modifier = Modifier.weight(1f), overflow = TextOverflow.Ellipsis)
+    }
+}
 
 /**
  * The phone prefix of a broadband account.

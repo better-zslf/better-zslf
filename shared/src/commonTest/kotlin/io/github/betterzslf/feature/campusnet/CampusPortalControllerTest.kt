@@ -43,6 +43,10 @@ private class FakeProbe(private val result: PortalProbeResult) : CampusPortalPro
 private fun online() = ApiResult.Success<JsonElement>(buildJsonObject { put("status", "1") })
 private fun offline() = ApiResult.Success<JsonElement>(buildJsonObject { put("status", "0") })
 
+/** Test shorthands for the two "the portal answered" shapes. */
+private fun answeredRedirect(url: String) = PortalProbeResult.Answered(url, redirected = true)
+private fun answeredDirect(url: String) = PortalProbeResult.Answered(url, redirected = false)
+
 class CampusPortalControllerTest {
 
     @Test fun serverSpellingAndStringStatusAreBothHonoured() {
@@ -62,7 +66,7 @@ class CampusPortalControllerTest {
 
     @Test fun openingThePageOnlyReadsStatusAndNeverAuthenticates() = runTest {
         val source = FakePortalSource(info = offline())
-        val probe = FakeProbe(PortalProbeResult.Redirected("$PORTAL/a/wifi?wlanuserip=1"))
+        val probe = FakeProbe(answeredRedirect("$PORTAL/a/wifi?wlanuserip=1"))
         val controller = CampusPortalController(source, probe, clock())
         assertTrue(controller.refresh())
         assertEquals(CampusPortalPhase.Offline, controller.state.value.phase)
@@ -75,7 +79,7 @@ class CampusPortalControllerTest {
     @Test fun connectionProbesThenDialsWithTheProbedUrlAndRecordsOneStartTime() = runTest {
         val source = FakePortalSource(info = offline())
         val probed = "$PORTAL/a/wifi?wlanuserip=10.0.0.2&wlanacip=10.0.0.1"
-        val probe = FakeProbe(PortalProbeResult.Redirected(probed))
+        val probe = FakeProbe(answeredRedirect(probed))
         val controller = CampusPortalController(source, probe, clock(555))
         assertTrue(controller.connect())
         assertEquals(CampusPortalPhase.Online, controller.state.value.phase)
@@ -101,7 +105,7 @@ class CampusPortalControllerTest {
         val noRedirect = CampusPortalController(
             FakePortalSource(offline(), dial = ApiResult.Success(buildJsonObject {
                 put("status", "0"); put("msg", "登录失败：no redirect 01")
-            })), FakeProbe(PortalProbeResult.NotRedirected(PORTAL)), clock())
+            })), FakeProbe(answeredDirect(PORTAL)), clock())
         assertFalse(noRedirect.connect())
         // "no redirect" is a retryable state, not a hard failure: the portal simply had no hop.
         assertEquals(CampusPortalPhase.NotOnCampus, noRedirect.state.value.phase)
@@ -111,7 +115,7 @@ class CampusPortalControllerTest {
         val source = FakePortalSource(offline(), dial = ApiResult.Success(buildJsonObject {
             put("status", "0"); put("msg", "PassWord error")
         }))
-        val controller = CampusPortalController(source, FakeProbe(PortalProbeResult.Redirected(PORTAL)), clock())
+        val controller = CampusPortalController(source, FakeProbe(answeredRedirect(PORTAL)), clock())
         assertFalse(controller.connect())
         assertEquals(CampusPortalPhase.Failed, controller.state.value.phase)
         assertEquals(io.github.betterzslf.core.text.AppText.CampusNetwork.PORTAL_PASSWORD_WRONG_DETAIL, controller.state.value.detail)
@@ -122,7 +126,7 @@ class CampusPortalControllerTest {
     @Test fun aDialThatThrowsIsUnconfirmedNotSuccessful() = runTest {
         val controller = CampusPortalController(
             FakePortalSource(offline(), dial = ApiResult.Failure(ApiError.Network())),
-            FakeProbe(PortalProbeResult.Redirected(PORTAL)), clock())
+            FakeProbe(answeredRedirect(PORTAL)), clock())
         assertFalse(controller.connect())
         assertEquals(CampusPortalPhase.Failed, controller.state.value.phase)
         assertNull(controller.state.value.connectedAtMillis)
@@ -130,7 +134,7 @@ class CampusPortalControllerTest {
 
     @Test fun disconnectOnlyRunsOnExplicitRequestAndClearsTheStartTime() = runTest {
         val source = FakePortalSource(info = online())
-        val controller = CampusPortalController(source, FakeProbe(PortalProbeResult.Redirected(PORTAL)), clock(7))
+        val controller = CampusPortalController(source, FakeProbe(answeredRedirect(PORTAL)), clock(7))
         assertTrue(controller.refresh())
         assertEquals(CampusPortalPhase.Online, controller.state.value.phase)
         assertEquals(7L, controller.state.value.connectedAtMillis)
@@ -143,7 +147,7 @@ class CampusPortalControllerTest {
 
     @Test fun aStaleSessionNeverDialsOrLogsOut() = runTest {
         val source = FakePortalSource(info = online()).apply { current = false }
-        val controller = CampusPortalController(source, FakeProbe(PortalProbeResult.Redirected(PORTAL)), clock())
+        val controller = CampusPortalController(source, FakeProbe(answeredRedirect(PORTAL)), clock())
         assertFalse(controller.connect())
         assertFalse(controller.disconnect())
         assertEquals(0, source.dials)
@@ -163,7 +167,7 @@ class CampusPortalControllerTest {
             }
             override suspend fun offline() = ApiResult.Success<JsonElement>(buildJsonObject { put("status", "1") })
         }
-        val controller = CampusPortalController(source, FakeProbe(PortalProbeResult.Redirected(PORTAL)), clock())
+        val controller = CampusPortalController(source, FakeProbe(answeredRedirect(PORTAL)), clock())
         val first = launch { controller.connect() }
         val second = launch { controller.connect() }
         gate.complete(Unit)
@@ -173,7 +177,7 @@ class CampusPortalControllerTest {
 
     @Test fun unreadableStatusIsFailureNotOffline() = runTest {
         val source = FakePortalSource(info = ApiResult.Success(buildJsonObject { put("status", "?") }))
-        val controller = CampusPortalController(source, FakeProbe(PortalProbeResult.Redirected(PORTAL)), clock())
+        val controller = CampusPortalController(source, FakeProbe(answeredRedirect(PORTAL)), clock())
         assertFalse(controller.refresh())
         // Inviting a login here would be wrong: we do not know that the user is offline.
         assertEquals(CampusPortalPhase.Failed, controller.state.value.phase)

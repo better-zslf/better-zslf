@@ -24,8 +24,9 @@ class KtorPortalProbeTest {
         })
         try {
             val result = client.probe(PORTAL_HOST)
-            val redirected = assertIs<PortalProbeResult.Redirected>(result)
-            assertEquals("$PORTAL_HOST/a/wifi?wlanuserip=10.0.0.2&wlanacip=10.0.0.1", redirected.url)
+            val answered = assertIs<PortalProbeResult.Answered>(result)
+            assertTrue(answered.redirected)
+            assertEquals("$PORTAL_HOST/a/wifi?wlanuserip=10.0.0.2&wlanacip=10.0.0.1", answered.url)
             // The reference plugin sends a browser UA; portals may not redirect otherwise.
             assertEquals(PORTAL_PROBE_USER_AGENT, requestedUserAgent)
         } finally { client.close() }
@@ -35,7 +36,34 @@ class KtorPortalProbeTest {
         // Non-3xx is not an error: the portal simply answered without bouncing us.
         val client = probe(MockEngine { respond("ok", HttpStatusCode.OK) })
         try {
-            assertEquals(PortalProbeResult.NotRedirected(PORTAL_HOST), client.probe(PORTAL_HOST))
+            val answered = assertIs<PortalProbeResult.Answered>(client.probe(PORTAL_HOST))
+            assertFalse(answered.redirected)
+            assertEquals(PORTAL_HOST, answered.url)
+        } finally { client.close() }
+    }
+
+    @Test fun portalIdentityHeadersAreCapturedForTheCarrierDialer() = runTest {
+        // The live gateway rejects ticket.cgi unless these are echoed back; they come from here.
+        val client = probe(MockEngine {
+            respond("", HttpStatusCode.OK, headersOf(
+                "schoolid" to listOf("fixture-school"), "domain" to listOf("fixture.domain"),
+                "area" to listOf("fixture-area")))
+        })
+        try {
+            val answered = assertIs<PortalProbeResult.Answered>(client.probe(PORTAL_HOST))
+            assertEquals("fixture-school", answered.schoolId)
+            assertEquals("fixture.domain", answered.domain)
+            assertEquals("fixture-area", answered.area)
+        } finally { client.close() }
+    }
+
+    @Test fun aPortalWithoutIdentityHeadersReportsEmptyRatherThanGuessing() = runTest {
+        val client = probe(MockEngine { respond("", HttpStatusCode.OK) })
+        try {
+            val answered = assertIs<PortalProbeResult.Answered>(client.probe(PORTAL_HOST))
+            assertEquals("", answered.schoolId)
+            assertEquals("", answered.domain)
+            assertEquals("", answered.area)
         } finally { client.close() }
     }
 

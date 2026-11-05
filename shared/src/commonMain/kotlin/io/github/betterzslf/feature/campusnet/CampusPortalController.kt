@@ -159,8 +159,7 @@ class CampusPortalController(
                 fail(AppText.CampusNetwork.PORTAL_ADDRESS_BLOCKED_DETAIL); return false
             }
             val finalUrl = when (val probed = probeSource.probe(target)) {
-                is PortalProbeResult.Redirected -> probed.url
-                is PortalProbeResult.NotRedirected -> probed.url
+                is PortalProbeResult.Answered -> probed.url
                 PortalProbeResult.Blocked -> {
                     mutable.value = mutable.value.copy(portalAddress = target)
                     fail(AppText.CampusNetwork.PORTAL_ADDRESS_BLOCKED_DETAIL); return false

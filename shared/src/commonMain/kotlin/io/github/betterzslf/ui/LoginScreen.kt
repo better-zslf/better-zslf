@@ -299,6 +299,8 @@ private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
     var manualPhone by remember(boundSessionKey(session)) { mutableStateOf("") }
     // Never persisted and never pre-filled: the design forbids remembering this password.
     var broadbandPassword by remember(boundSessionKey(session)) { mutableStateOf("") }
+    // Display-only toggle. It resets with the session so one owner's choice does not carry over.
+    var passwordVisible by remember(boundSessionKey(session)) { mutableStateOf(false) }
     val dormScope = rememberCoroutineScope()
     // The portal addresses and school identity are only obtainable on campus, and the diagnosis run
     // is what captures them. Sharing one state here means the sign-in button uses exactly what the
@@ -412,6 +414,9 @@ private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
                             modifier = Modifier.fillMaxWidth().testTag("dormPhone"),
                         )
                         // Never pre-filled and never restored: the design forbids remembering it.
+                        // Design §5.3 shows an eye toggle on this field. Kept as a separate row
+                        // instead of an in-field trailing icon because Miuix's TextField has no
+                        // slot for one, and the reference page puts it beside the field too.
                         TextField(
                             value = broadbandPassword,
                             onValueChange = { broadbandPassword = it },
@@ -422,8 +427,19 @@ private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
                             enabled = dormState.phase != DormSignInPhase.Running &&
                                 dormState.phase != DormSignInPhase.Connected,
                             cornerRadius = AppUiTokens.FieldRadius,
-                            visualTransformation = PasswordVisualTransformation(),
+                            visualTransformation = if (passwordVisible) VisualTransformation.None
+                            else PasswordVisualTransformation(),
                             modifier = Modifier.fillMaxWidth().testTag("dormPassword"),
+                        )
+                        // The design requires a way to check what was typed; a wrong password here
+                        // costs one of the account's rate-limited login attempts.
+                        TextButton(
+                            text = if (passwordVisible) AppText.CampusNetwork.DORM_HIDE_PASSWORD
+                            else AppText.CampusNetwork.DORM_SHOW_PASSWORD,
+                            modifier = Modifier.fillMaxWidth().testTag("dormPasswordVisibility"),
+                            minHeight = 40.dp,
+                            cornerRadius = AppUiTokens.ButtonRadius,
+                            onClick = { passwordVisible = !passwordVisible },
                         )
                     }
                 }

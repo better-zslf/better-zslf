@@ -207,6 +207,8 @@ object AppText {
         const val DORM_DIALER_UNAVAILABLE_HINT: String = "运营商网关下发的加密方式需要在校内网络实测确认后才能接入。可先用上方由学校后端代办的登录。"
         const val DORM_PHONE_FIELD: String = "手机号"
         const val DORM_BROADBAND_PASSWORD_FIELD: String = "宽带密码"
+        const val DORM_SHOW_PASSWORD: String = "显示密码"
+        const val DORM_HIDE_PASSWORD: String = "隐藏密码"
         const val DORM_PHONE_SOURCE_TITLE: String = "手机号来源"
         const val DORM_PHONE_SOURCE_READY: String = "已从掌上莲峰取出手机号"
         fun dormPhoneSourceReady(masked: String): String = "已从掌上莲峰取出手机号 ${masked}"

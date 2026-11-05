@@ -150,9 +150,26 @@ private fun CampusConnectionCard(
     }
 }
 
-/** Lead wires this entry into campusnet; creating the page never checks a phone or changes a password. */
+/**
+ * The dorm sign-in page, reachable from the campus tab.
+ *
+ * §5.4 gives this page a "去登录" action leading to the dorm sign-in screen, which the design
+ * otherwise only draws as a login-time step. Since the button exists only after the user is inside
+ * the app, that screen has to be reachable afterwards too, so it is exposed here rather than living
+ * solely inside the login flow.
+ */
 @Composable
-fun CampusNetworkFeaturePage(graph: AppGraph, onBack: (() -> Unit)?) {
+fun DormNetworkFeaturePage(graph: AppGraph, onBack: () -> Unit) {
+    io.github.betterzslf.ui.DormNetworkPage(graph, onBack)
+}
+
+@Composable
+fun CampusNetworkFeaturePage(
+    graph: AppGraph,
+    onBack: (() -> Unit)?,
+    /** Opens the dorm sign-in page; `null` when the caller has no navigation to offer. */
+    onOpenDormSignIn: (() -> Unit)? = null,
+) {
     val session by graph.sessions.session.collectAsState()
     // A different owner OR token gets entirely new, unsaved inputs and an opaque request capability.
     key(session) {
@@ -164,7 +181,9 @@ fun CampusNetworkFeaturePage(graph: AppGraph, onBack: (() -> Unit)?) {
             CampusPortalController(portalSource, probe) { kotlin.time.Clock.System.now().toEpochMilliseconds() }
         }
         DisposableEffect(controller, portal) { onDispose { controller.close(); portal.close() } }
-        CampusNetworkPage(controller, portal, sessionBound = session != null, onOpenUrl = graph.platform::openPortalGateway, onBack = onBack)
+        CampusNetworkPage(controller, portal, sessionBound = session != null,
+            onOpenUrl = graph.platform::openPortalGateway,
+            onOpenDormSignIn = onOpenDormSignIn, onBack = onBack)
     }
 }
 
@@ -174,6 +193,7 @@ private fun CampusNetworkPage(
     portal: CampusPortalController,
     sessionBound: Boolean,
     onOpenUrl: (String) -> Boolean,
+    onOpenDormSignIn: (() -> Unit)?,
     onBack: (() -> Unit)?,
 ) {
     val state by controller.state.collectAsState()
@@ -220,10 +240,11 @@ private fun CampusNetworkPage(
                     CampusConnectionCard(
                         state = connection,
                         detail = campusConnectionDetail(portalState, connection),
-                        // "去登录" here is the campus session, not the dorm carrier; the dorm entry
-                        // lives on the login chooser. Offering a connect button with no session would
-                        // be a button that cannot succeed.
-                        onSignIn = null,
+                        // §5.4: when the dorm network is not signed in, the card offers a way into
+                        // the sign-in page. Only shown when there is somewhere to go.
+                        onSignIn = onOpenDormSignIn.takeIf {
+                            connection == CampusConnectionState.NotSignedIn
+                        },
                         primary = when {
                             portalState.canConnect -> AppText.CampusNetwork.ACTION_CONNECT
                             portalState.canDisconnect -> AppText.CampusNetwork.ACTION_DISCONNECT

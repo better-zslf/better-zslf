@@ -291,8 +291,15 @@ private fun BackToChooser(onBack: () -> Unit) {
  * The phone-source card has all three states from the design. State B (nothing taken from 掌上莲峰)
  * is the *normal* case, not an error: users can reach this page without ever signing in there.
  */
+/**
+ * N2, the dorm-network sign-in page.
+ *
+ * Reachable from two places on purpose: the login chooser (before entering the app) and the campus
+ * tab's "去登录" action (after). The design draws it as a login-time step, but §5.4 also gives the
+ * campus page a button into it, so it cannot live only inside the login flow.
+ */
 @Composable
-private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
+internal fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
     val session by graph.sessions.session.collectAsState()
     // Only a signed-in 掌上莲峰 can supply the broadband phone; nothing is fetched before that.
     val campusBound = session != null

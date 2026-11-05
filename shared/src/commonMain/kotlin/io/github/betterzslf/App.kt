@@ -405,7 +405,8 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
                             when (route.index) {
                                 0 -> ScheduleRootPage(graph, open)
                                 1 -> RunTaskList(graph, open)
-                                2 -> CampusNetworkFeaturePage(graph, onBack = null)
+                                2 -> CampusNetworkFeaturePage(graph, onBack = null,
+                                    onOpenDormSignIn = { open(Route.Page("dormnetwork", title = io.github.betterzslf.core.text.AppText.Auth.ENTRY_DORM_LINK)) })
                                 3 -> ProfileScreen(graph, open)
                             }
                         }

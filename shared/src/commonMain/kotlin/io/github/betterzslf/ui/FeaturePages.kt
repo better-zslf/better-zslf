@@ -50,6 +50,9 @@ fun FeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBa
         "runs", "rundetail", "runrecords", "runrecord", "runtracker", "runimport" -> RunFeaturePage(graph, page, onOpen, onBack, graph.runRuntime)
         "water" -> graph.editionFeatures.Page(graph, page, onOpen, onBack)
         "campusnet" -> CampusNetworkFeaturePage(graph, onBack)
+        // The dorm sign-in page is reachable from the campus tab as well as from the login chooser,
+        // because §5.4 puts a "去登录" action on the campus page.
+        "dormnetwork" -> io.github.betterzslf.ui.campusnet.DormNetworkFeaturePage(graph) { onOpen(Route.TabRoot(2)) }
         "feedback" -> FeedbackScreen(graph, onBack)
         "updates" -> AppUpdatePage(graph.platform.versionName, graph.githubUpdates, graph.appUpdater, graph.platform::openUrl, onBack)
         "about" -> AboutScreen(graph, onBack) { onOpen(Route.Page("updates", title = AppText.Updates.VERSION_UPDATE_TITLE)) }

@@ -103,3 +103,45 @@ class KtorPortalProbeTest {
         assertEquals(0, calls)
     }
 }
+
+/**
+ * The school identity headers come from the portal, and the gateway later demands them on every
+ * dial round. HTTP header names are case-insensitive on the wire, so a gateway that sends
+ * `SchoolId` rather than `schoolid` must still be read correctly — otherwise the identity silently
+ * comes back empty and the dial fails at the gateway with "Error-Code 15", which looks like a
+ * network problem rather than a parsing one.
+ */
+class KtorPortalProbeHeaderCaseTest {
+
+    private suspend fun probeWith(headerName: String, value: String): PortalProbeResult {
+        val client = KtorPortalProbe(HttpClient(MockEngine {
+            respond("", HttpStatusCode.OK, headersOf(headerName to listOf(value)))
+        }))
+        return try { client.probe("http://9.9.9.9") } finally { client.close() }
+    }
+
+    @Test fun theLowercaseFormIsRead() = kotlinx.coroutines.test.runTest {
+        val answered = assertIs<PortalProbeResult.Answered>(probeWith("schoolid", "S1"))
+        assertEquals("S1", answered.schoolId)
+    }
+
+    @Test fun theMixedCaseFormIsAlsoRead() = kotlinx.coroutines.test.runTest {
+        // Some gateways capitalise differently; the header name is case-insensitive by definition.
+        for (name in listOf("SchoolId", "SCHOOLID", "Schoolid")) {
+            val answered = assertIs<PortalProbeResult.Answered>(probeWith(name, "S2"))
+            assertEquals("S2", answered.schoolId, "header written as $name was not read")
+        }
+    }
+
+    @Test fun domainAndAreaBehaveTheSameWay() = kotlinx.coroutines.test.runTest {
+        assertEquals("D", assertIs<PortalProbeResult.Answered>(probeWith("Domain", "D")).domain)
+        assertEquals("A", assertIs<PortalProbeResult.Answered>(probeWith("AREA", "A")).area)
+    }
+
+    @Test fun aMissingHeaderIsEmptyNotAnError() = kotlinx.coroutines.test.runTest {
+        val answered = assertIs<PortalProbeResult.Answered>(probeWith("x-unrelated", "v"))
+        assertEquals("", answered.schoolId)
+        assertEquals("", answered.domain)
+        assertEquals("", answered.area)
+    }
+}

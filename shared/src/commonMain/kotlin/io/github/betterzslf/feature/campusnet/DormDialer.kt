@@ -91,19 +91,18 @@ class DormDialer(
      * @return a terminal outcome; never throws for an ordinary network failure.
      */
     suspend fun dial(userId: String, password: String): DormAttemptResult {
-        var algoId = DORM_NIL_ALGO_ID
-
-        // Round 1: negotiate the cipher. The reference allows at most two updates before giving up,
+        // Phase 1: negotiate the cipher (`init_session` in the reference).
+        //
+        // This is a POST whose *body is the all-zero UUID string*, not an encrypted document: there
+        // is no cipher yet, so nothing could be encrypted. The gateway answers with a ZSM blob
+        // naming the family it will use. The reference allows at most two updates before giving up,
         // because a gateway that keeps changing its mind would otherwise loop forever.
         var updates = 0
-        var ticketXml: String? = null
-        while (true) {
-            when (val round = transport.post(
-                url = "$authServerBase/ticket.cgi?wlanuserip=${encode(fields.ipv4)}&wlanacip=${encode(fields.gwip)}",
-                encryptedPayload = initialPayload(),
-                algoId = algoId,
-                clientId = fields.clientId,
-            )) {
+        var algoId = DORM_NIL_ALGO_ID
+        val ticketUrl = "$authServerBase/ticket.cgi" +
+            "?wlanuserip=${encode(fields.ipv4)}&wlanacip=${encode(fields.gwip)}"
+        while (algoId == DORM_NIL_ALGO_ID) {
+            when (val round = transport.post(ticketUrl, DORM_NIL_ALGO_ID, DORM_NIL_ALGO_ID, fields.clientId)) {
                 is DormRoundResult.CipherUpdate -> {
                     val status = DormCipher.statusOf(round.algoId)
                     if (status is DormCipherStatus.Unsupported) {
@@ -117,18 +116,22 @@ class DormDialer(
                     if (++updates > 2) return DormAttemptResult.Unreadable
                     algoId = round.algoId
                 }
-                is DormRoundResult.Reply -> {
-                    // A non-negotiation reply here is the ticket itself, already encrypted under the
-                    // current cipher.
-                    val plain = decrypt(round, algoId) ?: return classify(round, algoId)
-                    ticketXml = plain
-                    break
-                }
+                is DormRoundResult.Reply -> return classify(round, algoId)
                 DormRoundResult.Unreachable -> return DormAttemptResult.Unreachable
             }
         }
 
-        val ticket = ticketXml?.let(::dormXmlTicket) ?: return DormAttemptResult.Unreadable
+        // Phase 2: fetch the ticket, now encrypted under the negotiated family.
+        val ticketPayload = DormCipher.encryptHex(algoId,
+            buildDormXml(DormXmlKind.GetTicket, stamped(fields)).encodeToByteArray())
+            ?: return unsupported(algoId)
+        val ticketXml = when (val round = transport.post(ticketUrl, ticketPayload, algoId, fields.clientId)) {
+            is DormRoundResult.Reply -> decrypt(round, algoId) ?: return classify(round, algoId)
+            is DormRoundResult.CipherUpdate -> return DormAttemptResult.Unreadable
+            DormRoundResult.Unreachable -> return DormAttemptResult.Unreachable
+        }
+
+        val ticket = dormXmlTicket(ticketXml) ?: return DormAttemptResult.Unreadable
 
         // Round 3: log in with the ticket.
         val loginPayload = DormCipher.encryptHex(algoId,
@@ -149,11 +152,6 @@ class DormDialer(
             DormRoundResult.Unreachable -> DormAttemptResult.Unreachable
         }
     }
-
-    private fun initialPayload(): String =
-        DormCipher.encryptHex(DORM_NIL_ALGO_ID,
-            buildDormXml(DormXmlKind.GetTicket, stamped(fields)).encodeToByteArray())
-            ?: buildDormXml(DormXmlKind.GetTicket, stamped(fields))
 
     private fun decrypt(round: DormRoundResult.Reply, algoId: String): String? {
         val text = round.body.decodeToString()

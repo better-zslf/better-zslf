@@ -175,3 +175,69 @@ class DormDialerTimestampTest {
         assertTrue(xml.contains("<local-time>$stamp</local-time>"), xml)
     }
 }
+
+/**
+ * The two phases are not the same request.
+ *
+ * The reference calls `init_session` first — a POST whose body is the all-zero UUID string, because
+ * no cipher exists yet — and only then fetches the ticket with an encrypted document. Collapsing
+ * them into one request means either sending an unencryptable document or reusing a ciphertext the
+ * gateway has already replaced.
+ */
+class DormDialerPhasesTest {
+
+    private val algo = "319FC5AB-EC0E-46B9-A252-2285F9DAE813"
+    private val fields = DormXmlFields(
+        userAgent = DORM_ANDROID_USER_AGENT, clientId = "cid", localTime = "t",
+        hostName = "h", ipv4 = "10.0.0.2", mac = "aa:bb", ostag = "3", gwip = "10.0.0.1")
+
+    private data class Call(val url: String, val payload: String, val algoId: String)
+
+    private fun recordingCalls(calls: MutableList<Call>) = DormTransport { url, payload, algoId, _ ->
+        calls += Call(url, payload, algoId)
+        when {
+            algoId == DORM_NIL_ALGO_ID -> DormRoundResult.CipherUpdate(algo)
+            url.contains("ticket.cgi") -> DormRoundResult.Reply("200", "",
+                io.github.betterzslf.feature.campusnet.crypto.DormCipher.encryptHex(algo,
+                    "<request><ticket>T</ticket></request>".encodeToByteArray())!!.encodeToByteArray())
+            else -> DormRoundResult.Reply("200", "",
+                io.github.betterzslf.feature.campusnet.crypto.DormCipher.encryptHex(algo,
+                    "<response><code>0</code></response>".encodeToByteArray())!!.encodeToByteArray())
+        }
+    }
+
+    @Test fun theNegotiationRoundSendsTheAllZeroIdAndNoDocument() = runTest {
+        val calls = mutableListOf<Call>()
+        DormDialer(recordingCalls(calls), DORM_AUTH_SERVERS.first(), fields,
+            DORM_AUTH_SERVERS.first().baseUrl, clock = { "t" }).dial("13800138000", "pw")
+        val negotiation = calls.first()
+        assertEquals(DORM_NIL_ALGO_ID, negotiation.algoId)
+        // The body is the id itself, not XML and not ciphertext.
+        assertEquals(DORM_NIL_ALGO_ID, negotiation.payload)
+        assertFalse(negotiation.payload.contains("<request>"), negotiation.payload)
+    }
+
+    @Test fun laterRoundsAreEncryptedUnderTheNegotiatedFamily() = runTest {
+        val calls = mutableListOf<Call>()
+        DormDialer(recordingCalls(calls), DORM_AUTH_SERVERS.first(), fields,
+            DORM_AUTH_SERVERS.first().baseUrl, clock = { "t" }).dial("13800138000", "pw")
+        val encrypted = calls.drop(1)
+        assertTrue(encrypted.isNotEmpty())
+        for (c in encrypted) {
+            assertEquals(algo, c.algoId, c.url)
+            // Uppercase hex only: anything else is not a ciphertext this protocol carries.
+            assertTrue(c.payload.all { it in "0123456789ABCDEF" }, "${c.url}: ${c.payload}")
+        }
+    }
+
+    @Test fun exactlyThreeRoundsForAFreshSuccessfulDial() = runTest {
+        val calls = mutableListOf<Call>()
+        DormDialer(recordingCalls(calls), DORM_AUTH_SERVERS.first(), fields,
+            DORM_AUTH_SERVERS.first().baseUrl, clock = { "t" }).dial("13800138000", "pw")
+        // negotiate, ticket, login — no more.
+        assertEquals(3, calls.size)
+        assertEquals(1, calls.count { it.url.contains("ticket.cgi") && it.algoId == DORM_NIL_ALGO_ID })
+        assertEquals(1, calls.count { it.url.contains("ticket.cgi") && it.algoId == algo })
+        assertEquals(1, calls.count { it.url.contains("auth.cgi") })
+    }
+}

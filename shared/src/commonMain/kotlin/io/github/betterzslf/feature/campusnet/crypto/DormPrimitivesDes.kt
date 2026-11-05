@@ -187,3 +187,32 @@ internal fun desedeCbcEncrypt(key1: ByteArray, key2: ByteArray, iv1: ByteArray, 
     }
     return buf
 }
+
+/**
+ * `3DES-double` CBC, which is a different composition from [desedeCbcEncrypt].
+ *
+ * The 48-byte key holds six independent 8-byte DES keys, not two 24-byte 3DES keys. The reference
+ * runs two full CBC passes over the buffer: the second half of the key (offsets 24/32/40) first,
+ * then the first half (0/8/16). Both passes reuse the same 8-byte IV.
+ */
+internal fun desedeDoubleCbcEncrypt(key48: ByteArray, iv: ByteArray, data: ByteArray): ByteArray {
+    require(key48.size == 48) { "3DES-double key must be 48 bytes" }
+    fun triple(block: ByteArray, base: Int): ByteArray {
+        val k1 = desSubkeys(key48.copyOfRange(base, base + 8))
+        val k2 = desSubkeys(key48.copyOfRange(base + 8, base + 16))
+        val k3 = desSubkeys(key48.copyOfRange(base + 16, base + 24))
+        return desBlock(desBlock(desBlock(block, k1), k2, decrypt = true), k3)
+    }
+    var buf = data.zeroPadTo(8)
+    for (base in intArrayOf(24, 0)) {
+        val out = ByteArray(buf.size)
+        var prev = iv.copyOf(8)
+        for (off in buf.indices step 8) {
+            val enc = triple(buf.copyOfRange(off, off + 8).xorWith(prev), base)
+            enc.copyInto(out, off)
+            prev = enc
+        }
+        buf = out
+    }
+    return buf
+}

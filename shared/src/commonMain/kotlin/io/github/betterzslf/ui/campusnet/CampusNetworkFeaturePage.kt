@@ -50,14 +50,26 @@ private val CampusPortalState.connectionState: CampusConnectionState
 private fun campusConnectionState(state: CampusPortalState, sessionBound: Boolean): CampusConnectionState =
     if (!sessionBound) CampusConnectionState.NotSignedIn else state.connectionState
 
-/** An explicit detail always wins: the controller only sets it when it knows something concrete. */
+/**
+ * Design §7: the connected card reads `已用 2 小时 14 分 · 138****8000`.
+ *
+ * The duration is derived locally so no locale formatting call is involved; the masked phone is
+ * blank when the account query has not returned one, and the separator simply disappears rather
+ * than leaving a dangling `·`.
+ */
 private fun campusConnectionDetail(state: CampusPortalState, connection: CampusConnectionState): String {
     if (state.detail.isNotBlank()) return state.detail
-    if (connection == CampusConnectionState.Online && state.connectedAtMillis != null) {
-        val elapsed = kotlin.time.Clock.System.now().toEpochMilliseconds() - state.connectedAtMillis
-        return AppText.CampusNetwork.connectedFor(campusDurationLabel(elapsed.coerceAtLeast(0)))
+    if (connection != CampusConnectionState.Online) return ""
+    val elapsed = state.connectedAtMillis?.let {
+        (kotlin.time.Clock.System.now().toEpochMilliseconds() - it).coerceAtLeast(0)
     }
-    return ""
+    val duration = elapsed?.let { AppText.CampusNetwork.connectedFor(campusDurationLabel(it)) }.orEmpty()
+    val phone = state.maskedPhone
+    return when {
+        duration.isNotBlank() && phone.isNotBlank() -> AppText.CampusNetwork.statusOnlineHint(
+            campusDurationLabel(elapsed ?: 0), phone)
+        else -> duration
+    }
 }
 
 /** Locally derived, so no locale formatting call and no platform API is involved. */

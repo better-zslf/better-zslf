@@ -100,6 +100,14 @@ object AppUiTokens {
     val CardDarkRaised = Color(0xFF22262D)
     val Positive = Color(0xFF33C759)
     val PositiveDark = Color(0xFF4DD466)
+    /**
+     * The neutral dot on the campus-network status card (design §7).
+     *
+     * Deliberately a fixed value rather than the theme's `onSurfaceVariantSummary`: the design
+     * specifies this exact grey for both the un-signed-in and offline states, and a theme colour
+     * shifts with the dark palette enough to be a different swatch.
+     */
+    val NeutralDot = Color(0xFF8E8E93)
     val Warning = Color(0xFFFF9400)
     val WarningDark = Color(0xFFFFA11A)
     val Negative = Color(0xFFFA3B3B)

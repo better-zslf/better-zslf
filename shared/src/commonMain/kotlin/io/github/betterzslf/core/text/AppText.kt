@@ -139,7 +139,9 @@ object AppText {
         const val PORTAL_NO_REDIRECT_DETAIL: String = "没有探测到认证跳转，请手动打开门户页登录"
         const val PORTAL_WIFI_REQUIRED_DETAIL: String = "请先连接学校 WiFi 再登录"
         const val PORTAL_SIGNED_OUT_DETAIL: String = "登录掌上莲峰后即可一键连接"
-        fun connectedFor(duration: String): String = "本次已连接 ${duration}"
+        // §7 shows `已用 2 小时 14 分`; the same wording is used when no masked phone is available,
+        // so the prefix does not change shape between the two cases.
+        fun usedFor(duration: String): String = "已用 ${duration}"
         fun durationHours(hours: Long): String = "${hours} 小时"
         fun durationMinutes(minutes: Long): String = "${minutes} 分"
         fun portalErrorDetail(raw: String): String = "认证返回：${raw}"

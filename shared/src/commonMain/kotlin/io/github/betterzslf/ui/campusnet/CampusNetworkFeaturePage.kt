@@ -62,14 +62,13 @@ private fun campusConnectionDetail(state: CampusPortalState, connection: CampusC
     if (connection != CampusConnectionState.Online) return ""
     val elapsed = state.connectedAtMillis?.let {
         (kotlin.time.Clock.System.now().toEpochMilliseconds() - it).coerceAtLeast(0)
-    }
-    val duration = elapsed?.let { AppText.CampusNetwork.connectedFor(campusDurationLabel(it)) }.orEmpty()
+    } ?: return ""
+    val duration = campusDurationLabel(elapsed)
     val phone = state.maskedPhone
-    return when {
-        duration.isNotBlank() && phone.isNotBlank() -> AppText.CampusNetwork.statusOnlineHint(
-            campusDurationLabel(elapsed ?: 0), phone)
-        else -> duration
-    }
+    // §7 shows `已用 2 小时 14 分 · 138****8000`; the separator disappears rather than dangling
+    // when the account query has not returned a phone.
+    return if (phone.isNotBlank()) AppText.CampusNetwork.statusOnlineHint(duration, phone)
+    else AppText.CampusNetwork.usedFor(duration)
 }
 
 /** Locally derived, so no locale formatting call and no platform API is involved. */
@@ -97,8 +96,10 @@ private fun CampusConnectionCard(
 ) {
     val dark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
     val accent = when (state) {
-        CampusConnectionState.NotSignedIn -> MiuixTheme.colorScheme.onSurfaceVariantSummary
-        CampusConnectionState.Offline -> MiuixTheme.colorScheme.onSurfaceVariantSummary
+        // §7 specifies #8E8E93 for both neutral states, so this is a fixed swatch rather than a
+        // theme colour that would shift with the palette.
+        CampusConnectionState.NotSignedIn -> AppUiTokens.NeutralDot
+        CampusConnectionState.Offline -> AppUiTokens.NeutralDot
         CampusConnectionState.Connecting -> MiuixTheme.colorScheme.primary
         CampusConnectionState.Online -> if (dark) AppUiTokens.PositiveDark else AppUiTokens.Positive
         CampusConnectionState.Failed -> if (dark) AppUiTokens.NegativeDark else AppUiTokens.Negative

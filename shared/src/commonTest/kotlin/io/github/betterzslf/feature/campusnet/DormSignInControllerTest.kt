@@ -22,8 +22,18 @@ class DormSignInControllerTest {
         clientId = "63BAFCAA-84E2-45EC-89F0-FCEA8745D03D",
         localTime = "t", hostName = "h", ipv4 = "10.0.0.2", mac = "AA", ostag = "3", gwip = "10.0.0.1")
 
-    private fun controller(transport: DormTransport?) =
-        DormSignInController(transport, fields = { fields }, servers = DORM_AUTH_SERVERS)
+    private val portal = PortalAddress("10.0.0.2", "10.0.0.1")
+
+    private fun controller(
+        transport: DormTransport?,
+        portalAddress: PortalAddress? = portal,
+    ) = DormSignInController(
+        transport = transport,
+        fields = { fields },
+        servers = DORM_AUTH_SERVERS,
+        portalAddress = { portalAddress },
+        schoolIdentity = { null },
+    )
 
     /** Completes negotiation, then serves a ticket, then accepts the login. */
     private class OkGateway(private val algo: String, private val ticket: String = "TK") : DormTransport {
@@ -123,5 +133,47 @@ class DormSignInControllerTest {
         assertEquals(300, dormKeepRetryFrom("<request><keep-retry>abc</keep-retry></request>"))
         // Never below the floor, whatever the gateway advertises.
         assertTrue(dormKeepRetryFrom("<request><keep-retry>40</keep-retry></request>") >= 60)
+    }
+}
+
+/**
+ * The two values the dialer cannot invent.
+ *
+ * The reference implementation aborts when either `wlanuserip` or `wlanacip` is missing, so this
+ * must refuse locally with a stated reason rather than spend a rate-limited login attempt on a
+ * request the gateway can only reject.
+ */
+class DormSignInPreconditionsTest {
+
+    private val supported = "319FC5AB-EC0E-46B9-A252-2285F9DAE813"
+    private val fields = DormXmlFields("ua", "id", "t")
+
+    @Test fun withoutAPortalAddressTheAttemptIsRefusedAndNothingIsSent() = runTest {
+        var posts = 0
+        val transport = DormTransport { _, _, _, _ -> posts++; DormRoundResult.Unreachable }
+        val c = DormSignInController(transport, fields = { fields },
+            servers = DORM_AUTH_SERVERS, portalAddress = { null }, schoolIdentity = { null })
+        assertFalse(c.signIn("13800138000", "pw"))
+        assertEquals(DormSignInPhase.NotOnCampus, c.state.value.phase)
+        assertEquals(AppText.CampusNetwork.DORM_NEEDS_PORTAL, c.state.value.detail)
+        // Nothing left the device, so no login attempt was consumed.
+        assertEquals(0, posts)
+    }
+
+    @Test fun thePortalAddressesReachTheTransportAsTheTicketQuery() = runTest {
+        val seen = mutableListOf<String>()
+        val transport = DormTransport { url, _, algoId, _ ->
+            seen += url
+            if (algoId == DORM_NIL_ALGO_ID) DormRoundResult.CipherUpdate(supported)
+            else DormRoundResult.Reply("200", "", DormCipher.encryptHex(algoId,
+                "<request><ticket>T</ticket></request>".encodeToByteArray())!!.encodeToByteArray())
+        }
+        val c = DormSignInController(transport, fields = { fields }, servers = DORM_AUTH_SERVERS,
+            portalAddress = { PortalAddress("10.9.8.7", "10.9.8.1") }, schoolIdentity = { null })
+        c.signIn("13800138000", "pw")
+        // Both addresses must appear in the ticket URL: the reference builds it from exactly these.
+        val ticketUrl = seen.first { it.contains("ticket.cgi") }
+        assertTrue(ticketUrl.contains("wlanuserip=10.9.8.7"), ticketUrl)
+        assertTrue(ticketUrl.contains("wlanacip=10.9.8.1"), ticketUrl)
     }
 }

@@ -23,11 +23,26 @@ data class DormSignInState(
  * Deliberately narrow: it owns the attempt, never retries, and reports the classified reason. The
  * gateway locks an account for 30 minutes after repeated failures, so an automatic retry would be
  * actively harmful — the user decides when to try again.
+ *
+ * Two values must exist before a dial can work at all, and both come from the portal rather than
+ * from the user: `wlanuserip` (this device's address on the campus network) and `wlanacip` (the
+ * access controller). The reference implementation aborts outright when either is missing, so this
+ * refuses locally with a stated reason instead of sending a request that cannot succeed.
  */
 class DormSignInController(
     private val transport: DormTransport?,
     private val fields: () -> DormXmlFields,
     private val servers: List<AuthServer> = DORM_AUTH_SERVERS,
+    /** Resolves the two portal addresses; `null` means the portal has not been reached yet. */
+    private val portalAddress: () -> PortalAddress? = { null },
+    /** Resolves the school identity captured from the portal's headers, if it was captured. */
+    private val schoolIdentity: () -> Triple<String, String, String>? = {
+        val id = DORM_SCHOOL_ID_HOLDER.value
+        val domain = DORM_SCHOOL_DOMAIN_HOLDER.value
+        val area = DORM_AREA_HOLDER.value
+        if (id.isNullOrBlank() && domain.isNullOrBlank() && area.isNullOrBlank()) null
+        else Triple(id.orEmpty(), domain.orEmpty(), area.orEmpty())
+    },
 ) {
     private val mutable = MutableStateFlow(DormSignInState())
     val state: StateFlow<DormSignInState> = mutable.asStateFlow()
@@ -59,7 +74,17 @@ class DormSignInController(
                     AppText.CampusNetwork.DORM_NEEDS_CAMPUS_NETWORK)
                 return false
             }
-            val base = fields()
+            // Without the portal's two addresses the ticket URL cannot even be built. Saying so is
+            // far better than a request the gateway answers with a generic rejection.
+            val address = portalAddress()
+            if (address == null) {
+                mutable.value = DormSignInState(DormSignInPhase.NotOnCampus,
+                    AppText.CampusNetwork.DORM_NEEDS_PORTAL)
+                return false
+            }
+            val identity = schoolIdentity()
+            if (identity != null) recordDormSchoolIdentity(identity.first, identity.second, identity.third)
+            val base = fields().copy(ipv4 = address.clientIp, gwip = address.acIp)
             val dialer = DormDialer(transport, server, base, server.baseUrl)
             return when (val result = dialer.dial(plainPhone, password)) {
                 is DormAttemptResult.Connected -> {

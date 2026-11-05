@@ -221,6 +221,7 @@ object AppText {
         const val DORM_SIGNED_OUT: String = "已下线"
         const val DORM_SIGN_OUT_ACTION: String = "下线"
         const val DORM_NEEDS_CAMPUS_NETWORK: String = "没有连上校园网，请先连接学校 WiFi 并关闭移动数据"
+        const val DORM_NEEDS_PORTAL: String = "还没读到校园网门户地址，请先点下方「读取实测信息」"
         const val DORM_PHONE_INVALID: String = "请填写 11 位手机号"
         const val DORM_RESULT_UNCONFIRMED: String = "结果尚未确认，请查看实际网络状态后再试"
         fun dormCipherUnsupported(reason: String): String =

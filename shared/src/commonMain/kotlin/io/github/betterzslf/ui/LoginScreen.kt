@@ -27,6 +27,7 @@ import io.github.betterzslf.AppGraph
 import io.github.betterzslf.edition.EditionAccess
 import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.feature.campusnet.CampusDiagnosisController
+import io.github.betterzslf.feature.campusnet.CampusDiagnosisControllerHolder
 import io.github.betterzslf.feature.campusnet.CampusDiagnosisHandshake
 import io.github.betterzslf.feature.campusnet.CampusDiagnosisProbe
 import io.github.betterzslf.feature.campusnet.DORM_ANDROID_USER_AGENT
@@ -35,6 +36,7 @@ import io.github.betterzslf.feature.campusnet.DormSignInPhase
 import io.github.betterzslf.feature.campusnet.DormXmlFields
 import io.github.betterzslf.feature.campusnet.campusAlgoStatusText
 import io.github.betterzslf.feature.campusnet.newDormClientId
+import io.github.betterzslf.feature.campusnet.recordDormSchoolIdentity
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -295,17 +297,26 @@ private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
     // Never persisted and never pre-filled: the design forbids remembering this password.
     var broadbandPassword by remember(boundSessionKey(session)) { mutableStateOf("") }
     val dormScope = rememberCoroutineScope()
+    // The portal addresses and school identity are only obtainable on campus, and the diagnosis run
+    // is what captures them. Sharing one state here means the sign-in button uses exactly what the
+    // probe observed instead of asking the user to copy it.
+    val sharedPortal = remember { CampusDiagnosisControllerHolder() }
     val dorm = remember(graph, boundSessionKey(session)) {
-        DormSignInController(graph.dormTransport, fields = {
-            // A fresh client id per attempt: it identifies this attempt, not the user.
-            DormXmlFields(
-                userAgent = DORM_ANDROID_USER_AGENT,
-                clientId = newDormClientId(),
-                localTime = "",
-                ipv4 = "",
-                gwip = "",
-            )
-        })
+        DormSignInController(
+            transport = graph.dormTransport,
+            fields = {
+                // A fresh client id per attempt: it identifies this attempt, not the user.
+                DormXmlFields(
+                    userAgent = DORM_ANDROID_USER_AGENT,
+                    clientId = newDormClientId(),
+                    localTime = "",
+                    ipv4 = "",
+                    gwip = "",
+                )
+            },
+            portalAddress = { sharedPortal.observed },
+            schoolIdentity = { sharedPortal.identity },
+        )
     }
     DisposableEffect(dorm) { onDispose { dorm.close() } }
     val dormState by dorm.state.collectAsState()
@@ -441,7 +452,7 @@ private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
                     })
                 }
             }
-            item { CampusDiagnosisPanel(graph, onOpenUrl = graph.platform::openPortalGateway) }
+            item { CampusDiagnosisPanel(graph, sharedPortal, onOpenUrl = graph.platform::openPortalGateway) }
             item {
                 Text(AppText.CampusNetwork.NOT_SCHOOL_LOGIN_PASSWORD_TITLE, fontSize = 12.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
@@ -463,7 +474,11 @@ private fun boundSessionKey(session: io.github.betterzslf.core.model.Session?): 
  * copy. It is explicitly read-only: no account, no password, no retry.
  */
 @Composable
-private fun CampusDiagnosisPanel(graph: AppGraph, onOpenUrl: (String) -> Boolean) {
+private fun CampusDiagnosisPanel(
+    graph: AppGraph,
+    shared: CampusDiagnosisControllerHolder,
+    onOpenUrl: (String) -> Boolean,
+) {
     val scope = rememberCoroutineScope()
     val session by graph.sessions.session.collectAsState()
     val controller = remember(graph, session) {
@@ -486,6 +501,15 @@ private fun CampusDiagnosisPanel(graph: AppGraph, onOpenUrl: (String) -> Boolean
     val clipboard = graph.platform
     var copied by remember(controller) { mutableStateOf(false) }
     var copyAttempted by remember(controller) { mutableStateOf(false) }
+
+    // Publish what the probe observed so the sign-in button can use it without a second probe.
+    LaunchedEffect(state.diagnosis.probedUrl) {
+        val d = state.diagnosis
+        if (d.probedUrl.isNotBlank()) {
+            shared.record(d.probedUrl, d.schoolId, d.domain, d.area)
+            recordDormSchoolIdentity(d.schoolId, d.domain, d.area)
+        }
+    }
 
     Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
         insideMargin = PaddingValues(AppUiTokens.CardPadding)) {

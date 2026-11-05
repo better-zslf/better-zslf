@@ -68,6 +68,12 @@ class AppGraph(val platform: PlatformServices) {
     val repositories = AppRepositories(api, sessions)
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val schedule = ScheduleRuntime(applicationScope, platform.storage, { createAcademicSource(platform.httpClient()) })
+    // The portal probe is the one request allowed to speak cleartext, and only to the gateway the
+    // school hands us. It gets its own derived client: no campus token, no cookies, no logging.
+    private var portalProbeInstance: io.github.betterzslf.feature.campusnet.KtorPortalProbe? = null
+    val portalProbe: io.github.betterzslf.feature.campusnet.KtorPortalProbe
+        get() = portalProbeInstance
+            ?: io.github.betterzslf.feature.campusnet.KtorPortalProbe(platform.httpClient()).also { portalProbeInstance = it }
     init {
         // The timetable has its own slot and does not wait for a campus login. The academic system
         // authenticates with separate credentials, so gating timetable access on a campus session

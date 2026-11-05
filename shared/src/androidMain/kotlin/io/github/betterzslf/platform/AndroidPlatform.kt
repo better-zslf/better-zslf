@@ -63,6 +63,16 @@ actual fun createPlatformServices(): PlatformServices = object : PlatformService
         }
     }
 
+    /** Plain HTTP, but only to the allowlisted campus gateway the school itself returned. */
+    override fun openPortalGateway(url: String): Boolean {
+        if (!io.github.betterzslf.feature.campusnet.campusPortalAddressAllowed(url)) return false
+        val uri = Uri.parse(url)
+        return runCatching {
+            AndroidPlatform.context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        }.getOrDefault(false)
+    }
+
     override fun copyToClipboard(text: String): Boolean = runCatching {
         val manager = AndroidPlatform.context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             ?: return@runCatching false

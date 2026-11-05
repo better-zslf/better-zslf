@@ -99,10 +99,9 @@ fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit, onWater: (() -> U
             // and it now shows an explicit way in once at least one account is bound.
             onBound = { stage = LoginStage.Chooser },
         )
-        LoginStage.Dorm -> LoginUnavailable(
-            title = AppText.Auth.ENTRY_DORM_LINK,
+        LoginStage.Dorm -> DormNetworkPage(
+            graph = graph,
             onBack = { stage = LoginStage.Chooser },
-            onDocument = onDocument,
         )
     }
 }
@@ -263,6 +262,141 @@ private fun BackToChooser(onBack: () -> Unit) {
         }
     }
 }
+
+/**
+ * N2, the optional dorm-network sign-in page (design task book §5.3).
+ *
+ * Three deliberate limits:
+ *  - the broadband password box is always empty and nothing here is persisted;
+ *  - there is no "remember me" and no automatic sign-in;
+ *  - the primary button is disabled and explains why, because the gateway's negotiated cipher
+ *    (`algo_id`) has to be captured on campus first. A button that posted to `:7001` today would
+ *    fail every time, so it is not offered.
+ *
+ * The phone-source card has all three states from the design. State B (nothing taken from 掌上莲峰)
+ * is the *normal* case, not an error: users can reach this page without ever signing in there.
+ */
+@Composable
+private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
+    val session by graph.sessions.session.collectAsState()
+    // Only a signed-in 掌上莲峰 can supply the broadband phone; nothing is fetched before that.
+    val campusBound = session != null
+    var manualPhone by remember(boundSessionKey(session)) { mutableStateOf("") }
+    var taken by remember(boundSessionKey(session)) { mutableStateOf<String?>(null) }
+    var queryFailed by remember(boundSessionKey(session)) { mutableStateOf(false) }
+    val editable = taken == null
+
+    // The only request this page makes, and only when 掌上莲峰 is signed in. It is a read: the
+    // account list endpoint takes no parameters and changes nothing.
+    LaunchedEffect(boundSessionKey(session), campusBound) {
+        if (!campusBound) { taken = null; queryFailed = false; return@LaunchedEffect }
+        val bound = graph.repositories.campusNetwork.boundToCurrentSession()
+        if (bound == null) { taken = null; queryFailed = true; return@LaunchedEffect }
+        when (val response = bound.accounts()) {
+            is ApiResult.Success -> {
+                val rows = (response.data as? kotlinx.serialization.json.JsonObject)
+                    ?.get("operatorAccount") as? kotlinx.serialization.json.JsonArray
+                taken = rows?.firstNotNullOfOrNull { row ->
+                    ((row as? kotlinx.serialization.json.JsonObject)
+                        ?.get("operatorAccount") as? kotlinx.serialization.json.JsonPrimitive)
+                        ?.let { if (it.isString || it.content.isNotEmpty()) it.content else null }
+                        ?.let(::dormPhonePrefixOf)
+                }
+                queryFailed = false
+            }
+            is ApiResult.Failure -> { taken = null; queryFailed = true }
+        }
+    }
+
+    Scaffold(containerColor = MiuixTheme.colorScheme.surface) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
+            contentPadding = PaddingValues(start = AppUiTokens.PagePadding, end = AppUiTokens.PagePadding,
+                top = 24.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap),
+        ) {
+            item { BackToChooser(onBack) }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(AppText.Auth.ENTRY_DORM_LINK, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Text(AppText.Auth.DORM_SUBTITLE, fontSize = 14.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                }
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                    insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
+                        TextField(
+                            value = taken?.let(::maskDormPhone) ?: manualPhone,
+                            onValueChange = { if (editable) manualPhone = it },
+                            label = AppText.CampusNetwork.DORM_PHONE_FIELD,
+                            singleLine = true,
+                            enabled = editable,
+                            cornerRadius = AppUiTokens.FieldRadius,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                            modifier = Modifier.fillMaxWidth().testTag("dormPhone"),
+                        )
+                        // Always empty and never restored: the design forbids pre-filling this.
+                        TextField(
+                            value = "",
+                            onValueChange = { },
+                            label = AppText.CampusNetwork.DORM_BROADBAND_PASSWORD_FIELD,
+                            singleLine = true,
+                            enabled = false,
+                            cornerRadius = AppUiTokens.FieldRadius,
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth().testTag("dormPassword"),
+                        )
+                    }
+                }
+            }
+            item {
+                // The phone-source card, all three states from the design.
+                val tone = when {
+                    taken != null -> UiTone.Positive
+                    // "Took something, but it was not a phone" is a real, distinct third state.
+                    campusBound && queryFailed -> UiTone.Negative
+                    else -> UiTone.Warning
+                }
+                val message = when {
+                    taken != null -> AppText.CampusNetwork.dormPhoneSourceReady(maskDormPhone(taken!!))
+                    campusBound && queryFailed -> AppText.CampusNetwork.DORM_PHONE_SOURCE_MALFORMED
+                    else -> AppText.CampusNetwork.DORM_PHONE_SOURCE_MISSING
+                }
+                InfoBanner(message, title = AppText.CampusNetwork.DORM_PHONE_SOURCE_TITLE, tone = tone)
+            }
+            item {
+                InfoBanner(AppText.CampusNetwork.DORM_DIALER_UNAVAILABLE_HINT,
+                    title = AppText.CampusNetwork.DORM_DIALER_UNAVAILABLE_TITLE, tone = UiTone.Warning)
+            }
+            item {
+                Text(AppText.CampusNetwork.NOT_SCHOOL_LOGIN_PASSWORD_TITLE, fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            }
+        }
+    }
+}
+
+/** A session change must not carry a typed phone across owners. */
+private fun boundSessionKey(session: io.github.betterzslf.core.model.Session?): String =
+    session?.let { "${it.userId}:${it.token.hashCode()}" }.orEmpty()
+
+/**
+ * The phone prefix of a broadband account.
+ *
+ * 掌上莲峰 returns accounts shaped `13800138000@163.gd`; the dorm dialer wants only the part before
+ * `@`. Anything that is not an 11-digit mobile number yields `null`, which sends the page to its
+ * manual-entry state instead of dialling with a value we cannot trust.
+ */
+internal fun dormPhonePrefixOf(account: String): String? {
+    val prefix = account.substringBefore('@').trim()
+    return prefix.takeIf { it.length == 11 && it.all { c -> c in '0'..'9' } }
+}
+
+/** `138****8000`, the same masking the rest of the app uses. Never shows the middle digits. */
+internal fun maskDormPhone(phone: String): String =
+    if (phone.length == 11) phone.take(3) + "****" + phone.takeLast(4) else phone
 
 @Composable
 private fun LoginForm(

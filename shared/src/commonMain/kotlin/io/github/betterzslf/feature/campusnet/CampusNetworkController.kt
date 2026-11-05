@@ -81,6 +81,18 @@ class CampusNetworkController(private val source: CampusNetworkSource?) {
     suspend fun refresh(): Boolean {
         if (!flight.tryLock()) return false
         try {
+            // Never signed in to 掌上莲峰 is not a "session changed": there was no session to
+            // change. Reporting it as one told users their login had expired when they had simply
+            // entered the app through the academic binding instead.
+            if (alive && source == null) {
+                clearSecrets()
+                targets = emptyMap()
+                mutable.value = mutable.value.copy(accounts = emptyList(), loading = false,
+                    queryMessage = AppText.CampusNetwork.BROADBAND_NEEDS_CAMPUS_LOGIN,
+                    phoneChecked = false, preview = null, phase = CampusPasswordPhase.EDITING,
+                    inputRevision = mutable.value.inputRevision + 1)
+                return false
+            }
             if (!current()) return false
             val ticket = ++generation
             clearSecrets()

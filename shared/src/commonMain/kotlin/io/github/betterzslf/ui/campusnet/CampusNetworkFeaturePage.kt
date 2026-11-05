@@ -36,18 +36,52 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /** Dorm-network link state as the user sees it. Absent wiring is surfaced, never faked. */
 internal enum class CampusConnectionState { NotSignedIn, Offline, Connecting, Online, Failed, NotOnCampus }
 
+/** Design keeps the dial-in card independent of the broadband-account list below it. */
+private val CampusPortalState.connectionState: CampusConnectionState
+    get() = when (phase) {
+        CampusPortalPhase.NotSignedIn -> CampusConnectionState.NotSignedIn
+        CampusPortalPhase.Offline -> CampusConnectionState.Offline
+        CampusPortalPhase.Connecting -> CampusConnectionState.Connecting
+        CampusPortalPhase.Online -> CampusConnectionState.Online
+        CampusPortalPhase.Failed -> CampusConnectionState.Failed
+        CampusPortalPhase.NotOnCampus -> CampusConnectionState.NotOnCampus
+    }
+
+private fun campusConnectionState(state: CampusPortalState, sessionBound: Boolean): CampusConnectionState =
+    if (!sessionBound) CampusConnectionState.NotSignedIn else state.connectionState
+
+/** An explicit detail always wins: the controller only sets it when it knows something concrete. */
+private fun campusConnectionDetail(state: CampusPortalState, connection: CampusConnectionState): String {
+    if (state.detail.isNotBlank()) return state.detail
+    if (connection == CampusConnectionState.Online && state.connectedAtMillis != null) {
+        val elapsed = kotlin.time.Clock.System.now().toEpochMilliseconds() - state.connectedAtMillis
+        return AppText.CampusNetwork.connectedFor(campusDurationLabel(elapsed.coerceAtLeast(0)))
+    }
+    return ""
+}
+
+/** Locally derived, so no locale formatting call and no platform API is involved. */
+internal fun campusDurationLabel(millis: Long): String {
+    val totalMinutes = millis / 60_000
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return if (hours > 0) "${AppText.CampusNetwork.durationHours(hours)}${AppText.CampusNetwork.durationMinutes(minutes)}"
+    else AppText.CampusNetwork.durationMinutes(minutes)
+}
+
 /**
  * The connection card that sits above the broadband-account section.
  *
- * Dorm network sign-in is optional in this app's scope, so this card owns its own honest state:
- * today only the sign-in provider can be absent, and the card says so instead of showing a
- * disabled-looking "connect" button that would do nothing.
+ * This is the design's six-state status card. It shows one primary action at most, and the action
+ * is decided by the controller's phase, so the button can never offer a step that would do nothing.
  */
 @Composable
 private fun CampusConnectionCard(
     state: CampusConnectionState,
     detail: String = "",
     onSignIn: (() -> Unit)? = null,
+    primary: String? = null,
+    onPrimary: (() -> Unit)? = null,
 ) {
     val dark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
     val accent = when (state) {
@@ -95,6 +129,10 @@ private fun CampusConnectionCard(
                 TextButton(text = AppText.CampusNetwork.ACTION_SIGN_IN, onClick = open,
                     minHeight = 36.dp, cornerRadius = AppUiTokens.ButtonRadius)
             }
+            if (primary != null && onPrimary != null) {
+                TextButton(text = primary, onClick = onPrimary,
+                    minHeight = 36.dp, cornerRadius = AppUiTokens.ButtonRadius)
+            }
         }
     }
 }
@@ -107,26 +145,43 @@ fun CampusNetworkFeaturePage(graph: AppGraph, onBack: (() -> Unit)?) {
     key(session) {
         val source = remember(graph, session) { RepositoryCampusNetworkSource.capture(graph.repositories.campusNetwork) }
         val controller = remember(graph, source) { CampusNetworkController(source) }
-        DisposableEffect(controller) { onDispose { controller.close() } }
-        CampusNetworkPage(controller, onBack)
+        val portalSource = remember(graph, session) { RepositoryCampusPortalSource.capture(graph.repositories.campusPortal) }
+        val probe = remember(graph) { CampusPortalProbeSource { graph.portalProbe.probe(it) } }
+        val portal = remember(graph, portalSource) {
+            CampusPortalController(portalSource, probe) { kotlin.time.Clock.System.now().toEpochMilliseconds() }
+        }
+        DisposableEffect(controller, portal) { onDispose { controller.close(); portal.close() } }
+        CampusNetworkPage(controller, portal, sessionBound = session != null, onOpenUrl = graph.platform::openPortalGateway, onBack = onBack)
     }
 }
 
 @Composable
-private fun CampusNetworkPage(controller: CampusNetworkController, onBack: (() -> Unit)?) {
+private fun CampusNetworkPage(
+    controller: CampusNetworkController,
+    portal: CampusPortalController,
+    sessionBound: Boolean,
+    onOpenUrl: (String) -> Boolean,
+    onBack: (() -> Unit)?,
+) {
     val state by controller.state.collectAsState()
+    val portalState by portal.state.collectAsState()
     val scope = rememberCoroutineScope()
     // Deliberately not saveable: no phone, account, or password is prefilled or persisted.
     var phone by remember(controller) { mutableStateOf("") }
     var password by remember(controller) { mutableStateOf("") }
     var confirmation by remember(controller) { mutableStateOf("") }
     var finalDialog by remember(controller) { mutableStateOf(false) }
+    // Local only: whether the last "open portal" tap actually handed the address to the OS.
+    var openFailed by remember(portal) { mutableStateOf(false) }
     var acknowledged by remember(state.preview?.id) { mutableStateOf(false) }
     val editable = state.expanded && !state.busy && !state.terminal && state.phase == CampusPasswordPhase.EDITING
     val selectable = state.expanded && !state.busy && !state.terminal && state.queryMessage == null
     val selected = state.accounts.firstOrNull { it.key == state.selectedAccountKey }
 
     LaunchedEffect(controller) { controller.refresh() }
+    // Read-only status check on entry. It never authenticates, so simply opening the tab cannot
+    // burn one of the carrier's limited login attempts.
+    LaunchedEffect(portal) { portal.refresh() }
     LaunchedEffect(state.inputRevision) { phone = ""; password = ""; confirmation = ""; finalDialog = false }
     LaunchedEffect(state.phase) {
         if (state.phase in setOf(CampusPasswordPhase.SUBMITTING, CampusPasswordPhase.COMPLETED,
@@ -148,11 +203,47 @@ private fun CampusNetworkPage(controller: CampusNetworkController, onBack: (() -
             LazyColumn(Modifier.fillMaxSize().imePadding(), contentPadding = listPadding,
                 verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                 item("connection") {
-                    // The dorm-network sign-in provider is not wired yet (see the campus-network
-                    // research notes). The card states that plainly rather than offering a button
-                    // that cannot succeed.
-                    CampusConnectionCard(CampusConnectionState.NotSignedIn)
+                    val connection = campusConnectionState(portalState, sessionBound = sessionBound)
+                    CampusConnectionCard(
+                        state = connection,
+                        detail = campusConnectionDetail(portalState, connection),
+                        // "去登录" here is the campus session, not the dorm carrier; the dorm entry
+                        // lives on the login chooser. Offering a connect button with no session would
+                        // be a button that cannot succeed.
+                        onSignIn = null,
+                        primary = when {
+                            portalState.canConnect -> AppText.CampusNetwork.ACTION_CONNECT
+                            portalState.canDisconnect -> AppText.CampusNetwork.ACTION_DISCONNECT
+                            portalState.canRetry -> AppText.CampusNetwork.ACTION_RETRY
+                            else -> null
+                        },
+                        onPrimary = when {
+                            portalState.canConnect -> { { scope.launch { portal.connect() } } }
+                            portalState.canDisconnect -> { { scope.launch { portal.disconnect() } } }
+                            portalState.canRetry -> { { scope.launch { portal.connect() } } }
+                            else -> null
+                        },
+                    )
                 }
+                portalState.portalAddress?.let { address -> item("manual-portal") {
+                    // Some portals answer 302 but never hand back a usable hop ("no redirect").
+                    // The reference client opens the portal page for the user; so does this, and it
+                    // only ever offers the address the school itself returned.
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        TextButton(AppText.CampusNetwork.OPEN_PORTAL_ACTION, modifier = Modifier.fillMaxWidth(),
+                            minHeight = AppUiTokens.ButtonHeight, cornerRadius = AppUiTokens.ButtonRadius,
+                            onClick = {
+                                portal.markManualPortalOpened()
+                                openFailed = !onOpenUrl(address)
+                            })
+                        if (portalState.manualPortalOpened) {
+                            Text(
+                                if (openFailed) AppText.CampusNetwork.PORTAL_MANUAL_OPEN_FAILED_HINT
+                                else AppText.CampusNetwork.PORTAL_MANUAL_OPENED_HINT,
+                                fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        }
+                    }
+                } }
                 item("scope") { InfoBanner(AppText.CampusNetwork.NOT_SCHOOL_LOGIN_PASSWORD_TITLE, tone = UiTone.Warning) }
                 item("account-heading") { SectionTitle(AppText.CampusNetwork.PROVISIONED_BROADBAND_ACCOUNTS_TITLE) }
                 item("account-scope") {

@@ -16,7 +16,8 @@
     <application android:name="io.github.betterzslf.BetterZslfApplication" android:label="${appLabel}"
         android:icon="@drawable/ic_launcher" android:allowBackup="false"
         android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules"
-        android:supportsRtl="true" android:usesCleartextTraffic="false" android:theme="@style/AppTheme">
+        android:supportsRtl="true" android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config" android:theme="@style/AppTheme">
         <service android:name="io.github.betterzslf.platform.RunLocationService" android:exported="false"
             android:foregroundServiceType="location" />
         <activity android:name="io.github.betterzslf.MainActivity" android:exported="true"

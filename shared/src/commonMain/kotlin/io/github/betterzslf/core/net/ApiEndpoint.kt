@@ -41,6 +41,16 @@ enum class ApiEndpoint(
     RUN_REPORT("/run/errand/reportLocation", location = ParameterLocation.JSON, required = listOf("trid"), timeoutMillis = 30_000),
     RUN_QUICK_SAVE("/run/errand/quickSave", location = ParameterLocation.JSON, required = listOf("trid"), timeoutMillis = 15_000),
 
+    // On-campus / dorm sign-in. The phone's network is unauthenticated at this point, so every
+    // step goes through the school backend over HTTPS rather than talking to the portal directly
+    // (which would be cleartext and would need the carrier cipher family). See
+    // work/notes/campus-network-auth-analysis.md for the flow these four mirror.
+    CAMPUS_INTERNET_INFO("/app/verification/getInternetInfo"),
+    CAMPUS_REDIRECT_TARGET("/app/verification/getRedirectUrl"),
+    // urls and resData both carry the same probed portal URL; the original client sent both.
+    CAMPUS_DIAL_IN("/app/verification/appDialInLogin", required = listOf("urls", "resData")),
+    CAMPUS_OFFLINE("/app/verification/appOffline"),
+
     CAMPUS_CHECK_PHONE("/app/campusNetwork/checkPhone", required = listOf("phone")),
     CAMPUS_ACCOUNTS("/app/campusNetwork/getOperatorAccountByIDCard"),
     CAMPUS_UPDATE_PASSWORD("/app/campusNetwork/updateOperatorPasswordById", required = listOf("operatorAccountId", "newOperatorPassword")),

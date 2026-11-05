@@ -11,6 +11,15 @@ interface PlatformServices {
     val description: String
     fun httpClient(): HttpClient
     fun openUrl(url: String)
+    /**
+     * Opens the campus portal gateway, which is plain HTTP by protocol.
+     *
+     * Kept separate from [openUrl] on purpose: that one stays HTTPS-only so no arbitrary cleartext
+     * link can ever leave the app. This one accepts exactly the allowlisted gateway hosts
+     * (`CAMPUS_PORTAL_CLEARTEXT_HOSTS`) and returns false for anything else, so the caller can say
+     * "cannot open" instead of showing a button that silently does nothing.
+     */
+    fun openPortalGateway(url: String): Boolean
     /** Copies local debug text to the system clipboard; returns false when the platform cannot. */
     fun copyToClipboard(text: String): Boolean
 }

@@ -11,6 +11,7 @@ class AppRepositories(private val api: ApiClient, sessionStore: SessionStore) {
     val content = ContentRepository(api)
     val run = RunRepository(api)
     val campusNetwork = CampusNetworkRepository(api)
+    val campusPortal = CampusPortalRepository(api)
     val updates = UpdateRepository(api)
 
     suspend fun upload(file: UploadFile, tableId: String, childType: String = "feedbackImage", tablename: String = "sch_feedback") =

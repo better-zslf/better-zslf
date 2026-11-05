@@ -52,6 +52,12 @@ private object IosPlatformServices : PlatformServices {
 
     override fun openUrl(url: String) = openExternalHttpsUrl(url)
 
+    /** Plain HTTP, but only to the allowlisted campus gateway the school itself returned. */
+    override fun openPortalGateway(url: String): Boolean {
+        if (!io.github.betterzslf.feature.campusnet.campusPortalAddressAllowed(url)) return false
+        return openPortalGatewayUrl(url)
+    }
+
     override fun copyToClipboard(text: String): Boolean = runCatching {
         platform.UIKit.UIPasteboard.generalPasteboard.string = text
         true
@@ -73,4 +79,20 @@ internal fun openExternalHttpsUrl(value: String) {
         UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = null)
     }
     if (NSThread.isMainThread) open() else dispatch_async(dispatch_get_main_queue()) { open() }
+}
+
+/**
+ * The campus portal gateway only. The caller has already checked the allowlist; this refuses any
+ * URL that is not a bare http(s) address without embedded credentials.
+ */
+internal fun openPortalGatewayUrl(value: String): Boolean {
+    val url = NSURL(string = value) ?: return false
+    val scheme = url.scheme?.lowercase() ?: return false
+    if (scheme != "http" && scheme != "https") return false
+    if (url.host.isNullOrBlank() || url.user != null || url.password != null) return false
+    val open = {
+        UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = null)
+    }
+    if (NSThread.isMainThread) open() else dispatch_async(dispatch_get_main_queue()) { open() }
+    return true
 }

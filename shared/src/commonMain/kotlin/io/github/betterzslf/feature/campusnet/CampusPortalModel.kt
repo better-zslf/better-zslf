@@ -84,28 +84,38 @@ fun campusDialRejectionDetail(rejection: CampusDialRejection, raw: String): Stri
 }
 
 /**
- * Only these portal hosts may be opened over cleartext HTTP.
+ * Only these hosts may be reached over cleartext HTTP.
  *
- * The address is *server-supplied*, so this is an allowlist rather than a hardcoded URL: whatever
- * `getRedirectUrl` pushes is checked against it before any request leaves the app. A new gateway IP
- * therefore fails closed with a visible reason instead of silently bypassing TLS policy.
+ * Both lists are server- or protocol-fixed rather than user-supplied, so an allowlist works:
+ *  - the portal gateway the school backend hands us (`getRedirectUrl`), and
+ *  - the two carrier authentication servers on port 7001, which speak plain HTTP by protocol.
+ *
+ * A new host therefore fails closed with a visible reason instead of the app silently relaxing TLS.
  * Must stay in sync with `androidApp/src/main/res/xml/network_security_config.xml`.
  */
 val CAMPUS_PORTAL_CLEARTEXT_HOSTS: Set<String> = setOf("9.9.9.9")
+
+/** The carrier dialer's two fixed authentication hosts (see `DORM_AUTH_SERVERS`). */
+val DORM_AUTH_CLEARTEXT_HOSTS: Set<String> = setOf("14.146.227.141", "121.8.177.212")
 
 /**
  * A portal address is usable only when it is plain HTTP to an allowlisted host.
  * `https` is also accepted: it needs no cleartext exemption.
  */
-fun campusPortalAddressAllowed(raw: String): Boolean {
+fun campusPortalAddressAllowed(raw: String): Boolean = cleartextHostOf(raw)?.let {
+    it in CAMPUS_PORTAL_CLEARTEXT_HOSTS || it in DORM_AUTH_CLEARTEXT_HOSTS
+} ?: raw.trim().startsWith("https://", ignoreCase = true)
+
+/** The lowercased host of a plain-HTTP URL, or `null` when the URL is not `http://`. */
+internal fun cleartextHostOf(raw: String): String? {
     val trimmed = raw.trim()
-    if (trimmed.isEmpty()) return false
-    val host = when {
-        trimmed.startsWith("http://", ignoreCase = true) -> trimmed.substring(7)
-        trimmed.startsWith("https://", ignoreCase = true) -> return true
-        else -> return false
-    }
-    val authority = host.substringBefore('/').substringBefore('?').substringBefore('#')
-    val hostOnly = if (authority.startsWith("[")) authority.substringBefore(']') + "]" else authority.substringBefore(':')
-    return hostOnly.lowercase() in CAMPUS_PORTAL_CLEARTEXT_HOSTS
+    if (!trimmed.startsWith("http://", ignoreCase = true)) return null
+    val authority = trimmed.substring(7).substringBefore('/').substringBefore('?').substringBefore('#')
+    return (if (authority.startsWith("[")) authority.substringBefore(']') + "]"
+    else authority.substringBefore(':')).lowercase()
 }
+
+/** Whether the carrier dialer may talk to [raw] at all. Same rule as the probe, separate intent. */
+fun dormAuthAddressAllowed(raw: String): Boolean =
+    raw.trim().startsWith("https://", ignoreCase = true) ||
+        (cleartextHostOf(raw)?.let { it in DORM_AUTH_CLEARTEXT_HOSTS } == true)

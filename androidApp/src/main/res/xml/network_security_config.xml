@@ -1,15 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Cleartext is off by default. The only exemption is the campus portal gateway the school backend
-  hands us at runtime (`getRedirectUrl` -> http://9.9.9.9), because that probe has to follow the
-  portal's own 302 before any authentication exists. The allowlist is deliberately IP-only and
-  tiny: if the school ever moves the gateway, the probe fails closed with a visible reason
-  (AppText.CampusNetwork.PORTAL_ADDRESS_BLOCKED_DETAIL) instead of the app silently relaxing TLS.
-  Keep in sync with CAMPUS_PORTAL_CLEARTEXT_HOSTS in CampusPortalModel.kt.
+  Cleartext is off by default. Two exemptions only, both protocol-fixed rather than user-supplied:
+
+  1. the campus portal gateway the school backend hands us at runtime
+     (`getRedirectUrl` -> http://9.9.9.9), because that probe must follow the portal's own 302
+     before any authentication exists;
+  2. the two carrier authentication servers on port 7001, which speak plain HTTP by protocol.
+
+  Everything else stays TLS-only. A host that is not listed here fails closed with a visible reason
+  instead of the app silently relaxing its transport policy.
+  Keep in sync with CAMPUS_PORTAL_CLEARTEXT_HOSTS / DORM_AUTH_CLEARTEXT_HOSTS in CampusPortalModel.kt.
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">9.9.9.9</domain>
+        <domain includeSubdomains="false">14.146.227.141</domain>
+        <domain includeSubdomains="false">121.8.177.212</domain>
     </domain-config>
 </network-security-config>

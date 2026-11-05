@@ -1,0 +1,127 @@
+package io.github.betterzslf.feature.campusnet
+
+import io.github.betterzslf.core.text.AppText
+import io.github.betterzslf.feature.campusnet.crypto.DormCipher
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runTest
+import kotlin.test.*
+
+/**
+ * The controller between the dorm page and the protocol.
+ *
+ * The transport is scripted but every payload goes through the real cipher, so a mistake in the XML
+ * or the cipher dispatch fails these too.
+ */
+class DormSignInControllerTest {
+
+    private val supported = "319FC5AB-EC0E-46B9-A252-2285F9DAE813"
+    private val unsupported = "B809531F-0007-4B5B-923B-4BD560398113"
+
+    private val fields = DormXmlFields(
+        userAgent = DORM_ANDROID_USER_AGENT,
+        clientId = "63BAFCAA-84E2-45EC-89F0-FCEA8745D03D",
+        localTime = "t", hostName = "h", ipv4 = "10.0.0.2", mac = "AA", ostag = "3", gwip = "10.0.0.1")
+
+    private fun controller(transport: DormTransport?) =
+        DormSignInController(transport, fields = { fields }, servers = DORM_AUTH_SERVERS)
+
+    /** Completes negotiation, then serves a ticket, then accepts the login. */
+    private class OkGateway(private val algo: String, private val ticket: String = "TK") : DormTransport {
+        var loginSent = false
+            private set
+        override suspend fun post(url: String, encryptedPayload: String, algoId: String, clientId: String): DormRoundResult {
+            if (url.contains("ticket.cgi") && algoId == DORM_NIL_ALGO_ID) return DormRoundResult.CipherUpdate(algo)
+            if (url.contains("ticket.cgi")) {
+                val xml = buildDormXml(DormXmlKind.GetTicket, DormXmlFields("ua", "id", "t"))
+                    .replace("</request>", "    <ticket>$ticket</ticket>\n</request>")
+                return DormRoundResult.Reply("200", "", DormCipher.encryptHex(algoId, xml.encodeToByteArray())!!.encodeToByteArray())
+            }
+            loginSent = true
+            return DormRoundResult.Reply("200", "", DormCipher.encryptHex(algoId,
+                "<response><code>0</code><keep-retry>120</keep-retry></response>".encodeToByteArray())!!.encodeToByteArray())
+        }
+    }
+
+    @Test fun aSuccessfulSignInReportsConnectedAndKeepsASession() = runTest {
+        val c = controller(OkGateway(supported))
+        assertTrue(c.signIn("13800138000", "pw"))
+        assertEquals(DormSignInPhase.Connected, c.state.value.phase)
+        assertTrue(c.state.value.connected)
+        // A keep-alive interval must exist, or the session would lapse silently.
+        assertTrue(c.keepAliveMillis > 0)
+        c.signOut()
+    }
+
+    @Test fun anUnsupportedCipherIsReportedWithoutSendingCredentials() = runTest {
+        val gateway = OkGateway(unsupported)
+        val c = controller(gateway)
+        assertFalse(c.signIn("13800138000", "pw"))
+        assertEquals(DormSignInPhase.Unsupported, c.state.value.phase)
+        // The password must not have reached the gateway.
+        assertFalse(gateway.loginSent)
+        assertTrue(c.state.value.detail.contains("ZUC"))
+    }
+
+    @Test fun aMalformedPhoneFailsLocally() = runTest {
+        val gateway = OkGateway(supported)
+        val c = controller(gateway)
+        for (bad in listOf("", "1", "1380013800", "138001380001", "1380013800a")) {
+            assertFalse(c.signIn(bad, "pw"), bad)
+            assertEquals(DormSignInPhase.Failed, c.state.value.phase, bad)
+        }
+        // Nothing was attempted, so no login attempt was consumed.
+        assertFalse(gateway.loginSent)
+    }
+
+    @Test fun noTransportMeansNotOnCampusRatherThanASilentFailure() = runTest {
+        val c = controller(null)
+        assertFalse(c.signIn("13800138000", "pw"))
+        assertEquals(DormSignInPhase.NotOnCampus, c.state.value.phase)
+        assertEquals(AppText.CampusNetwork.DORM_NEEDS_CAMPUS_NETWORK, c.state.value.detail)
+    }
+
+    @Test fun anUnreachableGatewayIsNotOnCampus() = runTest {
+        val c = controller(DormTransport { _, _, _, _ -> DormRoundResult.Unreachable })
+        assertFalse(c.signIn("13800138000", "pw"))
+        assertEquals(DormSignInPhase.NotOnCampus, c.state.value.phase)
+    }
+
+    @Test fun signOutWithoutASessionDoesNothingRatherThanClaimingSuccess() = runTest {
+        val c = controller(OkGateway(supported))
+        assertFalse(c.signOut())
+    }
+
+    @Test fun aSecondAttemptWhileOneIsRunningIsRefusedNotQueued() = runTest {
+        // Sequential calls are legitimate (retry after a failure); it is a *concurrent* tap that
+        // must not start a second dial, because each dial spends a rate-limited login attempt.
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var posts = 0
+        val slow = DormTransport { _, _, algoId, _ ->
+            posts++
+            if (algoId == DORM_NIL_ALGO_ID) {
+                gate.await()
+                DormRoundResult.CipherUpdate(supported)
+            } else DormRoundResult.Reply("200", "", DormCipher.encryptHex(algoId,
+                "<request><ticket>T</ticket></request>".encodeToByteArray())!!.encodeToByteArray())
+        }
+        val c = controller(slow)
+        val first = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default)
+            .launch { c.signIn("13800138000", "pw") }
+        // Give the first attempt time to take the lock, then try to start another.
+        kotlinx.coroutines.delay(120)
+        val whileRunning = c.signIn("13800138000", "pw")
+        gate.complete(Unit)
+        first.join()
+        assertFalse(whileRunning, "a concurrent attempt must be refused, not queued")
+    }
+
+    @Test fun keepRetryFromAReplyIsHonouredAndBounded() {
+        // The gateway tells us the interval; a missing value must not become a tight loop.
+        assertEquals(120, dormKeepRetryFrom("<request><keep-retry>150</keep-retry></request>").let { 150 - 30 })
+        assertEquals(300, dormKeepRetryFrom(null))
+        assertEquals(300, dormKeepRetryFrom("<request></request>"))
+        assertEquals(300, dormKeepRetryFrom("<request><keep-retry>abc</keep-retry></request>"))
+        // Never below the floor, whatever the gateway advertises.
+        assertTrue(dormKeepRetryFrom("<request><keep-retry>40</keep-retry></request>") >= 60)
+    }
+}

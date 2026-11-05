@@ -214,6 +214,18 @@ object AppText {
         const val DORM_PHONE_SOURCE_MALFORMED: String = "取到的账号格式无法识别，请手动填写手机号"
         fun dormUnknownErrorText(code: String): String = "宿舍网络返回未收录的错误码 ${code}，请稍后再试或联系网络维护人员"
 
+        // Dorm sign-in. The flow is real now, so these replace the "temporarily unavailable" copy.
+        const val DORM_SIGN_IN_ACTION: String = "连接校园网"
+        const val DORM_SIGNING_IN: String = "正在连接校园网…"
+        const val DORM_SIGNED_IN: String = "校园网已连接"
+        const val DORM_SIGNED_OUT: String = "已下线"
+        const val DORM_SIGN_OUT_ACTION: String = "下线"
+        const val DORM_NEEDS_CAMPUS_NETWORK: String = "没有连上校园网，请先连接学校 WiFi 并关闭移动数据"
+        const val DORM_PHONE_INVALID: String = "请填写 11 位手机号"
+        const val DORM_RESULT_UNCONFIRMED: String = "结果尚未确认，请查看实际网络状态后再试"
+        fun dormCipherUnsupported(reason: String): String =
+            "网关下发的加密方式（${reason}）这版尚未支持，请把下方实测信息发回"
+
         // On-campus diagnosis. The dialer needs an algo_id that only the campus gateway issues, so
         // one visit has to produce it; these strings report exactly what was read, verbatim.
         const val DIAGNOSIS_TITLE: String = "校内实测信息"

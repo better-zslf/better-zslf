@@ -29,7 +29,12 @@ import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.feature.campusnet.CampusDiagnosisController
 import io.github.betterzslf.feature.campusnet.CampusDiagnosisHandshake
 import io.github.betterzslf.feature.campusnet.CampusDiagnosisProbe
+import io.github.betterzslf.feature.campusnet.DORM_ANDROID_USER_AGENT
+import io.github.betterzslf.feature.campusnet.DormSignInController
+import io.github.betterzslf.feature.campusnet.DormSignInPhase
+import io.github.betterzslf.feature.campusnet.DormXmlFields
 import io.github.betterzslf.feature.campusnet.campusAlgoStatusText
+import io.github.betterzslf.feature.campusnet.newDormClientId
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -287,6 +292,23 @@ private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
     // Only a signed-in 掌上莲峰 can supply the broadband phone; nothing is fetched before that.
     val campusBound = session != null
     var manualPhone by remember(boundSessionKey(session)) { mutableStateOf("") }
+    // Never persisted and never pre-filled: the design forbids remembering this password.
+    var broadbandPassword by remember(boundSessionKey(session)) { mutableStateOf("") }
+    val dormScope = rememberCoroutineScope()
+    val dorm = remember(graph, boundSessionKey(session)) {
+        DormSignInController(graph.dormTransport, fields = {
+            // A fresh client id per attempt: it identifies this attempt, not the user.
+            DormXmlFields(
+                userAgent = DORM_ANDROID_USER_AGENT,
+                clientId = newDormClientId(),
+                localTime = "",
+                ipv4 = "",
+                gwip = "",
+            )
+        })
+    }
+    DisposableEffect(dorm) { onDispose { dorm.close() } }
+    val dormState by dorm.state.collectAsState()
     var taken by remember(boundSessionKey(session)) { mutableStateOf<String?>(null) }
     var queryFailed by remember(boundSessionKey(session)) { mutableStateOf(false) }
     val editable = taken == null
@@ -353,13 +375,16 @@ private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                             modifier = Modifier.fillMaxWidth().testTag("dormPhone"),
                         )
-                        // Always empty and never restored: the design forbids pre-filling this.
+                        // Never pre-filled and never restored: the design forbids remembering it.
                         TextField(
-                            value = "",
-                            onValueChange = { },
+                            value = broadbandPassword,
+                            onValueChange = { broadbandPassword = it },
                             label = AppText.CampusNetwork.DORM_BROADBAND_PASSWORD_FIELD,
                             singleLine = true,
-                            enabled = false,
+                            // Editable only while idle: once an attempt is running or a session is
+                            // up, changing it mid-flight would desynchronise the UI from reality.
+                            enabled = dormState.phase != DormSignInPhase.Running &&
+                                dormState.phase != DormSignInPhase.Connected,
                             cornerRadius = AppUiTokens.FieldRadius,
                             visualTransformation = PasswordVisualTransformation(),
                             modifier = Modifier.fillMaxWidth().testTag("dormPassword"),
@@ -383,8 +408,38 @@ private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
                 InfoBanner(message, title = AppText.CampusNetwork.DORM_PHONE_SOURCE_TITLE, tone = tone)
             }
             item {
-                InfoBanner(AppText.CampusNetwork.DORM_DIALER_UNAVAILABLE_HINT,
-                    title = AppText.CampusNetwork.DORM_DIALER_UNAVAILABLE_TITLE, tone = UiTone.Warning)
+                // The dialer is wired now, so the primary action is real. It still says plainly
+                // when it cannot work (no campus network, unsupported cipher) instead of failing
+                // silently on a rate-limited gateway.
+                val phase = dormState.phase
+                val running = phase == DormSignInPhase.Running
+                val connected = phase == DormSignInPhase.Connected
+                TextButton(
+                    text = when {
+                        running -> AppText.CampusNetwork.DORM_SIGNING_IN
+                        connected -> AppText.CampusNetwork.DORM_SIGN_OUT_ACTION
+                        else -> AppText.CampusNetwork.DORM_SIGN_IN_ACTION
+                    },
+                    enabled = !running && (connected || (taken ?: manualPhone).length == 11),
+                    modifier = Modifier.fillMaxWidth().testTag("dormSignIn"),
+                    minHeight = AppUiTokens.ButtonHeight,
+                    cornerRadius = AppUiTokens.ButtonRadius,
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    onClick = {
+                        val phone = taken ?: manualPhone
+                        dormScope.launch {
+                            if (connected) dorm.signOut()
+                            else dorm.signIn(phone, broadbandPassword)
+                        }
+                    },
+                )
+                if (dormState.detail.isNotBlank()) {
+                    InfoBanner(dormState.detail, tone = when (phase) {
+                        DormSignInPhase.Connected -> UiTone.Positive
+                        DormSignInPhase.Failed, DormSignInPhase.Unsupported -> UiTone.Negative
+                        else -> UiTone.Warning
+                    })
+                }
             }
             item { CampusDiagnosisPanel(graph, onOpenUrl = graph.platform::openPortalGateway) }
             item {

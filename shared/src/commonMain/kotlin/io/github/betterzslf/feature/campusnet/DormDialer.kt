@@ -148,8 +148,18 @@ class DormDialer(
     /** Turns a refusal into the classified error the UI acts on. */
     private fun classify(round: DormRoundResult.Reply, algoId: String): DormAttemptResult {
         val error = gatewayError(round, null)
-        return if (error.family == DormErrorFamily.NONE) DormAttemptResult.Unreadable
-        else DormAttemptResult.Rejected(error)
+        val code = error.code
+        // A body that is not hex cannot be a ciphertext reply, so it is unreadable whatever the
+        // header said. A hex body carrying an unknown error code IS a refusal, and its number is
+        // what lets an unsupported school be diagnosed instead of looking like a decode failure.
+        val bodyLooksLikeCiphertext = round.body.isNotEmpty() && round.body.decodeToString().all {
+            it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F'
+        }
+        return when {
+            code.isBlank() || code == "-" -> DormAttemptResult.Unreadable
+            !bodyLooksLikeCiphertext && round.body.isNotEmpty() -> DormAttemptResult.Unreadable
+            else -> DormAttemptResult.Rejected(error)
+        }
     }
 
     private fun gatewayError(round: DormRoundResult.Reply, plain: String?): DormError =

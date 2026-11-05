@@ -80,6 +80,11 @@ class AppGraph(val platform: PlatformServices) {
     val dormHandshake: io.github.betterzslf.feature.campusnet.KtorDormHandshake
         get() = dormHandshakeInstance
             ?: io.github.betterzslf.feature.campusnet.KtorDormHandshake(platform.httpClient()).also { dormHandshakeInstance = it }
+    // The dialer's own transport: plain HTTP to the two fixed carrier servers, nothing else.
+    private var dormTransportInstance: io.github.betterzslf.feature.campusnet.KtorDormTransport? = null
+    val dormTransport: io.github.betterzslf.feature.campusnet.KtorDormTransport
+        get() = dormTransportInstance
+            ?: io.github.betterzslf.feature.campusnet.KtorDormTransport(platform.httpClient()).also { dormTransportInstance = it }
     init {
         // The timetable has its own slot and does not wait for a campus login. The academic system
         // authenticates with separate credentials, so gating timetable access on a campus session

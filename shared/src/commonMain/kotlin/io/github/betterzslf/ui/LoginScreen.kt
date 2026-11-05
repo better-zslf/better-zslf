@@ -319,10 +319,16 @@ private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
             },
             portalAddress = { sharedPortal.observed },
             schoolIdentity = { sharedPortal.identity },
+            logoutStore = graph.dormLogoutStore,
         )
     }
     DisposableEffect(dorm) { onDispose { dorm.close() } }
     val dormState by dorm.state.collectAsState()
+
+    // If a previous run left a session behind, sign it out before the user can start another. The
+    // gateway refuses a second login from the same account as "already signed in elsewhere", so
+    // skipping this makes the first attempt fail for a reason the user cannot act on.
+    LaunchedEffect(dorm) { dorm.signOutPreviousSession() }
 
     // Without this the session looks connected and then silently lapses: the gateway drops a
     // client that stops heartbeating, and the user would see "connected" while offline. The

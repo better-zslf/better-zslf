@@ -43,6 +43,8 @@ class DormSignInController(
         if (id.isNullOrBlank() && domain.isNullOrBlank() && area.isNullOrBlank()) null
         else Triple(id.orEmpty(), domain.orEmpty(), area.orEmpty())
     },
+    /** Remembers a live session so a process that dies without signing out can still be cleaned up. */
+    private val logoutStore: DormLogoutStore? = null,
 ) {
     private val mutable = MutableStateFlow(DormSignInState())
     val state: StateFlow<DormSignInState> = mutable.asStateFlow()
@@ -102,6 +104,12 @@ class DormSignInController(
                     // gateway that said nothing.
                     session = DormSession(transport, server, base.clientId,
                         result.ticket, result.algoId, base, result.keepRetrySeconds)
+                    // Record the live session BEFORE reporting success: if the process dies between
+                    // here and the next line, the next start must still be able to sign it out.
+                    logoutStore?.save(DormLogoutStore.Record(
+                        serverHost = server.host, algoId = result.algoId, ticket = result.ticket,
+                        clientId = base.clientId, userAgent = base.userAgent, hostName = base.hostName,
+                        ipv4 = base.ipv4, mac = base.mac, ostag = base.ostag, gwip = base.gwip))
                     mutable.value = DormSignInState(DormSignInPhase.Connected,
                         AppText.CampusNetwork.DORM_SIGNED_IN, result.algoId, connected = true)
                     true
@@ -136,11 +144,42 @@ class DormSignInController(
     /** Signs out, only because the user asked. */
     suspend fun signOut(): Boolean {
         val current = session ?: return false
+        // Clear the record first: a sign-out that fails must not be replayed forever, and the
+        // session is almost certainly gone server-side by the next start anyway.
+        logoutStore?.clear()
         val ok = current.logout()
         current.close()
         session = null
         mutable.value = DormSignInState(DormSignInPhase.Idle, AppText.CampusNetwork.DORM_SIGNED_OUT)
         return ok
+    }
+
+    /**
+     * Signs out a session left behind by a previous run, if one was recorded.
+     *
+     * Best effort by design: the client's address may have changed while the app was closed, in
+     * which case the gateway rejects the sign-out and the session simply times out. The record is
+     * removed either way, because replaying a doomed request on every start is worse than letting
+     * the server expire it.
+     */
+    suspend fun signOutPreviousSession(): Boolean {
+        val store = logoutStore ?: return false
+        val record = store.load() ?: return false
+        store.clear()
+        val transport = transport ?: return false
+        val server = servers.firstOrNull { it.host == record.serverHost } ?: return false
+        val fields = DormXmlFields(
+            userAgent = record.userAgent.ifBlank { DORM_ANDROID_USER_AGENT },
+            clientId = record.clientId, localTime = "",
+            hostName = record.hostName, ipv4 = record.ipv4, mac = record.mac,
+            ostag = record.ostag, gwip = record.gwip)
+        val previous = DormSession(transport, server, record.clientId, record.ticket,
+            record.algoId, fields, keepRetrySeconds = 300)
+        return try {
+            previous.logout()
+        } finally {
+            previous.close()
+        }
     }
 
     val keepAliveMillis: Long get() = session?.keepAliveMillis ?: 0

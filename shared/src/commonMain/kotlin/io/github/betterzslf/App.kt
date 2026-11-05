@@ -85,6 +85,12 @@ class AppGraph(val platform: PlatformServices) {
     val dormTransport: io.github.betterzslf.feature.campusnet.KtorDormTransport
         get() = dormTransportInstance
             ?: io.github.betterzslf.feature.campusnet.KtorDormTransport(platform.httpClient()).also { dormTransportInstance = it }
+    /**
+     * Records a live dorm session so a process that dies without signing out can be cleaned up on
+     * the next start. Without it the account stays online server-side and the next attempt is
+     * refused as "already signed in elsewhere".
+     */
+    val dormLogoutStore by lazy { io.github.betterzslf.feature.campusnet.DormLogoutStore(platform.storage) }
     init {
         // The timetable has its own slot and does not wait for a campus login. The academic system
         // authenticates with separate credentials, so gating timetable access on a campus session

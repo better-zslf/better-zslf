@@ -216,3 +216,65 @@ internal fun desedeDoubleCbcEncrypt(key48: ByteArray, iv: ByteArray, data: ByteA
     }
     return buf
 }
+
+// ---------------------------------------------------------------- decrypt sides
+
+/** `DES-ECB-six` decrypt: the six operations in reverse, each with its direction flipped. */
+internal fun desEcbSixDecrypt(key48: ByteArray, data: ByteArray): ByteArray {
+    require(key48.size == 48) { "DES-six key must be 48 bytes" }
+    require(data.size % 8 == 0) { "DES block data must be a multiple of 8 bytes" }
+    val keys = Array(6) { desSubkeys(key48.copyOfRange(it * 8, it * 8 + 8)) }
+    val buf = data.copyOf()
+    for (off in buf.indices step 8) {
+        var blk = buf.copyOfRange(off, off + 8)
+        blk = desBlock(blk, keys[5], decrypt = true)
+        blk = desBlock(blk, keys[4])
+        blk = desBlock(blk, keys[3], decrypt = true)
+        blk = desBlock(blk, keys[2], decrypt = true)
+        blk = desBlock(blk, keys[1])
+        blk = desBlock(blk, keys[0], decrypt = true)
+        blk.copyInto(buf, off)
+    }
+    return buf
+}
+
+/** `3DES-CBC` decrypt: the two passes run in the opposite order, each with the cipher reversed. */
+internal fun desedeCbcDecrypt(key1: ByteArray, key2: ByteArray, iv1: ByteArray, iv2: ByteArray, data: ByteArray): ByteArray {
+    require(data.size % 8 == 0) { "3DES block data must be a multiple of 8 bytes" }
+    var buf = data.copyOf()
+    for ((key, iv) in listOf(key1 to iv1, key2 to iv2)) {
+        val out = ByteArray(buf.size)
+        var prev = iv.copyOf(8)
+        for (off in buf.indices step 8) {
+            val ct = buf.copyOfRange(off, off + 8)
+            des3Block(ct, key, decrypt = true).xorWith(prev).copyInto(out, off)
+            prev = ct
+        }
+        buf = out
+    }
+    return buf
+}
+
+/** `3DES-double` decrypt: passes back out in the order 0 then 24, each reversed. */
+internal fun desedeDoubleCbcDecrypt(key48: ByteArray, iv: ByteArray, data: ByteArray): ByteArray {
+    require(key48.size == 48) { "3DES-double key must be 48 bytes" }
+    require(data.size % 8 == 0) { "3DES-double block data must be a multiple of 8 bytes" }
+    fun tripleInverse(block: ByteArray, base: Int): ByteArray {
+        val k1 = desSubkeys(key48.copyOfRange(base, base + 8))
+        val k2 = desSubkeys(key48.copyOfRange(base + 8, base + 16))
+        val k3 = desSubkeys(key48.copyOfRange(base + 16, base + 24))
+        return desBlock(desBlock(desBlock(block, k3, decrypt = true), k2), k1, decrypt = true)
+    }
+    var buf = data.copyOf()
+    for (base in intArrayOf(0, 24)) {
+        val out = ByteArray(buf.size)
+        var prev = iv.copyOf(8)
+        for (off in buf.indices step 8) {
+            val ct = buf.copyOfRange(off, off + 8)
+            tripleInverse(ct, base).xorWith(prev).copyInto(out, off)
+            prev = ct
+        }
+        buf = out
+    }
+    return buf
+}

@@ -135,3 +135,47 @@ class DormCipherDispatchTest {
         )
     }
 }
+
+/** Round-trip coverage for the decrypt half, which the ticket and login rounds depend on. */
+class DormCipherDecryptTest {
+
+    private val supported = listOf(
+        "CAFBCBAD-B6E7-4CAB-8A67-14D39F00CE1E", "A474B1C2-3DE0-4EA2-8C5F-7093409CE6C4",
+        "BB2EA626-590B-4C42-82BE-E052FCBBB88E", "3D74E736-AB35-47CD-B934-77EBEF2B42D3",
+        "DEABB8C8-A2BC-48CA-8ED0-8CDF1BD62F61", "7E6A7DE0-4C56-47E6-A25A-1B4DCD33B950",
+        "319FC5AB-EC0E-46B9-A252-2285F9DAE813", "3084D519-54D7-4434-9564-26A8615BCEF2",
+        "35101415-A20F-4DFE-B00B-0B4F3B2F8C66", "406BD7C5-C48A-4F48-B072-82D5948B537B",
+        "B3047D4E-67DF-4864-A6A5-DF9B9E525C79", "C32C68F9-CA81-4260-A329-BBAFD1A9CCD1",
+        "F3974434-C0DD-4C20-9E87-DDB6814A1C48", "ED382482-F72C-4C41-A76D-28EEA0F1F2AF",
+        "73B3F4AE-643F-471F-B08C-A5893D7B3601", "D6544CFE-F2DE-459B-9B77-0F2B367EF169",
+        "D522E657-2CC3-46BE-BBE9-9CF1DF896C41", "D755A536-B551-468C-BD87-322182B223D4",
+        "AD8BB5B0-0E72-4198-A362-96D52C1B7ED1", "252F0396-5254-4A42-9390-FA2EF1EB8D6E",
+        "5BFBA864-BBA9-42DB-8EAD-49B5F412BD81",
+        "9ABF4D29-34DB-4CE9-BB8C-7E371D637758", "64BD1BB8-49F4-448F-9D63-C4E96FC068CC")
+
+    @Test fun everySupportedFamilyRoundTripsThroughItsOwnCipher() {
+        // The dialer cannot read a ticket unless decrypt matches encrypt for the negotiated family.
+        val xml = "<response><ticket>FIXTURE</ticket></response>"
+        for (id in supported) {
+            val enc = assertNotNull(DormCipher.encryptHex(id, xml.encodeToByteArray()), id)
+            val back = assertNotNull(DormCipher.decryptHex(id, enc), "decrypt returned null for $id")
+            // Trailing NULs from zero padding are stripped, so allow the recovered text to be a
+            // prefix-equal value with the padding gone.
+            assertEquals(xml, back.trimEnd('\u0000'), id)
+        }
+    }
+
+    @Test fun anUnsupportedFamilyCannotDecryptEither() {
+        for (id in listOf("B809531F-0007-4B5B-923B-4BD560398113", "07E824B2-9E5C-4D1B-BBB0-5E07C251E4AA",
+            "6E0B65FF-0B5B-459C-8FCE-EC7F2BEA9FF5")) {
+            assertNull(DormCipher.decryptHex(id, "00".repeat(8)), id)
+        }
+    }
+
+    @Test fun malformedHexIsRefusedRatherThanGuessed() {
+        val id = "319FC5AB-EC0E-46B9-A252-2285F9DAE813"
+        assertNull(DormCipher.decryptHex(id, "ZZZZ"))
+        assertNull(DormCipher.decryptHex(id, "ABC"))
+        assertNull(DormCipher.decryptHex(id, ""))
+    }
+}

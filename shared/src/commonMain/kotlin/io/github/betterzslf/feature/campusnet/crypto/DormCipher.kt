@@ -158,6 +158,142 @@ object DormCipher {
     }
 
     /**
+     * Decrypt a hex reply back to text, or `null` when this build cannot do that id.
+     *
+     * Only the families whose reply has to be read are implemented: the ticket round and the login
+     * round both return ciphertext, and everything else is decided from response headers.
+     */
+    fun decryptHex(algoId: String, hex: String): String? {
+        val id = algoId.trim().uppercase()
+        val bytes = hex.toByteArrayOrNull() ?: return null
+        return when (id) {
+            "CAFBCBAD-B6E7-4CAB-8A67-14D39F00CE1E" -> {
+                if (bytes.isEmpty() || bytes.size % 16 != 0) return null
+                aesCbcDecrypt(Aes(DormCipherKeys.key1_CAFBCBAD_B6E7_4CAB_8A67_14D39F00CE1E),
+                    DormCipherKeys.iv1_CAFBCBAD_B6E7_4CAB_8A67_14D39F00CE1E, bytes)
+                    .trimTrailingZeros().decodeToString()
+            }
+            "A474B1C2-3DE0-4EA2-8C5F-7093409CE6C4" -> {
+                if (bytes.isEmpty() || bytes.size % 16 != 0) return null
+                aesEcbDecrypt(Aes(DormCipherKeys.key2_A474B1C2_3DE0_4EA2_8C5F_7093409CE6C4), bytes)
+                    .trimTrailingZeros().decodeToString()
+            }
+            "BB2EA626-590B-4C42-82BE-E052FCBBB88E", "3D74E736-AB35-47CD-B934-77EBEF2B42D3" -> {
+                if (bytes.isEmpty() || bytes.size % 16 != 0) return null
+                val (key, iv) = if (id == "BB2EA626-590B-4C42-82BE-E052FCBBB88E")
+                    DormCipherKeys.key_BB2EA626_590B_4C42_82BE_E052FCBBB88E to
+                        DormCipherKeys.iv_BB2EA626_590B_4C42_82BE_E052FCBBB88E
+                else DormCipherKeys.key_3D74E736_AB35_47CD_B934_77EBEF2B42D3 to
+                    DormCipherKeys.iv_3D74E736_AB35_47CD_B934_77EBEF2B42D3
+                aesCbcDecrypt(Aes(key), iv, bytes).trimTrailingZeros().decodeToString()
+            }
+            "DEABB8C8-A2BC-48CA-8ED0-8CDF1BD62F61", "7E6A7DE0-4C56-47E6-A25A-1B4DCD33B950" -> {
+                if (bytes.isEmpty() || bytes.size % 16 != 0) return null
+                val key = if (id == "DEABB8C8-A2BC-48CA-8ED0-8CDF1BD62F61")
+                    DormCipherKeys.key_DEABB8C8_A2BC_48CA_8ED0_8CDF1BD62F61
+                else DormCipherKeys.key_7E6A7DE0_4C56_47E6_A25A_1B4DCD33B950
+                aesEcbDecrypt(Aes(key), bytes).trimTrailingZeros().decodeToString()
+            }
+            // Triple modified-TEA: block size 8, zero padded.
+            "319FC5AB-EC0E-46B9-A252-2285F9DAE813", "3084D519-54D7-4434-9564-26A8615BCEF2" -> {
+                if (bytes.isEmpty() || bytes.size % 8 != 0) return null
+                val key = if (id == "319FC5AB-EC0E-46B9-A252-2285F9DAE813")
+                    DormCipherKeys.key_319FC5AB_EC0E_46B9_A252_2285F9DAE813
+                else DormCipherKeys.key_3084D519_54D7_4434_9564_26A8615BCEF2
+                teaTripleEcbDecrypt(key, bytes).trimTrailingZeros().decodeToString()
+            }
+            "35101415-A20F-4DFE-B00B-0B4F3B2F8C66", "406BD7C5-C48A-4F48-B072-82D5948B537B" -> {
+                if (bytes.isEmpty() || bytes.size % 8 != 0) return null
+                val (key, iv) = if (id == "35101415-A20F-4DFE-B00B-0B4F3B2F8C66")
+                    DormCipherKeys.key_35101415_A20F_4DFE_B00B_0B4F3B2F8C66 to
+                        DormCipherKeys.iv_35101415_A20F_4DFE_B00B_0B4F3B2F8C66
+                else DormCipherKeys.key_406BD7C5_C48A_4F48_B072_82D5948B537B to
+                    DormCipherKeys.iv_406BD7C5_C48A_4F48_B072_82D5948B537B
+                teaTripleCbcDecrypt(key, iv, bytes).trimTrailingZeros().decodeToString()
+            }
+            // mod-XTEA families: block size 8.
+            "B3047D4E-67DF-4864-A6A5-DF9B9E525C79" -> {
+                if (bytes.isEmpty() || bytes.size % 8 != 0) return null
+                modXteaDecrypt(listOf(
+                    DormCipherKeys.key1_B3047D4E_67DF_4864_A6A5_DF9B9E525C79,
+                    DormCipherKeys.key2_B3047D4E_67DF_4864_A6A5_DF9B9E525C79,
+                    DormCipherKeys.key3_B3047D4E_67DF_4864_A6A5_DF9B9E525C79),
+                    swapKeyEndian = false, data = bytes).trimTrailingZeros().decodeToString()
+            }
+            "C32C68F9-CA81-4260-A329-BBAFD1A9CCD1" -> {
+                if (bytes.isEmpty() || bytes.size % 8 != 0) return null
+                modXteaIvDecrypt(listOf(
+                    DormCipherKeys.key1_C32C68F9_CA81_4260_A329_BBAFD1A9CCD1,
+                    DormCipherKeys.key2_C32C68F9_CA81_4260_A329_BBAFD1A9CCD1,
+                    DormCipherKeys.key3_C32C68F9_CA81_4260_A329_BBAFD1A9CCD1),
+                    DormCipherKeys.iv_C32C68F9_CA81_4260_A329_BBAFD1A9CCD1, bytes)
+                    .trimTrailingZeros().decodeToString()
+            }
+            // SM4 families: PKCS#7 padding, so the reply is unpadded rather than trimmed.
+            "F3974434-C0DD-4C20-9E87-DDB6814A1C48" ->
+                sm4CbcDecrypt(DormCipherKeys.key_F3974434_C0DD_4C20_9E87_DDB6814A1C48,
+                    DormCipherKeys.iv_F3974434_C0DD_4C20_9E87_DDB6814A1C48, bytes)?.decodeToString()
+            "ED382482-F72C-4C41-A76D-28EEA0F1F2AF" ->
+                sm4EcbDecrypt(DormCipherKeys.key_ED382482_F72C_4C41_A76D_28EEA0F1F2AF, bytes)?.decodeToString()
+            "73B3F4AE-643F-471F-B08C-A5893D7B3601", "D6544CFE-F2DE-459B-9B77-0F2B367EF169" -> {
+                val (key, iv) = if (id == "73B3F4AE-643F-471F-B08C-A5893D7B3601")
+                    DormCipherKeys.key_73B3F4AE_643F_471F_B08C_A5893D7B3601 to
+                        DormCipherKeys.iv_73B3F4AE_643F_471F_B08C_A5893D7B3601
+                else DormCipherKeys.key_D6544CFE_F2DE_459B_9B77_0F2B367EF169 to
+                    DormCipherKeys.iv_D6544CFE_F2DE_459B_9B77_0F2B367EF169
+                sm4VariantCbcDecrypt(key, iv, bytes)?.decodeToString()
+            }
+            "D522E657-2CC3-46BE-BBE9-9CF1DF896C41", "D755A536-B551-468C-BD87-322182B223D4" -> {
+                val key = if (id == "D522E657-2CC3-46BE-BBE9-9CF1DF896C41")
+                    DormCipherKeys.key_D522E657_2CC3_46BE_BBE9_9CF1DF896C41
+                else DormCipherKeys.key_D755A536_B551_468C_BD87_322182B223D4
+                sm4VariantEcbDecrypt(key, bytes)?.decodeToString()
+            }
+            // DES families: block size 8, zero padded.
+            "AD8BB5B0-0E72-4198-A362-96D52C1B7ED1", "252F0396-5254-4A42-9390-FA2EF1EB8D6E" -> {
+                if (bytes.isEmpty() || bytes.size % 8 != 0) return null
+                val key = if (id == "AD8BB5B0-0E72-4198-A362-96D52C1B7ED1")
+                    DormCipherKeys.key_AD8BB5B0_0E72_4198_A362_96D52C1B7ED1
+                else DormCipherKeys.key_252F0396_5254_4A42_9390_FA2EF1EB8D6E
+                desEcbSixDecrypt(key, bytes).trimTrailingZeros().decodeToString()
+            }
+            "5BFBA864-BBA9-42DB-8EAD-49B5F412BD81" ->
+                desedeCbcDecrypt(
+                    DormCipherKeys.key1_5BFBA864_BBA9_42DB_8EAD_49B5F412BD81,
+                    DormCipherKeys.key2_5BFBA864_BBA9_42DB_8EAD_49B5F412BD81,
+                    DormCipherKeys.iv1_5BFBA864_BBA9_42DB_8EAD_49B5F412BD81,
+                    DormCipherKeys.iv2_5BFBA864_BBA9_42DB_8EAD_49B5F412BD81, bytes)
+                    .trimTrailingZeros().decodeToString()
+            "9ABF4D29-34DB-4CE9-BB8C-7E371D637758", "64BD1BB8-49F4-448F-9D63-C4E96FC068CC" -> {
+                val (key48, ivRaw) = if (id == "9ABF4D29-34DB-4CE9-BB8C-7E371D637758")
+                    DormCipherKeys.key_9ABF4D29_34DB_4CE9_BB8C_7E371D637758 to
+                        DormCipherKeys.iv_9ABF4D29_34DB_4CE9_BB8C_7E371D637758
+                else DormCipherKeys.key_64BD1BB8_49F4_448F_9D63_C4E96FC068CC to
+                    DormCipherKeys.iv_64BD1BB8_49F4_448F_9D63_C4E96FC068CC
+                desedeDoubleCbcDecrypt(key48, ivRaw.copyOf(8), bytes).trimTrailingZeros().decodeToString()
+            }
+            else -> null
+        }
+    }
+
+    private fun ByteArray.trimTrailingZeros(): ByteArray {
+        var end = size
+        while (end > 0 && this[end - 1] == 0.toByte()) end--
+        return copyOf(end)
+    }
+
+    private fun String.toByteArrayOrNull(): ByteArray? {
+        if (isEmpty() || length % 2 != 0) return null
+        val out = ByteArray(length / 2)
+        for (i in out.indices) {
+            val hi = this[i * 2].digitToIntOrNull(16) ?: return null
+            val lo = this[i * 2 + 1].digitToIntOrNull(16) ?: return null
+            out[i] = ((hi shl 4) or lo).toByte()
+        }
+        return out
+    }
+
+    /**
      * The protocol carries uppercase hex, and the reference implementation emits uppercase
      * (`bytes_2_hex` uses `%02X`). Producing lowercase would still parse server-side in some paths
      * but is a needless deviation from what every official client sends.

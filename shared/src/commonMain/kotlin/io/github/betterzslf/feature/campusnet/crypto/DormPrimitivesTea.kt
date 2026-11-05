@@ -89,6 +89,41 @@ internal fun teaTripleCbcEncrypt(key48: ByteArray, iv: ByteArray, data: ByteArra
     return buf
 }
 
+/** Triple modified-TEA in ECB mode, decrypt side. Layers run 0, 1, 2 (the inverse of 2, 1, 0). */
+internal fun teaTripleEcbDecrypt(key48: ByteArray, data: ByteArray): ByteArray {
+    require(data.size % 8 == 0) { "TEA block data must be a multiple of 8 bytes" }
+    val buf = data.copyOf()
+    val k = teaKeyLayers(key48)
+    for (off in buf.indices step 8) {
+        var (v0, v1) = buf.be32(off) to buf.be32(off + 4)
+        for (layer in intArrayOf(0, 1, 2)) {
+            val r = teaDecryptLayer(v0, v1, k[layer]); v0 = r.first; v1 = r.second
+        }
+        buf.putBe32(off, v0); buf.putBe32(off + 4, v1)
+    }
+    return buf
+}
+
+/** Triple modified-TEA in CBC mode, decrypt side. */
+internal fun teaTripleCbcDecrypt(key48: ByteArray, iv: ByteArray, data: ByteArray): ByteArray {
+    require(data.size % 8 == 0) { "TEA block data must be a multiple of 8 bytes" }
+    val buf = data.copyOf()
+    val k = teaKeyLayers(key48)
+    var prev = iv.copyOf(8)
+    for (off in buf.indices step 8) {
+        val ct = buf.copyOfRange(off, off + 8)
+        var v0 = buf.be32(off)
+        var v1 = buf.be32(off + 4)
+        for (layer in intArrayOf(0, 1, 2)) {
+            val r = teaDecryptLayer(v0, v1, k[layer]); v0 = r.first; v1 = r.second
+        }
+        buf.putBe32(off, v0 xor prev.be32(0))
+        buf.putBe32(off + 4, v1 xor prev.be32(4))
+        prev = ct
+    }
+    return buf
+}
+
 // ---------------------------------------------------------------- XTEA
 
 /** One XTEA block, 32 rounds. [swapKeyEndian] is fixed per family by the reference dispatch. */
@@ -134,6 +169,21 @@ internal fun modXteaEncrypt(keys: List<IntArray>, swapKeyEndian: Boolean, data: 
     return buf
 }
 
+/** `mod-XTEA` decrypt: the three passes in reverse order. */
+internal fun modXteaDecrypt(keys: List<IntArray>, swapKeyEndian: Boolean, data: ByteArray): ByteArray {
+    require(data.size % 8 == 0) { "XTEA block data must be a multiple of 8 bytes" }
+    val buf = data.copyOf()
+    for (off in buf.indices step 8) {
+        var v0 = buf.be32(off)
+        var v1 = buf.be32(off + 4)
+        for (k in keys.reversed()) {
+            val r = xteaDecryptBlock(v0, v1, k, swapKeyEndian); v0 = r.first; v1 = r.second
+        }
+        buf.putBe32(off, v0); buf.putBe32(off + 4, v1)
+    }
+    return buf
+}
+
 /**
  * `mod-XTEA-IV`: like CBC, but the chaining value is the previous ciphertext block and the key
  * order is reversed (3, 2, 1) relative to `mod-XTEA`.
@@ -150,6 +200,27 @@ internal fun modXteaIvEncrypt(keys: List<IntArray>, iv: IntArray, data: ByteArra
         }
         buf.putBe32(off, v0); buf.putBe32(off + 4, v1)
         prev0 = v0; prev1 = v1
+    }
+    return buf
+}
+
+/** `mod-XTEA-IV` decrypt: chaining value is the previous *ciphertext* block, keys in order 1,2,3. */
+internal fun modXteaIvDecrypt(keys: List<IntArray>, iv: IntArray, data: ByteArray): ByteArray {
+    require(data.size % 8 == 0) { "XTEA block data must be a multiple of 8 bytes" }
+    val buf = data.copyOf()
+    var prev0 = iv[0]
+    var prev1 = iv[1]
+    for (off in buf.indices step 8) {
+        val c0 = buf.be32(off)
+        val c1 = buf.be32(off + 4)
+        var v0 = c0
+        var v1 = c1
+        for (k in keys) {
+            val r = xteaDecryptBlock(v0, v1, k, swapKeyEndian = false); v0 = r.first; v1 = r.second
+        }
+        buf.putBe32(off, v0 xor prev0)
+        buf.putBe32(off + 4, v1 xor prev1)
+        prev0 = c0; prev1 = c1
     }
     return buf
 }

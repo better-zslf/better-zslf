@@ -116,6 +116,23 @@ private class Sm4(private val variant: Boolean) {
         for (i in 0 until 4) out.putBe32(i * 4, x[35 - i])
         return out
     }
+
+    /**
+     * Decryption runs the same round function with the round keys in reverse order, then undoes the
+     * output reversal. No inverse S-box is needed: SM4's structure is a Feistel-like network.
+     */
+    fun decryptBlock(block: ByteArray, rk: IntArray): ByteArray {
+        require(block.size == 16) { "SM4 block must be 16 bytes" }
+        val x = IntArray(36)
+        for (i in 0 until 4) x[i] = block.be32(i * 4)
+        for (i in 0 until 32) {
+            val t = x[i + 1] xor x[i + 2] xor x[i + 3] xor rk[31 - i]
+            x[i + 4] = x[i] xor lRound(sm4Tau(t))
+        }
+        val out = ByteArray(16)
+        for (i in 0 until 4) out.putBe32(i * 4, x[35 - i])
+        return out
+    }
 }
 
 /** Standard SM4-ECB with PKCS#7 padding. */
@@ -166,4 +183,52 @@ internal fun sm4VariantCbcEncrypt(key: ByteArray, iv: ByteArray, data: ByteArray
         prev = enc
     }
     return out
+}
+
+// ---------------------------------------------------------------- decrypt sides
+
+private fun sm4DecryptBlocks(sm4: Sm4, rk: IntArray, data: ByteArray): ByteArray {
+    require(data.isNotEmpty() && data.size % 16 == 0) { "SM4 ciphertext must be whole blocks" }
+    return ByteArray(data.size).also { out ->
+        for (off in data.indices step 16) sm4.decryptBlock(data.copyOfRange(off, off + 16), rk).copyInto(out, off)
+    }
+}
+
+/** Standard SM4-ECB decrypt; returns `null` when the PKCS#7 padding is invalid. */
+internal fun sm4EcbDecrypt(key: ByteArray, data: ByteArray): ByteArray? {
+    val sm4 = Sm4(variant = false)
+    return sm4DecryptBlocks(sm4, sm4.expandKey(key), data).pkcs7Unpad()
+}
+
+internal fun sm4CbcDecrypt(key: ByteArray, iv: ByteArray, data: ByteArray): ByteArray? {
+    val sm4 = Sm4(variant = false)
+    val rk = sm4.expandKey(key)
+    require(data.isNotEmpty() && data.size % 16 == 0) { "SM4 ciphertext must be whole blocks" }
+    val out = ByteArray(data.size)
+    var prev = iv.copyOf(16)
+    for (off in data.indices step 16) {
+        val ct = data.copyOfRange(off, off + 16)
+        sm4.decryptBlock(ct, rk).xorWith(prev).copyInto(out, off)
+        prev = ct
+    }
+    return out.pkcs7Unpad()
+}
+
+internal fun sm4VariantEcbDecrypt(key: ByteArray, data: ByteArray): ByteArray? {
+    val sm4 = Sm4(variant = true)
+    return sm4DecryptBlocks(sm4, sm4.expandKey(key), data).pkcs7Unpad()
+}
+
+internal fun sm4VariantCbcDecrypt(key: ByteArray, iv: ByteArray, data: ByteArray): ByteArray? {
+    val sm4 = Sm4(variant = true)
+    val rk = sm4.expandKey(key)
+    require(data.isNotEmpty() && data.size % 16 == 0) { "SM4 ciphertext must be whole blocks" }
+    val out = ByteArray(data.size)
+    var prev = iv.copyOf(16)
+    for (off in data.indices step 16) {
+        val ct = data.copyOfRange(off, off + 16)
+        sm4.decryptBlock(ct, rk).xorWith(prev).copyInto(out, off)
+        prev = ct
+    }
+    return out.pkcs7Unpad()
 }

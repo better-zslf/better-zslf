@@ -226,6 +226,8 @@ object AppText {
         const val DORM_SIGN_OUT_ACTION: String = "下线"
         const val DORM_NEEDS_CAMPUS_NETWORK: String = "没有连上校园网，请先连接学校 WiFi 并关闭移动数据"
         const val DORM_NEEDS_PORTAL: String = "还没读到校园网门户地址，请先点下方「读取实测信息」"
+        const val DORM_PORTAL_ADDRESS_UNUSABLE: String =
+            "已读到门户，但重定向里没有拨号所需的地址，请把下方实测信息发回"
         const val DORM_PHONE_INVALID: String = "请填写 11 位手机号"
         const val DORM_RESULT_UNCONFIRMED: String = "结果尚未确认，请查看实际网络状态后再试"
         fun dormCipherUnsupported(reason: String): String =
@@ -243,6 +245,9 @@ object AppText {
         const val DIAGNOSIS_OFF_CAMPUS: String = "没有探测到校园网门户，请确认已连上学校 WiFi 并关闭移动数据"
         const val DIAGNOSIS_NOT_RUN: String = "尚未读取"
         const val DIAGNOSIS_NO_ANSWER: String = "门户没有返回可识别的身份信息"
+        // The portal answered but its redirect carried no wlanuserip/wlanacip, so a dial cannot be
+        // built. Distinct from "no answer": the network is fine, the parameters are missing.
+        const val DIAGNOSIS_NO_ADDRESS: String = "门户已响应，但重定向里没有 wlanuserip/wlanacip，无法拨号。请把下方结果发回"
         const val DIAGNOSIS_ALGO_UNKNOWN_FAMILY: String = "已拿到 algo_id，但它不在这版已知的 27 个算法里，请把结果发回"
         const val DIAGNOSIS_PORTAL_LABEL: String = "门户地址"
         const val DIAGNOSIS_PROBED_LABEL: String = "探测结果"

@@ -45,6 +45,8 @@ class DormSignInController(
     },
     /** Remembers a live session so a process that dies without signing out can still be cleaned up. */
     private val logoutStore: DormLogoutStore? = null,
+    /** Whether a diagnosis probe has run, so a blocked dial can say which kind of blockage it is. */
+    private val probeHasRun: () -> Boolean = { false },
 ) {
     private val mutable = MutableStateFlow(DormSignInState())
     val state: StateFlow<DormSignInState> = mutable.asStateFlow()
@@ -80,8 +82,12 @@ class DormSignInController(
             // far better than a request the gateway answers with a generic rejection.
             val address = portalAddress()
             if (address == null) {
+                // A probe that ran and yielded nothing is a different situation from one that never
+                // ran: the first means the redirect shape is unexpected, the second means the user
+                // has not tapped the diagnosis yet.
                 mutable.value = DormSignInState(DormSignInPhase.NotOnCampus,
-                    AppText.CampusNetwork.DORM_NEEDS_PORTAL)
+                    if (probeHasRun()) AppText.CampusNetwork.DORM_PORTAL_ADDRESS_UNUSABLE
+                    else AppText.CampusNetwork.DORM_NEEDS_PORTAL)
                 return false
             }
             val identity = schoolIdentity()

@@ -82,11 +82,13 @@ class CampusDiagnosisController(
             val address = parsePortalAddress(probed.url)
             if (address == null) {
                 // The portal answered but did not carry wlanuserip/wlanacip, so no dial is possible.
+                // Reported distinctly from "no answer": the network is reachable, the parameters
+                // the ticket URL needs are simply not in the redirect.
                 mutable.value = CampusDiagnosisState(
                     diagnosis = CampusDiagnosis(portalAddress = target, probedUrl = probed.url,
                         schoolId = probed.schoolId, domain = probed.domain, area = probed.area,
                         attempted = true),
-                    message = AppText.CampusNetwork.DIAGNOSIS_NO_ANSWER)
+                    message = AppText.CampusNetwork.DIAGNOSIS_NO_ADDRESS)
                 return false
             }
             val server = authServers().firstOrNull()

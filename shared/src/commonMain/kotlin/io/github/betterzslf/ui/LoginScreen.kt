@@ -329,6 +329,7 @@ internal fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
             portalAddress = { sharedPortal.observed },
             schoolIdentity = { sharedPortal.identity },
             logoutStore = graph.dormLogoutStore,
+            probeHasRun = { sharedPortal.probed },
         )
     }
     DisposableEffect(dorm) { onDispose { dorm.close() } }
@@ -551,7 +552,7 @@ private fun CampusDiagnosisPanel(
     var copyAttempted by remember(controller) { mutableStateOf(false) }
 
     // Publish what the probe observed so the sign-in button can use it without a second probe.
-    LaunchedEffect(state.diagnosis.probedUrl) {
+    LaunchedEffect(state.diagnosis.probedUrl, state.diagnosis.portalAddress) {
         val d = state.diagnosis
         if (d.probedUrl.isNotBlank()) {
             shared.record(d.probedUrl, d.schoolId, d.domain, d.area)

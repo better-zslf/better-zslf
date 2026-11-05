@@ -80,7 +80,9 @@ class CampusDiagnosisControllerTest {
         )
         assertFalse(c.run())
         assertEquals(0, handshakes)
-        assertEquals(AppText.CampusNetwork.DIAGNOSIS_NO_ANSWER, c.state.value.message)
+        // The portal answered but carried no wlan* parameters: the network is fine, the redirect
+        // shape is not the one a dial can use. Reported distinctly from "no answer".
+        assertEquals(AppText.CampusNetwork.DIAGNOSIS_NO_ADDRESS, c.state.value.message)
         // The school id was still captured, so a later attempt does not start from zero.
         assertEquals("s", c.state.value.diagnosis.schoolId)
     }
@@ -151,5 +153,76 @@ class CampusDiagnosisControllerTest {
         assertTrue(c.run())
         // A second explicit run is allowed (the user asked), but it is still one at a time.
         assertEquals(2, handshakes)
+    }
+}
+
+/**
+ * The distinction between "the portal did not answer" and "it answered without the parameters".
+ *
+ * Both block a dial, but they mean different things and lead to different fixes: the first is a
+ * network problem, the second means the redirect shape is not the one the dialer expects. Collapsing
+ * them sent the user to check their WiFi when the WiFi was fine.
+ */
+class CampusDiagnosisAddressTest {
+
+    private val portal = "http://9.9.9.9"
+
+    @Test fun anAnswerWithoutTheTwoAddressesSaysSoRatherThanBlamingTheNetwork() = runTest {
+        val c = CampusDiagnosisController(
+            portalAddress = { portal },
+            probe = CampusDiagnosisProbe {
+                PortalProbeResult.Answered("$portal/plain", redirected = false,
+                    schoolId = "s", domain = "d", area = "a")
+            },
+            handshake = CampusDiagnosisHandshake { _, _, _, _, _ ->
+                error("handshake must not run without an address")
+            },
+        )
+        assertFalse(c.run())
+        assertEquals(AppText.CampusNetwork.DIAGNOSIS_NO_ADDRESS, c.state.value.message)
+        // The identity was still captured, so the report is useful even when the dial is blocked.
+        assertEquals("s", c.state.value.diagnosis.schoolId)
+    }
+
+    @Test fun anUnreachablePortalStillReadsAsOffCampus() = runTest {
+        val c = CampusDiagnosisController(
+            portalAddress = { portal },
+            probe = CampusDiagnosisProbe { PortalProbeResult.Unreachable },
+            handshake = CampusDiagnosisHandshake { _, _, _, _, _ -> error("must not run") },
+        )
+        assertFalse(c.run())
+        assertEquals(AppText.CampusNetwork.DIAGNOSIS_OFF_CAMPUS, c.state.value.message)
+    }
+}
+
+/** What the shared holder records, including the case where it can record nothing usable. */
+class CampusDiagnosisHolderTest {
+
+    @Test fun aUsableRedirectIsParsedIntoTheTwoAddresses() {
+        val h = CampusDiagnosisControllerHolder()
+        h.record("http://9.9.9.9/a/wifi?wlanuserip=10.0.0.2&wlanacip=10.0.0.1", "S", "D", "A")
+        val address = assertNotNull(h.observed)
+        assertEquals("10.0.0.2", address.clientIp)
+        assertEquals("10.0.0.1", address.acIp)
+        assertTrue(h.probed)
+        assertEquals(Triple("S", "D", "A"), h.identity)
+    }
+
+    @Test fun anUnusableRedirectLeavesNoAddressButIsStillMarkedProbed() {
+        // This is what stops the sign-in button from saying "read the diagnosis first" right after
+        // the diagnosis ran successfully.
+        val h = CampusDiagnosisControllerHolder()
+        h.record("http://9.9.9.9/plain", "S", "D", "A")
+        assertNull(h.observed)
+        assertTrue(h.probed)
+    }
+
+    @Test fun clearResetsEverything() {
+        val h = CampusDiagnosisControllerHolder()
+        h.record("http://9.9.9.9/a/wifi?wlanuserip=1.1.1.1&wlanacip=2.2.2.2", "S", "D", "A")
+        h.clear()
+        assertNull(h.observed)
+        assertNull(h.identity)
+        assertFalse(h.probed)
     }
 }

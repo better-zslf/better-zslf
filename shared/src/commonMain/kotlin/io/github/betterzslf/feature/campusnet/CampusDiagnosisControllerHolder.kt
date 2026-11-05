@@ -19,16 +19,31 @@ class CampusDiagnosisControllerHolder {
     var identity: Triple<String, String, String>? = null
         private set
 
-    /** Records what a probe saw. Both halves are needed; a partial record is worse than none. */
+    /** Whether a probe has run at all, even if it yielded nothing the dialer can use. */
+    @Volatile
+    var probed = false
+        private set
+
+    /**
+     * Records what a probe saw.
+     *
+     * [PortalAddress] can legitimately fail to parse — a portal that answers without the two `wlan*`
+     * parameters is a real outcome, not a bug. Recording it as "observed" would then let the sign-in
+     * button report a missing address right after the panel said the probe succeeded, which reads as
+     * a contradiction.
+     */
     fun record(probedUrl: String, schoolId: String, domain: String, area: String) {
         observed = parsePortalAddress(probedUrl)
         identity = Triple(schoolId, domain, area)
+        probed = true
     }
 
     fun clear() {
         observed = null
         identity = null
+        probed = false
     }
 
-    override fun toString(): String = "CampusDiagnosisControllerHolder(observed=${observed != null})"
+    override fun toString(): String =
+        "CampusDiagnosisControllerHolder(probed=$probed, usable=${observed != null})"
 }

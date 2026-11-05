@@ -41,21 +41,26 @@ class DormSession(
         if (closed) return false
         if (!flight.tryLock()) return false
         try {
-            val result = send(DormXmlKind.Heartbeat)
-            when (result) {
+            return when (val result = send(DormXmlKind.Heartbeat)) {
                 is DormRoundResult.Reply -> {
                     val plain = decrypt(result) ?: return record(DormSessionPhase.Unknown, null)
-                    // A heartbeat may carry a refreshed interval; honour it rather than keeping a
-                    // stale value that would eventually arrive too late.
-                    dormXmlValue(plain, "keep-retry")?.trim()?.toIntOrNull()?.let { advertised ->
-                        if (advertised > 0) mutable.value = mutable.value.copy(keepRetrySeconds = advertised)
+                    // The heartbeat reply carries the NEXT interval under `<interval>`. Note this is
+                    // a different element from the login reply's `<keep-retry>`: reading the wrong
+                    // one means the interval never updates and the keep-alive slowly drifts.
+                    val interval = dormXmlValue(plain, "interval")?.trim()?.toIntOrNull()
+                    if (interval == null) {
+                        // The reference treats a reply without it as a protocol failure: the
+                        // gateway answered but did not complete the exchange.
+                        return record(DormSessionPhase.Lost, null)
                     }
-                    val healthy = result.errorCode.isBlank() || result.errorCode == "200"
-                    return record(if (healthy) DormSessionPhase.Alive else DormSessionPhase.Lost,
-                        dormXmlValue(plain, "code"))
+                    if (interval > 0) {
+                        mutable.value = mutable.value.copy(
+                            keepRetrySeconds = (interval - 30).coerceAtLeast(60))
+                    }
+                    record(DormSessionPhase.Alive, null)
                 }
-                DormRoundResult.Unreachable -> return record(DormSessionPhase.Lost, null)
-                is DormRoundResult.CipherUpdate -> return record(DormSessionPhase.Unknown, null)
+                DormRoundResult.Unreachable -> record(DormSessionPhase.Lost, null)
+                is DormRoundResult.CipherUpdate -> record(DormSessionPhase.Unknown, null)
             }
         } finally { flight.unlock() }
     }
@@ -111,9 +116,15 @@ data class DormSessionState(
 )
 
 /** The keep-alive interval the gateway advertised, or a conservative default when it said nothing. */
+/**
+ * The keep-alive interval to use, given a decrypted login reply.
+ *
+ * `keep-retry` is mandatory in the reference: its absence means the login was not accepted, so by
+ * the time this is called the element is known to be present. The arithmetic still clamps, because
+ * a gateway could advertise a value small enough to turn the heartbeat into a tight loop against a
+ * rate-limited server — the reference subtracts its operation timeout for exactly that reason.
+ */
 fun dormKeepRetryFrom(xml: String?): Int {
     val advertised = xml?.let { dormXmlValue(it, "keep-retry")?.trim()?.toIntOrNull() } ?: 0
-    // 0 means "the gateway did not say". A five-minute floor keeps the session alive without
-    // hammering it; the reference subtracts its operation timeout from whatever it was told.
     return if (advertised > 0) (advertised - 30).coerceAtLeast(60) else 300
 }

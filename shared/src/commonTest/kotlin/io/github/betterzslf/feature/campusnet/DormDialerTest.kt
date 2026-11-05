@@ -60,8 +60,11 @@ class DormDialerTest {
                     val plain = buildDormXml(DormXmlKind.Login, DormXmlFields("ua", "id", "t"))
                     loginPlain = plain
                     DormRoundResult.Reply(errorCode, subError,
-                        DormCipher.encryptHex(algoId, (if (loginOk) "<response><code>0</code></response>"
-                        else "<response><code>1</code></response>").encodeToByteArray())!!.encodeToByteArray())
+                        // A real success always carries keep-retry; that element IS the success signal.
+                    DormCipher.encryptHex(algoId,
+                        (if (loginOk) "<response><keep-retry>600</keep-retry></response>"
+                        else "<response><code>1</code></response>").encodeToByteArray())!!
+                        .encodeToByteArray())
                 }
                 else -> DormRoundResult.Unreachable
             }

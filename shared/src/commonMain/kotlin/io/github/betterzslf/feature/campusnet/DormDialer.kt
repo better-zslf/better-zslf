@@ -192,11 +192,17 @@ class DormDialer(
             (status as? DormCipherStatus.Unsupported)?.reason.orEmpty())
     }
 
+    /**
+     * Whether the login reply means "signed in".
+     *
+     * The reference does **not** look for a status code here: it decrypts the reply and requires a
+     * `<keep-retry>` element, treating a reply without one as a failure. Requiring `<code>0</code>`
+     * would be wrong in both directions — a real success may carry no code at all, and some
+     * failures arrive as a decodable document with no `keep-retry`.
+     */
     private fun isSuccess(plain: String, round: DormRoundResult.Reply): Boolean {
-        // The reference treats Error-Code 200 (or empty) as success once the reply decrypts.
         if (round.errorCode.isNotBlank() && round.errorCode != "200") return false
-        val code = dormXmlCode(plain)
-        return code == null || code == "0" || code == "200"
+        return dormXmlValue(plain, "keep-retry") != null
     }
 
     private fun encode(v: String): String = v

@@ -213,10 +213,11 @@ class DormKeepAlivePropagationTest {
         c.signOut()
     }
 
-    @Test fun aSilentGatewayFallsBackToTheDefault() = runTest {
+    @Test fun aReplyWithoutKeepRetryIsAFailureNotASilentSuccess() = runTest {
+        // The reference requires <keep-retry> to consider the login accepted; a decodable reply
+        // without it means the gateway did not complete the session.
         val c = controller(keepRetry = "")
-        assertTrue(c.signIn("13800138000", "pw"))
-        assertEquals(300_000L, c.keepAliveMillis)
-        c.signOut()
+        assertFalse(c.signIn("13800138000", "pw"))
+        assertEquals(DormSignInPhase.Failed, c.state.value.phase)
     }
 }

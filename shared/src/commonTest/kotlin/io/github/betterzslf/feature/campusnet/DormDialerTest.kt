@@ -140,3 +140,38 @@ class DormDialerTest {
         assertEquals(DormAttemptResult.Unreadable, dialer(garbled).dial("1", "2"))
     }
 }
+
+/** The `local-time` field must be present and stamped per request, not left empty. */
+class DormDialerTimestampTest {
+
+    private val fields = DormXmlFields(
+        userAgent = DORM_ANDROID_USER_AGENT, clientId = "id", localTime = "",
+        hostName = "h", ipv4 = "10.0.0.2", mac = "AA", ostag = "3", gwip = "10.0.0.1")
+
+    @Test fun everyDocumentCarriesAWellFormedLocalTime() {
+        val payloads = mutableListOf<String>()
+        val transport = DormTransport { url, payload, algoId, _ ->
+            payloads += payload
+            if (algoId == DORM_NIL_ALGO_ID) DormRoundResult.CipherUpdate(DORM_ANDROID_USER_AGENT.let {
+                "319FC5AB-EC0E-46B9-A252-2285F9DAE813" })
+            else if (url.contains("ticket.cgi")) DormRoundResult.Reply("200", "",
+                io.github.betterzslf.feature.campusnet.crypto.DormCipher.encryptHex(algoId,
+                    "<request><ticket>T</ticket></request>".encodeToByteArray())!!.encodeToByteArray())
+            else DormRoundResult.Reply("200", "", io.github.betterzslf.feature.campusnet.crypto.DormCipher
+                .encryptHex(algoId, "<response><code>0</code></response>".encodeToByteArray())!!.encodeToByteArray())
+        }
+        val dialer = DormDialer(transport, DORM_AUTH_SERVERS.first(), fields,
+            DORM_AUTH_SERVERS.first().baseUrl, clock = { "2026-11-05 10:00:00" })
+        kotlinx.coroutines.test.runTest { dialer.dial("13800138000", "pw") }
+        assertTrue(payloads.isNotEmpty())
+    }
+
+    @Test fun theFormatterOutputMatchesWhatTheDocumentBuilderExpects() {
+        // A single space-separated stamp, no ISO "T", because the reference uses strftime's form.
+        val stamp = formatDormLocalTime(1_762_320_000_000, 480)
+        assertFalse(stamp.contains('T'), stamp)
+        assertEquals(19, stamp.length, stamp)
+        val xml = buildDormXml(DormXmlKind.GetTicket, fields.copy(localTime = stamp))
+        assertTrue(xml.contains("<local-time>$stamp</local-time>"), xml)
+    }
+}

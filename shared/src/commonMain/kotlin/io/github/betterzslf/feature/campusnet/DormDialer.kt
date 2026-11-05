@@ -68,7 +68,14 @@ class DormDialer(
     private val server: AuthServer,
     private val fields: DormXmlFields,
     private val authServerBase: String = server.baseUrl,
+    /**
+     * Supplies the `local-time` field per request. The reference stamps the current clock into
+     * every document, so a value captured once would be stale by the login round.
+     */
+    private val clock: () -> String = { formatDormLocalTime(currentEpochMillis(), localOffsetMinutes()) },
 ) {
+
+    private fun stamped(f: DormXmlFields): DormXmlFields = f.copy(localTime = clock())
 
     /**
      * @param userId / [password] the broadband credentials, used only in the login envelope.
@@ -116,7 +123,8 @@ class DormDialer(
 
         // Round 3: log in with the ticket.
         val loginPayload = DormCipher.encryptHex(algoId,
-            buildDormXml(DormXmlKind.Login, fields.copy(ticket = ticket, userId = userId, password = password))
+            buildDormXml(DormXmlKind.Login,
+                stamped(fields).copy(ticket = ticket, userId = userId, password = password))
                 .encodeToByteArray()) ?: return unsupported(algoId)
         return when (val round = transport.post("$authServerBase/auth.cgi",
             loginPayload, algoId, fields.clientId)) {
@@ -134,8 +142,8 @@ class DormDialer(
 
     private fun initialPayload(): String =
         DormCipher.encryptHex(DORM_NIL_ALGO_ID,
-            buildDormXml(DormXmlKind.GetTicket, fields).encodeToByteArray())
-            ?: buildDormXml(DormXmlKind.GetTicket, fields)
+            buildDormXml(DormXmlKind.GetTicket, stamped(fields)).encodeToByteArray())
+            ?: buildDormXml(DormXmlKind.GetTicket, stamped(fields))
 
     private fun decrypt(round: DormRoundResult.Reply, algoId: String): String? {
         val text = round.body.decodeToString()

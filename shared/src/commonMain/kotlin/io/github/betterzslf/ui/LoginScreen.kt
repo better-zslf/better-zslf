@@ -37,6 +37,9 @@ import io.github.betterzslf.feature.campusnet.DormXmlFields
 import io.github.betterzslf.feature.campusnet.campusAlgoStatusText
 import io.github.betterzslf.feature.campusnet.newDormClientId
 import io.github.betterzslf.feature.campusnet.recordDormSchoolIdentity
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -320,6 +323,22 @@ private fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
     }
     DisposableEffect(dorm) { onDispose { dorm.close() } }
     val dormState by dorm.state.collectAsState()
+
+    // Without this the session looks connected and then silently lapses: the gateway drops a
+    // client that stops heartbeating, and the user would see "connected" while offline. The
+    // interval comes from the gateway (keep-retry), so it is read fresh on every pass rather than
+    // captured once.
+    LaunchedEffect(dorm) {
+        snapshotFlow { dorm.state.value.phase }
+            .collectLatest { phase ->
+                if (phase != DormSignInPhase.Connected) return@collectLatest
+                while (true) {
+                    delay(dorm.keepAliveMillis.takeIf { it > 0 } ?: 300_000L)
+                    if (dorm.state.value.phase != DormSignInPhase.Connected) break
+                    dorm.heartbeat()
+                }
+            }
+    }
     var taken by remember(boundSessionKey(session)) { mutableStateOf<String?>(null) }
     var queryFailed by remember(boundSessionKey(session)) { mutableStateOf(false) }
     val editable = taken == null

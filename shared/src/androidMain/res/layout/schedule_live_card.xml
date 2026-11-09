@@ -39,14 +39,14 @@
             android:textStyle="bold" />
 
         <!--
-          A Chronometer, not a TextView.
+          A TextView whose wording matches the status-bar capsule.
 
-          The right-hand value is a countdown, and a TextView only changes when this app reposts the
-          card, once a minute at best. The number therefore sat still while the system's own ticker
-          moved, and the card looked laggy. RemoteViews can drive a Chronometer, and SystemUI then
-          animates it every second without waking the app or costing any extra alarm.
+          A Chronometer was tried here and reverted. It ticks every second, so the card read 43:29
+          while the capsule read 33分 and the two looked like they disagreed about the same class.
+          Minute granularity is what both surfaces promise; the accurate fix was to wake exactly
+          when the minute changes, not to tick more often.
         -->
-        <Chronometer
+        <TextView
             android:id="@+id/schedule_live_status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

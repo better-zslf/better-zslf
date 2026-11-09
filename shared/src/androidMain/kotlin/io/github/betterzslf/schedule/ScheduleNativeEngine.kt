@@ -164,7 +164,14 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
     @Synchronized fun publish(publication: ScheduleNativePublication): Boolean {
         if (!scheduleNativeCanPublish(state.ownerRevision, publication)) return false
         val safe = scheduleNativeRedact(publication)
-        if (!save(state.copy(status = safe.status, publication = safe))) return false
+        // Keep the display-only teacher names in memory while still persisting the redacted seed.
+        //
+        // Redaction exists so private text never reaches storage, and that boundary is unchanged --
+        // save() still writes `safe`. But the live card needs the instructor, and reading it back
+        // from the redacted copy meant it was always empty: the teacher column rendered blank on
+        // every device, with nothing failing to explain why.
+        val retained = safe.copy(displayTeachers = publication.displayTeachers)
+        if (!save(state.copy(status = safe.status, publication = retained))) return false
         return reconcile()
     }
 
@@ -278,8 +285,17 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
         } else null
         val nextRedraw = listOfNotNull(boundary, minuteTick).minOrNull()
         if (nextRedraw != null) {
-            runCatching { alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextRedraw, reconcileIntent()) }
-                .onFailure { success = false }
+            // Exact when permitted, because the minute tick is what makes the card's countdown and
+            // its progress bar advance. `setAndAllowWhileIdle` is the fallback but the platform may
+            // defer it to roughly once every nine minutes in deep idle -- which is exactly the
+            // "the time is late" symptom this is meant to remove. Exactness matters for a redraw
+            // that claims a minute granularity; wall-clock drift of a few seconds is acceptable.
+            val set = if (capability.exactAlarmsAllowed) {
+                runCatching { alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextRedraw, reconcileIntent()) }
+            } else {
+                runCatching { alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextRedraw, reconcileIntent()) }
+            }
+            set.onFailure { success = false }
         } else {
             alarms.cancel(reconcileIntent())
         }

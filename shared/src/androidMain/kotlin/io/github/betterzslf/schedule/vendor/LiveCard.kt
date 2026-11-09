@@ -43,18 +43,10 @@ internal object LiveCard {
             val inClass = !data.betweenClasses
             setTextColor(ids.status, if (inClass) ACCENT_IN_CLASS else ACCENT_BREAK)
 
-            // The right-hand value is a live countdown driven by SystemUI, not static text.
-            //
-            // The base must be elapsedRealtime, not wall-clock: Chronometer counts against the
-            // monotonic clock, so handing it a wall-clock millisecond value makes it start from a
-            // meaningless offset. Converting the deadline through the same clock keeps the number
-            // exact even if the device's wall clock is adjusted mid-class.
-            val remainingMillis = (data.deadlineAtMillis - System.currentTimeMillis()).coerceAtLeast(0L)
-            val base = android.os.SystemClock.elapsedRealtime() + remainingMillis
-            runCatching {
-                setChronometer(ids.status, base, null, true)
-                setBoolean(ids.status, "setCountDown", true)
-            }
+            // Same wording as the capsule, so the two surfaces cannot appear to disagree. The card
+            // is reposted on the minute (see the engine's tick), which is the granularity both this
+            // text and the capsule actually promise.
+            setTextViewText(ids.status, data.status)
 
             val progress = data.progress?.coerceIn(0f, 1f)
             if (progress == null) {

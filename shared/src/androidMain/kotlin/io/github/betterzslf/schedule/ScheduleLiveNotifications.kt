@@ -71,18 +71,68 @@ internal class ScheduleLiveNotifications(private val context: Context) {
      * briefly show an empty teacher column until the next publish, which is the price of not
      * writing names into storage.
      */
+    /**
+     * Instructor names for the card, in the app's encrypted store.
+     *
+     * In memory alone was not enough: the engine is a singleton but a backgrounded process is
+     * killed, and the map went with it. The card then lost its teacher column until something
+     * republished -- which is what "it disappears after a while in the background" looked like.
+     *
+     * Kept out of [StoredLive] on purpose: that record is the redacted seed, and the policy in
+     * ScheduleNative is explicit that names must not travel with it. This is a separate key in the
+     * same authenticated-encrypted store the timetable already uses, so the data is not plaintext
+     * on disk and the redaction boundary is unchanged.
+     */
     private var teacherByBlockId: Map<String, String> = emptyMap()
 
     private val store get() = context.getSharedPreferences("better_zslf_schedule_live", Context.MODE_PRIVATE)
 
+
     /** The class blocks of the day being watched, so a later reconcile needs no credentials. */
     fun publish(revision: String, blocks: List<ScheduleLiveBlock>) {
-        teacherByBlockId = blocks.filter { it.teacher.isNotBlank() }.associate { it.id to it.teacher }
+        // Merge, never replace wholesale.
+        //
+        // A cold start publishes blocks before the session has been restored, so their teacher
+        // fields are blank. Writing the map unconditionally meant that empty publish overwrote the
+        // names already on disk -- which is precisely how the column vanished "after a while in the
+        // background": every wake-up erased what the previous one had saved.
+        val incoming = blocks.filter { it.teacher.isNotBlank() }.associate { it.id to it.teacher }
+        if (incoming.isNotEmpty()) {
+            teacherByBlockId = teacherByBlockId + incoming
+            persistTeachers(teacherByBlockId)
+        } else if (teacherByBlockId.isEmpty()) {
+            // Nothing to add and nothing held in memory: recover what a previous process stored.
+            teacherByBlockId = readTeachers()
+        }
         val payload = StoredLive(revision, blocks.map {
             StoredLive.Block(it.id, it.title, it.location, it.startsAtMillis, it.endsAtMillis, it.periods)
         })
         store.edit().putString(KEY, json.encodeToString(payload)).commit()
         reconcile(System.currentTimeMillis())
+    }
+
+    private fun persistTeachers(names: Map<String, String>) {
+        val result = runCatching {
+            val encrypted = io.github.betterzslf.platform.createPlatformServices().storage
+            if (names.isEmpty()) encrypted.remove(TEACHER_KEY) else encrypted.put(TEACHER_KEY, json.encodeToString(names))
+        }
+        // Surfaced rather than swallowed: a silent failure here is exactly what made the teacher
+        // column vanish after the process was killed, with nothing in the log to explain it.
+        result.exceptionOrNull()?.let {
+            android.util.Log.w("LiveCardRT", "persistTeachers failed: " + it::class.java.simpleName + ": " + it.message)
+        }
+    }
+
+    private fun readTeachers(): Map<String, String> {
+        val result = runCatching {
+            val raw = io.github.betterzslf.platform.createPlatformServices().storage.get(TEACHER_KEY)
+            if (raw == null) return@runCatching emptyMap()
+            json.decodeFromString<Map<String, String>>(raw)
+        }
+        result.exceptionOrNull()?.let {
+            android.util.Log.w("LiveCardRT", "readTeachers failed: " + it::class.java.simpleName + ": " + it.message)
+        }
+        return result.getOrDefault(emptyMap())
     }
 
     fun clear() {
@@ -99,6 +149,9 @@ internal class ScheduleLiveNotifications(private val context: Context) {
             runCatching { notifications.cancel(TAG, NOTIFICATION_ID) }
             return
         }
+        // Restored from storage when this process has not published yet, so a card posted by an
+        // alarm after the app was killed still shows its instructor.
+        if (teacherByBlockId.isEmpty()) teacherByBlockId = readTeachers()
         val state = scheduleLiveState(stored.blocks.map {
             ScheduleLiveBlock(it.id, it.title, it.location, it.startsAtMillis, it.endsAtMillis,
                 teacher = teacherByBlockId[it.id].orEmpty(), periods = it.periods)
@@ -418,6 +471,8 @@ internal class ScheduleLiveNotifications(private val context: Context) {
     fun available(): Boolean = Build.VERSION.SDK_INT >= 26
 
     internal companion object {
+        /** Key in the encrypted store; deliberately not part of the redacted seed record. */
+        const val TEACHER_KEY = "better-zslf.schedule.live-teachers.v1"
         /** Debug probe id and tag; deliberately distinct from the production live card. */
         const val TAG_TEST = "schedule.live.test"
         const val TEST_NOTIFICATION_ID = 0x5C5E99

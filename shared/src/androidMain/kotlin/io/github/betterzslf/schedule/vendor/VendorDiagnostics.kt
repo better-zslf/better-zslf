@@ -176,6 +176,18 @@ internal object VendorDiagnostics {
         io.github.betterzslf.schedule.scheduleLiveClearTest(context)
     }
 
+    /**
+     * Force the Meizu vendor path on a debug build of any device.
+     *
+     * The three-column card only renders where Flyme is detected, so without this it cannot be
+     * inspected anywhere else -- which is how its two blank columns survived several rounds.
+     * Returns the new state so the caller can show it.
+     */
+    fun toggleForceVendor(): Boolean {
+        FlymeLiveRenderer.FORCE_VENDOR_FOR_TESTING = !FlymeLiveRenderer.FORCE_VENDOR_FOR_TESTING
+        return FlymeLiveRenderer.FORCE_VENDOR_FOR_TESTING
+    }
+
     /** True when a vendor renderer claims this ROM, so the vendor demos make sense. */
     fun vendorSupported(vendor: ScheduleVendor): Boolean = vendor in VendorLivePolicy.claimed
 
@@ -285,3 +297,12 @@ internal object VendorDiagnostics {
     /** Every id this object can post; "clear all" iterates exactly this. */
     private val IDS = listOf(DEMO_ID, BREAK_ID, VENDOR_LIVE_TEST_NOTIFICATION_ID)
 }
+
+/**
+ * Debug-only: flip the Meizu-vendor path on this device.
+ *
+ * Top-level and public so the debug probe (a separate module) can reach it without widening the
+ * internal renderer types or the release-facing bridge contract -- the same shape as
+ * [scheduleLiveDiagnostic].
+ */
+fun toggleForceVendorForTesting(): Boolean = VendorDiagnostics.toggleForceVendor()

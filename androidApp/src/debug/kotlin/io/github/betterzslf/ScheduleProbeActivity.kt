@@ -153,6 +153,15 @@ class ScheduleProbeActivity : ComponentActivity() {
             native.testLiveSequence(false)
             display("sequence started")
         }
+        action("Live: force Meizu vendor path") {
+            // Lets the three-column vendor card be rendered and inspected on this device. Debug-only
+            // surface: the flag defaults to false and this activity exists only in debug builds.
+            display("forceVendor=" + io.github.betterzslf.schedule.vendor.toggleForceVendorForTesting())
+        }
+        action("Live: card columns trace") {
+            val t = io.github.betterzslf.schedule.scheduleLiveCardTrace(applicationContext)
+            status.text = t
+        }
         action("Live: clear all demo notifications") {
             native.clearTestNotifications()
             display("cleared")
@@ -182,12 +191,16 @@ class ScheduleProbeActivity : ComponentActivity() {
             val thisMonday = instant.toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
             val currentWeek = 44
             val snapshot = ScheduleSnapshot(ScheduleTerm("fixture-term", "Synthetic semester", true),
-                listOf(ScheduleCourse("live-now-course", "Synthetic live class", location = "Synthetic room 9",
+                listOf(ScheduleCourse("live-now-course", "Synthetic live class",
+                    teacher = "Synthetic teacher", location = "Synthetic room 9",
                     dayOfWeek = instant.dayOfWeek.value, periods = listOf(1, 2), weeks = listOf(currentWeek))),
                 weekMondays = mapOf(currentWeek to thisMonday.toString()),
                 syncedAtMillis = System.currentTimeMillis())
             val publication = ScheduleNativePublication(revision, ScheduleNativeStatus.READY, snapshot, periods,
-                remindersEnabled = true, reminderLeadMinutes = 10)
+                remindersEnabled = true, reminderLeadMinutes = 10,
+                // The card reads instructor names from this display-only map, not from the snapshot:
+                // the snapshot is redacted before it reaches storage.
+                displayTeachers = mapOf("live-now-course" to "Synthetic teacher"))
             // Report the platform outcome too: "accepted" only means the publication was valid.
             val accepted = native.publish(publication)
             val active = runCatching {

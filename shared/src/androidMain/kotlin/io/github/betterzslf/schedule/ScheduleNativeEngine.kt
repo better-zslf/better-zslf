@@ -164,14 +164,15 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
     @Synchronized fun publish(publication: ScheduleNativePublication): Boolean {
         if (!scheduleNativeCanPublish(state.ownerRevision, publication)) return false
         val safe = scheduleNativeRedact(publication)
-        // Keep the display-only teacher names in memory while still persisting the redacted seed.
+        // The teacher names are display-only and must not reach storage, so they live on a field the
+        // persisted copy keeps blank. Reading them back from `safe` meant they were always empty and
+        // the teacher column rendered blank on every device with nothing failing to explain why.
         //
-        // Redaction exists so private text never reaches storage, and that boundary is unchanged --
-        // save() still writes `safe`. But the live card needs the instructor, and reading it back
-        // from the redacted copy meant it was always empty: the teacher column rendered blank on
-        // every device, with nothing failing to explain why.
-        val retained = safe.copy(displayTeachers = publication.displayTeachers)
-        if (!save(state.copy(status = safe.status, publication = retained))) return false
+        // The previous attempt kept them by saving `safe.copy(displayTeachers = ...)`, which quietly
+        // put the names in the JSON on disk -- the opposite of the intent. They are held in memory
+        // here instead, and save() writes the redacted publication.
+        displayNames = publication.displayTeachers
+        if (!save(state.copy(status = safe.status, publication = safe))) return false
         return reconcile()
     }
 
@@ -471,17 +472,48 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
         // Teachers live beside the snapshot, keyed by source course id -- the occurrence id is a
         // different hash, so keying the lookup by it silently produced an empty teacher and an empty
         // period range, and the card lost two of its three columns.
-        return view.occurrences
+        val built = view.occurrences
             .filter { it.date == today }
             .map { occurrence ->
                 io.github.betterzslf.feature.schedule.ScheduleLiveBlock(
                     id = occurrence.id, title = occurrence.title, location = occurrence.location,
                     startsAtMillis = occurrence.startsAtMillis, endsAtMillis = occurrence.endsAtMillis,
-                    teacher = publication?.displayTeachers?.get(occurrence.courseId).orEmpty(),
+                    teacher = displayNames[occurrence.courseId].orEmpty(),
                     periods = occurrence.periods,
                 )
             }
+        // Recorded on every build so the trace reflects what the card was actually handed, not a
+        // recomputation that could differ from it.
+        lastColumnsTrace = built.joinToString(" | ") {
+            "title=${it.title} teacher=[${it.teacher}] periods=${it.periods} " +
+                "periodText=[${io.github.betterzslf.feature.schedule.compactPeriodRange(it.periods)}] " +
+                "teacherMapSize=${displayNames.size}"
+        }.ifEmpty { "no blocks today" }
+        // Also to logcat: the card is drawn by the host, so its column values are invisible to
+        // dumpsys and the only way to read them from outside the app is to log them.
+        runCatching { android.util.Log.i("ScheduleLiveCard", "columns: " + lastColumnsTrace) }
+        return built
     }
+
+    /** Last built columns, for the debug trace. */
+    private var lastColumnsTrace: String = "never built"
+
+    /**
+     * Teacher names for the live card only.
+     *
+     * Held in memory, never in [ScheduleNativeStoredState]: the persisted seed is redacted on
+     * purpose, and this is the one place the card reads them from.
+     */
+    private var displayNames: Map<String, String> = emptyMap()
+
+    /**
+     * Debug-only: what the live card was actually given.
+     *
+     * The two empty columns survived three rounds of reading the code because every layer looked
+     * correct in isolation. This reports the values the card receives, so the broken layer can be
+     * named instead of guessed.
+     */
+    fun liveCardTrace(): String = lastColumnsTrace
 
     private fun refreshVisibleNotifications(view: ScheduleNativeView) {
         notifications.activeNotifications.filter { it.tag?.startsWith(TAG_PREFIX) == true }.forEach { item ->
@@ -501,3 +533,7 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
  */
 fun scheduleLiveDiagnostic(context: android.content.Context): String =
     ScheduleNativeEngine.from(context).liveTrace()
+
+/** Debug-only: the values the live card was handed, column by column. */
+fun scheduleLiveCardTrace(context: android.content.Context): String =
+    runCatching { ScheduleNativeEngine.from(context).liveCardTrace() }.getOrElse { "trace failed: " + it.message }

@@ -391,7 +391,15 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
      */
     private fun isFlymeFamily(): Boolean {
         val identity = (Build.BRAND + " " + Build.MANUFACTURER).lowercase()
-        return identity.contains("meizu") || identity.contains("mblu")
+        if (identity.contains("meizu") || identity.contains("mblu")) return true
+        // Debug-only override so the vendor card can be exercised on a non-Meizu device.
+        //
+        // Without it the renderer declines on every emulator, which meant the three-column card
+        // could not be inspected at all during development -- the one bug it kept producing was
+        // invisible to every test that did not run on Meizu hardware.
+        // Defaults to false in every build; only the diagnostics probe turns it on, and only the
+        // debug variant compiles that probe. A release APK therefore cannot reach this branch.
+        return FORCE_VENDOR_FOR_TESTING
     }
 
     /** Suffix of [VENDOR_LIVE_CHANNEL_PREFIX]; per-vendor so their settings stay separable. */
@@ -421,6 +429,8 @@ internal class FlymeLiveRenderer : VendorLiveRenderer {
 
         /** Demo defaults for fields whose effect was never observed; changing them would be a guess. */
         const val CAPSULE_TYPE_DEFAULT = 5
+        /** Lets the probe force the Meizu path on a debug build of any device. */
+        var FORCE_VENDOR_FOR_TESTING: Boolean = false
         const val LIVE_OPERATION_SHOW = 0
         const val LIVE_TYPE_STANDARD = 2
 

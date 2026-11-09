@@ -44,19 +44,42 @@ internal class ScheduleLiveNotifications(private val context: Context) {
 
     @Serializable
     private data class StoredLive(val revision: String, val blocks: List<Block>) {
+        /**
+         * The narrow on-disk shape of one class block.
+         *
+         * `periods` was missing here and that alone blanked the card's 节次 column on every device:
+         * publish() writes this model and immediately reconciles by rebuilding the blocks from it,
+         * so any field absent from this class is gone before the card is drawn. `location` survived
+         * precisely because it is listed -- the same block kept 教室 and lost the other two columns.
+         *
+         * `teacher` stays absent on purpose: instructor names must not reach storage
+         * (see ScheduleNative.scheduleNativeRedact), so they travel in [teacherByBlockId] instead.
+         */
         @Serializable
         data class Block(
             val id: String, val title: String, val location: String,
             val startsAtMillis: Long, val endsAtMillis: Long,
+            val periods: List<Int> = emptyList(),
         )
     }
+
+    /**
+     * Instructor names for the card, kept off disk.
+     *
+     * The persisted model deliberately has no teacher field, so this map carries the value across
+     * the publish/reconcile round trip within a process. A cold process started by an alarm will
+     * briefly show an empty teacher column until the next publish, which is the price of not
+     * writing names into storage.
+     */
+    private var teacherByBlockId: Map<String, String> = emptyMap()
 
     private val store get() = context.getSharedPreferences("better_zslf_schedule_live", Context.MODE_PRIVATE)
 
     /** The class blocks of the day being watched, so a later reconcile needs no credentials. */
     fun publish(revision: String, blocks: List<ScheduleLiveBlock>) {
+        teacherByBlockId = blocks.filter { it.teacher.isNotBlank() }.associate { it.id to it.teacher }
         val payload = StoredLive(revision, blocks.map {
-            StoredLive.Block(it.id, it.title, it.location, it.startsAtMillis, it.endsAtMillis)
+            StoredLive.Block(it.id, it.title, it.location, it.startsAtMillis, it.endsAtMillis, it.periods)
         })
         store.edit().putString(KEY, json.encodeToString(payload)).commit()
         reconcile(System.currentTimeMillis())
@@ -77,8 +100,16 @@ internal class ScheduleLiveNotifications(private val context: Context) {
             return
         }
         val state = scheduleLiveState(stored.blocks.map {
-            ScheduleLiveBlock(it.id, it.title, it.location, it.startsAtMillis, it.endsAtMillis)
+            ScheduleLiveBlock(it.id, it.title, it.location, it.startsAtMillis, it.endsAtMillis,
+                teacher = teacherByBlockId[it.id].orEmpty(), periods = it.periods)
         }, nowMillis)
+        // Logged after the storage round trip, which is where teacher and periods used to vanish:
+        // publish() wrote a model that had no slot for them and reconciled from that same model.
+        runCatching {
+            android.util.Log.i("LiveCardRT", "state teacher=[${state.teacher}] periodText=[${state.periodText}] " +
+                "course=[${state.courseName}] teachers=${teacherByBlockId.size} " +
+                "storedPeriods=${stored.blocks.map { it.periods }}")
+        }
         lastState = state.takeIf { it.active }
         if (!state.active || !notificationsEnabled() || dismissed(state)) {
             lastReason = when {

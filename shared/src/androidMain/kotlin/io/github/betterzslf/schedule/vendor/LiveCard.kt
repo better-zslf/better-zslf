@@ -39,10 +39,22 @@ internal object LiveCard {
         val ids = Ids.resolve(context) ?: return null
         return RemoteViews(context.packageName, ids.layout).apply {
             setTextViewText(ids.title, data.courseName.ifBlank { data.title })
-            setTextViewText(ids.status, data.status)
 
             val inClass = !data.betweenClasses
             setTextColor(ids.status, if (inClass) ACCENT_IN_CLASS else ACCENT_BREAK)
+
+            // The right-hand value is a live countdown driven by SystemUI, not static text.
+            //
+            // The base must be elapsedRealtime, not wall-clock: Chronometer counts against the
+            // monotonic clock, so handing it a wall-clock millisecond value makes it start from a
+            // meaningless offset. Converting the deadline through the same clock keeps the number
+            // exact even if the device's wall clock is adjusted mid-class.
+            val remainingMillis = (data.deadlineAtMillis - System.currentTimeMillis()).coerceAtLeast(0L)
+            val base = android.os.SystemClock.elapsedRealtime() + remainingMillis
+            runCatching {
+                setChronometer(ids.status, base, null, true)
+                setBoolean(ids.status, "setCountDown", true)
+            }
 
             val progress = data.progress?.coerceIn(0f, 1f)
             if (progress == null) {

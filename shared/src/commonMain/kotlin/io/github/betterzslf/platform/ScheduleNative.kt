@@ -27,6 +27,16 @@ data class ScheduleNativeOccurrence(
     override val date: String,
     override val startsAtMillis: Long,
     override val endsAtMillis: Long,
+    /**
+     * Period numbers of this run, carried from the source occurrence.
+     *
+     * Not derivable afterwards: the occurrence id is a stable hash, while the course map is keyed
+     * by the source course id, so looking periods up by occurrence id always missed and the live
+     * card silently dropped its 节次 column.
+     */
+    val periods: List<Int> = emptyList(),
+    /** Source course id, the key the teacher map actually uses. */
+    val courseId: String = "",
 ) : ScheduleTimedOccurrence {
     override fun toString(): String = "ScheduleNativeOccurrence(redacted)"
 }

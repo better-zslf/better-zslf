@@ -324,7 +324,8 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
         val source = publication?.snapshot
         val occurrences = if (source == null || !source.complete) emptyList() else
             scheduleOccurrences(source, publication!!.periods, now - DAY, now + FUTURE_DAYS * DAY).map {
-                ScheduleNativeOccurrence(it.id, it.title, it.location, it.date, it.startsAtMillis, it.endsAtMillis)
+                ScheduleNativeOccurrence(it.id, it.title, it.location, it.date, it.startsAtMillis, it.endsAtMillis,
+                    periods = it.periods, courseId = it.course.id)
             }
         return ScheduleNativeView(state.ownerRevision, state.status, publication, occurrences, now,
             state.status in setOf(ScheduleNativeStatus.CACHED, ScheduleNativeStatus.NEEDS_LOGIN) ||
@@ -451,18 +452,17 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
     private fun liveBlocksFor(view: ScheduleNativeView, nowMillis: Long): List<io.github.betterzslf.feature.schedule.ScheduleLiveBlock> {
         val today = io.github.betterzslf.feature.schedule.scheduleSchoolDate(nowMillis).toString()
         val publication = view.publication
-        // Teachers live beside the snapshot, not inside it, so the redactor can drop them from
-        // storage while the card still shows them. Periods come from the course itself.
-        val courses = publication?.snapshot?.courses.orEmpty().associateBy { it.id }
+        // Teachers live beside the snapshot, keyed by source course id -- the occurrence id is a
+        // different hash, so keying the lookup by it silently produced an empty teacher and an empty
+        // period range, and the card lost two of its three columns.
         return view.occurrences
             .filter { it.date == today }
             .map { occurrence ->
-                val course = courses[occurrence.id] ?: courses.values.firstOrNull { it.title == occurrence.title }
                 io.github.betterzslf.feature.schedule.ScheduleLiveBlock(
                     id = occurrence.id, title = occurrence.title, location = occurrence.location,
                     startsAtMillis = occurrence.startsAtMillis, endsAtMillis = occurrence.endsAtMillis,
-                    teacher = publication?.displayTeachers?.get(occurrence.id).orEmpty(),
-                    periods = course?.periods.orEmpty(),
+                    teacher = publication?.displayTeachers?.get(occurrence.courseId).orEmpty(),
+                    periods = occurrence.periods,
                 )
             }
     }

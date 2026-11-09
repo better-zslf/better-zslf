@@ -38,7 +38,15 @@
             android:textSize="17sp"
             android:textStyle="bold" />
 
-        <TextView
+        <!--
+          A Chronometer, not a TextView.
+
+          The right-hand value is a countdown, and a TextView only changes when this app reposts the
+          card, once a minute at best. The number therefore sat still while the system's own ticker
+          moved, and the card looked laggy. RemoteViews can drive a Chronometer, and SystemUI then
+          animates it every second without waking the app or costing any extra alarm.
+        -->
+        <Chronometer
             android:id="@+id/schedule_live_status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

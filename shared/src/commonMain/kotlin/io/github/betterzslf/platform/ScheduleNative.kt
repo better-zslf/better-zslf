@@ -231,9 +231,23 @@ internal fun scheduleNativeFutureReminders(
         .take(SCHEDULE_NATIVE_MAX_REMINDERS).toList()
 }
 
+/**
+ * Longest delay of a reminder that is still worth firing.
+ *
+ * An alarm that should have fired ten minutes ago is not a reminder any more; it is an
+ * interruption that arrives when the user opened the app, which is exactly when they were reading
+ * the timetable themselves. Past this grace the reminder is treated as missed and dropped.
+ */
+internal const val SCHEDULE_NATIVE_DELIVERY_GRACE_MILLIS: Long = 90_000L
+
 /** No backfill during refresh. A previously armed zero-lead alarm gets a bounded OS dispatch grace only. */
 internal fun scheduleNativeDeliveryDue(occurrence: ScheduleNativeOccurrence, triggerAtMillis: Long, leadMinutes: Int, nowMillis: Long): Boolean {
     if (leadMinutes !in 0..120 || triggerAtMillis != occurrence.startsAtMillis - leadMinutes * 60_000L || nowMillis < triggerAtMillis) return false
+    // Only fire close to the moment it was due. Without this a reminder armed for 07:50 would
+    // still fire at 07:54 simply because the app was opened -- the user sees a "10 minutes before"
+    // alert four minutes late and rightly calls it wrong.
+    val graceEnd = triggerAtMillis + SCHEDULE_NATIVE_DELIVERY_GRACE_MILLIS
+    if (nowMillis > graceEnd) return false
     val deadline = if (leadMinutes == 0) minOf(occurrence.startsAtMillis + 60_000L, occurrence.endsAtMillis) else occurrence.startsAtMillis
     return nowMillis < deadline
 }

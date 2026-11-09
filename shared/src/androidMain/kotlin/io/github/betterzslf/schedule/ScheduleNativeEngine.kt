@@ -240,6 +240,13 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
             } else {
                 vendorLive.cancel(context)
             }
+            // One card per class, not two.
+            //
+            // The pre-class reminder and the live card describe the same lesson, and both posting
+            // left the shade showing "英语I 08:00 · 3-102" directly under a live card for that very
+            // class -- which reads as a duplicate, because it is one. Once the card is up the
+            // reminder has done its job, so it is withdrawn while the class stays covered.
+            withdrawRemindersForLiveBlocks(projection, liveBlocks, now)
         } else {
             liveDebug.value = "skip status=" + projection.status + " granted=" + capability.notificationsGranted
             liveNotifications.clear()
@@ -255,8 +262,17 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
         // alarm per minute, only during a class and never outside one: no polling, no service, no
         // wakelock. A finer cadence would buy a smoother bar at a real battery cost for no
         // information gain, since the minute reading is already exact.
+        // Driven from the timetable, not from the published card.
+        //
+        // Reading currentState() meant the only tick source disappeared exactly when the card did,
+        // so a backgrounded app stopped advancing: the card's own minute hand froze and the phase
+        // change at the bell was never noticed until the user opened the app again. Deciding from
+        // the occurrences keeps the wake-up scheduled across the boundary too.
         val liveNow = liveNotifications.currentState()
-        val minuteTick = if (liveNow != null) (now / MINUTE_MILLIS + 1) * MINUTE_MILLIS else null
+        val hasLiveBlockNow = projection.occurrences.any { it.startsAtMillis <= now && it.endsAtMillis > now }
+        // One tick after the current minute while anything is live, plus one just past the next
+        // boundary so the transition itself is observed.
+        val minuteTick = if (liveNow != null || hasLiveBlockNow) (now / MINUTE_MILLIS + 1) * MINUTE_MILLIS else null
         val boundary = if (ScheduleWidgets.hasWidgets(context) || canRemind) {
             scheduleNextBoundaryMillis(projection.occurrences, now)
         } else null
@@ -366,6 +382,28 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
             .setOnlyAlertOnce(true).setShowWhen(true).setWhen(occurrence.startsAtMillis).build()
         runCatching { notifications.notify(TAG_PREFIX + revision + ":" + occurrence.id, 1, notification) }
     }
+    /**
+     * Removes pre-class reminders for the lessons the live card is already showing.
+     *
+     * Only exact matches are withdrawn: a reminder for a later class is untouched, so the user
+     * still gets 10-minute warnings for lessons that have not started.
+     */
+    private fun withdrawRemindersForLiveBlocks(
+        view: ScheduleNativeView,
+        liveBlocks: List<io.github.betterzslf.feature.schedule.ScheduleLiveBlock>,
+        nowMillis: Long,
+    ) {
+        if (liveBlocks.isEmpty()) return
+        val liveIds = liveBlocks.map { it.id }.toSet()
+        val revision = view.ownerRevision ?: return
+        notifications.activeNotifications.forEach { item ->
+            val tag = item.tag ?: return@forEach
+            if (!tag.startsWith(TAG_PREFIX + revision + ":")) return@forEach
+            val id = tag.removePrefix(TAG_PREFIX + revision + ":")
+            if (id in liveIds) notifications.cancel(tag, item.id)
+        }
+    }
+
     private fun cancelLessonNotifications() { notifications.activeNotifications.filter { it.tag?.startsWith(TAG_PREFIX) == true }.forEach { notifications.cancel(it.tag, it.id) } }
 
     /**

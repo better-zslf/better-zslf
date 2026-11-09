@@ -153,9 +153,10 @@ fun scheduleLiveState(blocks: List<ScheduleLiveBlock>, nowMillis: Long): Schedul
         ?.takeIf { it.startsAtMillis - nowMillis <= MAX_BREAK_WINDOW_MILLIS }
     if (next != null) {
         val gapMillis = next.startsAtMillis - nowMillis
-        // The break started when the last class before this one ended. Without an earlier block
-        // there is no measurable gap (the app was opened mid-morning), so the fraction stays null
-        // rather than inventing a start time and showing a bar that means nothing.
+        // The break runs from the previous class's end to the next class's start. Before the first
+        // class of the day there is no such start, and the countdown then genuinely has no honest
+        // denominator -- so no fraction is published and the bar is hidden rather than filled with
+        // an invented percentage.
         val gapStart = ordered.map { it.endsAtMillis }
             .filter { it <= nowMillis }
             .maxOrNull()

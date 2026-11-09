@@ -1,7 +1,9 @@
 package io.github.betterzslf.schedule.vendor
 
 import android.content.Context
+import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.feature.schedule.ScheduleLivePhase
+import io.github.betterzslf.feature.schedule.MAX_BREAK_WINDOW_MILLIS
 import io.github.betterzslf.feature.schedule.ScheduleLiveState
 import io.github.betterzslf.platform.ScheduleVendor
 
@@ -59,8 +61,23 @@ internal class VendorLiveDispatcher(private val renderers: List<VendorLiveRender
             renderer.publish(context, VendorLiveData(
                 title = state.title,
                 subtitle = state.text.takeIf { state.phase == ScheduleLivePhase.IN_CLASS }.orEmpty(),
-                status = state.text,
-                progress = state.progress,
+                // The card's right-hand status is the short countdown, not the state's full text.
+                //
+                // state.text concatenates room, remaining time and clock because the native card
+                // shows all three; the vendor card draws the room in its own column and the clock in
+                // another, so reusing the concatenation put "3-102 · 10 分钟后开始 · 08:00 开始" on one
+                // line beside the title, overflowing at larger font scales.
+                status = shortStatus(state),
+                // A break before the day's first class has no measured start, so the state publishes
+                // no fraction and the card drew no bar at all -- which read as a broken card rather
+                // than as "no denominator". The card still shows a bar there, using the same
+                // 90-minute window the state machine treats as the longest plausible break: it fills
+                // from near zero toward the bell instead of vanishing.
+                progress = state.progress ?: if (state.phase == ScheduleLivePhase.BEFORE_NEXT) {
+                    val remaining = state.startsAtMillis - System.currentTimeMillis()
+                    if (remaining <= 0L) 1f
+                    else (1f - (remaining.toFloat() / MAX_BREAK_WINDOW_MILLIS.toFloat())).coerceIn(0.02f, 1f)
+                } else null,
                 chip = state.chip,
                 deadlineAtMillis = if (state.phase == ScheduleLivePhase.IN_CLASS) state.endsAtMillis else state.startsAtMillis,
                 teacher = state.teacher,
@@ -81,6 +98,22 @@ internal class VendorLiveDispatcher(private val renderers: List<VendorLiveRender
         }
         active = renderer
         return true
+    }
+
+    /**
+     * Countdown alone: the room and the clock already have their own columns on the card.
+     *
+     * Computed from the deadline rather than parsed out of the chip text, because the chip is
+     * truncated for the pill ("33分") while the card can afford the full wording.
+     */
+    private fun shortStatus(state: ScheduleLiveState, now: Long = System.currentTimeMillis()): String {
+        val deadline = if (state.phase == ScheduleLivePhase.IN_CLASS) state.endsAtMillis else state.startsAtMillis
+        val minutes = io.github.betterzslf.feature.schedule.scheduleLiveMinutes(deadline - now)
+        return if (state.phase == ScheduleLivePhase.IN_CLASS) {
+            AppText.Schedule.liveRemaining(minutes)
+        } else {
+            AppText.Schedule.liveStartsIn(minutes)
+        }
     }
 
     fun cancel(context: Context) {

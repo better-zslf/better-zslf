@@ -57,9 +57,13 @@ internal fun ScheduleWeekBoard(
         scheduleBoardBlocks(snapshot, week, periods, today, nowMinutes).filter { it.day in visibleDays }
     }
     val dark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
-    val todayColumn = MiuixTheme.colorScheme.primary.copy(alpha = if (dark) 0.22f else 0.10f)
-    // Ardot 14:190 draws every non-today column fully transparent inside the white card;
-    // only the today column (14:198 primarySoft) is tinted.
+    // Today's column is tinted neutrally, not with the brand colour.
+    //
+    // A primary-tinted column is the same blue family as the course cards sitting on it, so the
+    // highlight and the content merged into one blue block and the column stopped reading as
+    // "today". A neutral grey marks the column without competing with what is drawn inside it.
+    val todayColumn = if (dark) Color.White.copy(alpha = 0.07f) else Color.Black.copy(alpha = 0.04f)
+    // Ardot 14:190 draws every non-today column fully transparent inside the white card.
     val gridSurface = Color.Transparent
     val dayWeight = 1f / visibleDays.size
 
@@ -78,14 +82,14 @@ internal fun ScheduleWeekBoard(
                     Text(
                         AppText.Schedule.shortDayLabel(day),
                         fontSize = 12.sp,
-                        color = if (isToday) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        color = if (isToday) MiuixTheme.colorScheme.onSurface else MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                     if (date != null) {
                         Text(
                             AppText.Schedule.dayOfMonth(date.day),
                             fontSize = 14.sp,
-                            fontWeight = if (isToday) FontWeight.SemiBold else FontWeight.Medium,
-                            color = if (isToday) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
+                            fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface,
                         )
                     }
                 }

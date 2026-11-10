@@ -423,7 +423,7 @@ class AppTextGoldenTest {
         assertEquals("前往设置 / 再次确认安装…", AppText.Updates.OPEN_SETTINGS_OR_RECONFIRM_INSTALL)
         assertEquals("打开系统安装确认页…", AppText.Updates.OPEN_SYSTEM_INSTALL_CONFIRMATION)
         assertEquals("本平台更新方式", AppText.Updates.PLATFORM_UPDATE_METHOD_TITLE)
-        assertEquals("better-zslf 发布与更新", AppText.Updates.PROJECT_RELEASES_AND_UPDATES_LABEL)
+        assertEquals("Oh My ZSC 发布与更新", AppText.Updates.PROJECT_RELEASES_AND_UPDATES_LABEL)
         assertEquals("此发布没有附加说明。", AppText.Updates.RELEASE_NOTES_MISSING)
         assertEquals("发布说明", AppText.Updates.RELEASE_NOTES_TITLE)
         assertEquals("本平台只打开 GitHub 发布页，不下载 Android 安装包，也不请求安装权限。打开页面不代表更新完成。", AppText.Updates.RELEASE_PAGE_ONLY_PLATFORM_HINT)

@@ -1,4 +1,4 @@
-# better-zslf
+# Oh My ZSC
 
 **掌上莲峰**（电子科技大学中山学院，`com.zx.slm`）的第三方开源客户端。
 

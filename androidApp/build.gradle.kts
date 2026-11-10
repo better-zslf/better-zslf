@@ -25,7 +25,7 @@ android {
     compileSdk { version = release(37) { minorApiLevel = 2 } }
     defaultConfig {
         applicationId = "io.github.betterzslf" + if (isProEdition) ".pro" else ""
-        manifestPlaceholders["appLabel"] = if (isProEdition) "better-zslf Pro" else "better-zslf"
+        manifestPlaceholders["appLabel"] = if (isProEdition) "Oh My ZSC Pro" else "Oh My ZSC"
         minSdk = 33
         targetSdk = 36
         versionCode = resolvedCode

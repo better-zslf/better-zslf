@@ -68,7 +68,7 @@ class AppTextPlatformGoldenTest {
         assertEquals("正在下载公开发布的安装包。", AppText.Updates.DOWNLOADING_PUBLIC_RELEASE_PACKAGE)
         assertEquals("更新准备已取消；已打开的系统安装页面仍由你确认。", AppText.Updates.UPDATE_PREPARATION_CANCELLED_SYSTEM_INSTALL_CONFIRMATION_REMAINS)
         assertEquals("更新下载器已关闭。", AppText.Updates.UPDATE_DOWNLOADER_CLOSED)
-        assertEquals("better-zslf 更新", AppText.Updates.UPDATE_DOWNLOAD_NOTIFICATION_TITLE)
+        assertEquals("Oh My ZSC 更新", AppText.Updates.UPDATE_DOWNLOAD_NOTIFICATION_TITLE)
         assertEquals("正在下载应用公开发布的安装包", AppText.Updates.UPDATE_DOWNLOAD_NOTIFICATION_DESCRIPTION)
         assertEquals("正在校验安装包。", AppText.Updates.VERIFYING_INSTALL_PACKAGE)
         assertEquals("安装包校验完成，点击后仍需系统安装确认。", AppText.Updates.PACKAGE_VERIFIED_SYSTEM_INSTALL_CONFIRMATION_REQUIRED)

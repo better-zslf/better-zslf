@@ -92,7 +92,7 @@ private fun AboutScreen(graph: AppGraph, back: () -> Unit, openUpdates: () -> Un
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             AppBrandMark()
             Text(AppText.App.CAMPUS_LIFE_WELCOME_TITLE, style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title2)
-            Text("better-zslf · ${if (BuildEdition.isPro) "Pro" else "Standard"}", color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            Text("Oh My ZSC · ${if (BuildEdition.isPro) "Pro" else "Standard"}", color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
             // Five taps on the version string toggle the local developer option; nothing is sent anywhere.
             Text(AppText.Content.aboutVersion(graph.platform.versionName),
                 color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.primary,

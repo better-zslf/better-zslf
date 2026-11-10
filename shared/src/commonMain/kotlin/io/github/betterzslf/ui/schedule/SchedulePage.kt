@@ -167,20 +167,8 @@ private fun ScheduleWeekScreenContent(
                 onWeekClick = openTermWeek,
             )
         }
-        // P00's 下一节重点卡 / 今日课程分组 hierarchy, on the existing 课程表 tab (DESIGN.md §1.2
-        // permits P00 as content reference but forbids a new 首页 / fifth tab). Uses the same
-        // minute-level `now` clock and the tested occurrence resolver; no per-second recomposition.
-        if (snapshot.complete) {
-            item("schedule-next-card") {
-                // Pure bounded-window resolver; cheap enough to run with the minute-level clock,
-                // and it must not invent a class when dates/periods cannot be resolved.
-                val focus = scheduleFocus(snapshot, state.periods, now)
-                ScheduleNextCard(focus, state.periods) { occurrence ->
-                    openDetail(scheduleRoute(ScheduleRoutes.DETAIL,
-                        ScheduleDetailSelection(snapshot.term.id, listOf(occurrence.courseId), occurrence.week).encode()))
-                }
-            }
-        }
+        // Ardot P39 has no "下一节" hero card on the week board — that belongs to the P00 首页
+        // tab. Showing one here also leaked tomorrow's class as "下一节" after today ended.
         if (state.busy || state.reauthenticating || state.message != null || state.needsCredentials ||
             !snapshot.complete || snapshot.warnings.isNotEmpty() || state.storageFailure) {
             scheduleStatusItems(state, { openTermWeek() })

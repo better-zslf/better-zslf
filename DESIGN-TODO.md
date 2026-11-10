@@ -105,6 +105,20 @@
       （无标题日期页 + 五 tab，首页选中）、服务页（三组分组 + 服务选中）真实渲染且无崩溃；
       截图见 `.local/screenshots/home-notitle.png`、`services-real.png`。
 
+## 1.4 修复「今天没课还显示下一节」（2026-11-10，真机反馈）
+
+> 真机（20:56，今天三节课都已上完，明天周三有课）截图显示首页与课表页仍挂着
+> 「下一节 英语I · 13 小时 4 分 / 784 分钟后开始」——把**明天**的课当成今天的下一节。
+
+- [x] **「下一节」限定为今天**：`homeView` 原先用 14 天窗口的 `scheduleNextOccurrence`
+      找下一节，跨天了。改为在 `scheduleTodayOccurrences` 的结果里找；今天最后一节结束后
+      `running`/`next` 都为空 → hero 不渲染，但「今天的课」仍列出今天已上的课（历史，不删）。
+      新增回归用例 `HomeViewTest.afterTodaysLastClassNoHeroEvenWhenTomorrowHasClasses`
+      （周二课上完 + 周三有课 → 无 hero、今日列表保留、无「下一节」徽标），共 8 例通过。
+- [x] **删掉课表页多余的「下一节」卡**：P39 稿没有这张卡，是 rc53 自行加的，同样会串到明天。
+      移除 `ScheduleWeekScreenContent` 里的 `schedule-next-card` item，并删除已成为死代码的
+      `ScheduleNextCard.kt` / `ScheduleNextCardTest.kt`；「下一节」只在 P00 首页出现，符合稿子。
+
 > 仍未做：D00–D01 / G01–G07 / S02–S08 / V01 的 OS4 Glass 全套迁移（依赖新通道与材质验收），
 > 以及导航板标注「④ 拖拽中需自研」的胶囊指示器。G01 的「四项」表述已按五 tab 更正见 §3。
 

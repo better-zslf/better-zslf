@@ -78,6 +78,19 @@ class HomeViewTest {
         assertTrue(view.emptyMessage.isNotBlank())
     }
 
+    @Test fun afterTodaysLastClassNoHeroEvenWhenTomorrowHasClasses() {
+        // 20:56 on Tuesday: all three of today's classes (P1/P3/P5) are over, but a Wednesday
+        // course exists in the 14-day window. "下一节" must NOT jump to tomorrow — the hero
+        // disappears while 今天的课 still lists today's (finished) courses.
+        val tue = snapshot(course("c1", "电路分析基础", 1, 1), course("c2", "程序设计基础", 1, 3))
+        val wed = ScheduleSnapshot(term, listOf(course("c3", "英语I", 2, 1)), mapOf(9 to "2026-10-26"))
+        val merged = ScheduleSnapshot(term, tue.courses + wed.courses, mapOf(9 to "2026-10-26"))
+        val view = homeView(merged, periods, 9, at(1, 20, 56))
+        assertNull(view.hero, "no next class today, so no 下一节 hero")
+        assertEquals(2, view.today.size)
+        assertTrue(view.today.none { it.isNext })
+    }
+
     @Test fun aDayWithNoCoursesHasNoHeroButAReadableEmptyState() {
         // A complete, correctly mapped snapshot with no courses at all: no hero, no today rows,
         // but an explicit empty message rather than a blank page.

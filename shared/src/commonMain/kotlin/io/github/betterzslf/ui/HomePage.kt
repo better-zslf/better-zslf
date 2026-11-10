@@ -134,7 +134,10 @@ internal fun homeView(snapshot: ScheduleSnapshot?, periods: List<SchedulePeriod>
     }
     val today = scheduleTodayOccurrences(occurrences, nowMillis)
     val running = scheduleCurrentOccurrences(occurrences, nowMillis).firstOrNull()
-    val next = scheduleNextOccurrence(occurrences, nowMillis)
+    // "下一节" is TODAY's next class, not tomorrow's. Ardot P00 (44:47) shows the next badge on
+    // the first row of 今天的课; once today's last class has ended there is no next class and the
+    // hero must disappear (a permanent "明天还有课" countdown would be misleading).
+    val next = scheduleNextOccurrence(today, nowMillis)
     val highlighted = running ?: next
     val hero = highlighted?.let { o ->
         val total = if (running != null) scheduleLiveMinutes(o.endsAtMillis - nowMillis)

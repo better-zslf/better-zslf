@@ -67,7 +67,7 @@ fun SchedulePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onB
 }
 
 /**
- * The shared Shell owns the four-tab navigation and rail drawing; this is the 课程表 tab root.
+ * The shared Shell owns the five-tab navigation and rail drawing (Ardot 24:22); this is the 课表 tab root.
  *
  * Title sizing comes from the shared `title1` role, not a page-local 34sp value (§4.1 reads
  * MiuixTheme.textStyles). The body is a week grid; it degrades to a day list automatically on

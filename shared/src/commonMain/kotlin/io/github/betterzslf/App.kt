@@ -241,17 +241,19 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
     }
     val theme = remember(mode) { ThemeController(mode, lightColors = ardotLightColors(), darkColors = ardotDarkColors()) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { graph.onForeground() }
-    // Invalidate old five-tab saved indices once; v3 then retains all four stacks on recreation.
+    // Ardot 24:22 / P00 / P46: five tabs 首页/课表/校园网/服务/我的. v4 invalidates old
+    // four-tab saved indices once, then retains all five stacks on recreation.
     key(NavigationLayoutPolicy.SAVED_STATE_SCHEMA) {
     val root = rememberNavBackStack<Route>(Route.Main)
     // Keep tab navigation outside the login-gated subtree, including across a 401.
     var selected by rememberSaveable { mutableIntStateOf(0) }
-    // Tab order: 0 课程表 (the app's landing surface), 1 校园跑, 2 校园网, 3 我的.
-    val timetable = rememberNavBackStack<Route>(Route.TabRoot(0))
-    val run = rememberNavBackStack<Route>(Route.TabRoot(1))
+    // Tab order: 0 首页 (landing), 1 课表, 2 校园网, 3 服务, 4 我的.
+    val home = rememberNavBackStack<Route>(Route.TabRoot(0))
+    val timetable = rememberNavBackStack<Route>(Route.TabRoot(1))
     val campusNetwork = rememberNavBackStack<Route>(Route.TabRoot(2))
-    val profile = rememberNavBackStack<Route>(Route.TabRoot(3))
-    val tabStacks = listOf(timetable, run, campusNetwork, profile)
+    val services = rememberNavBackStack<Route>(Route.TabRoot(3))
+    val profile = rememberNavBackStack<Route>(Route.TabRoot(4))
+    val tabStacks = listOf(home, timetable, campusNetwork, services, profile)
     val nativeOpenRequest by graph.schedule.native.openRequests.collectAsState()
     LaunchedEffect(nativeOpenRequest, session?.userId) {
         val request = nativeOpenRequest ?: return@LaunchedEffect
@@ -261,11 +263,12 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
         if (graph.schedule.state.value.owner != session?.userId) return@LaunchedEffect
         val courseId = request.occurrenceId?.let(graph.schedule::courseIdForOccurrence)
         graph.schedule.state.value.sourceTermId?.let { graph.schedule.selectTerm(it) }
-        selected = 0
+        // A native timetable open request belongs to the 课表 tab (index 1), not 首页.
+        selected = 1
         root.removeAll { it != Route.Main }
         if (root.isEmpty()) root.add(Route.Main)
         timetable.clear()
-        timetable.add(Route.TabRoot(0))
+        timetable.add(Route.TabRoot(1))
         if (courseId != null) timetable.pushUnique(Route.Page("scheduledetail", courseId, AppText.Schedule.DETAILS_TITLE))
     }
     // The root stack owns a single route while a tab is open, so the platform back gesture must
@@ -335,7 +338,7 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
         }
         if (session != null && root.lastOrNull() == Route.Main) {
             ScheduleBindingPrompt(graph) {
-                selected = 0
+                selected = 1
                 timetable.pushUnique(Route.Page("schedulebind", title = AppText.Schedule.BIND_TITLE))
             }
         }
@@ -350,8 +353,11 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
     val open: (Route) -> Unit = { route ->
         if (route is Route.Page && route.kind == "resetpassword") onAccountRecovery() else stack.pushUnique(route)
     }
-    val titles = listOf(AppText.Navigation.SCHEDULE, AppText.Navigation.CAMPUS_RUN, AppText.Navigation.CAMPUS_NETWORK, AppText.Navigation.PROFILE)
-    val icons = listOf(MiuixIcons.Notes, MiuixIcons.Location, MiuixIcons.Carrier, MiuixIcons.Contacts)
+    // Ardot 24:22: five tabs 首页/课表/校园网/服务/我的. 校园跑 moves into the 服务 directory
+    // (P46) but its pages stay reachable through the third tab's stack.
+    val titles = listOf(AppText.Navigation.HOME, AppText.Navigation.TIMETABLE, AppText.Navigation.CAMPUS_NETWORK,
+        AppText.Navigation.SERVICES, AppText.Navigation.PROFILE)
+    val icons = listOf(MiuixIcons.Home, MiuixIcons.Notes, MiuixIcons.Carrier, MiuixIcons.GridView, MiuixIcons.Contacts)
     val showBottomNavigation = stack.lastOrNull() is Route.TabRoot
     // Miuix measures the whole bottomBar before composing its body. Its padding includes the
     // pill, outer spacing and system navigation area, unlike measuring inside padding modifiers.
@@ -406,11 +412,12 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
                         effects = NavDisplayEffects(cornerClipRadius = 0.dp)) {
                         entry<Route.TabRoot> { route ->
                             when (route.index) {
-                                0 -> ScheduleRootPage(graph, open)
-                                1 -> RunTaskList(graph, open)
+                                0 -> HomePage(graph, open)
+                                1 -> ScheduleRootPage(graph, open)
                                 2 -> CampusNetworkFeaturePage(graph, onBack = null,
                                     onOpenDormSignIn = { open(Route.Page("dormnetwork", title = io.github.betterzslf.core.text.AppText.Auth.ENTRY_DORM_LINK)) })
-                                3 -> ProfileScreen(graph, open)
+                                3 -> ServicesPage(graph, open)
+                                4 -> ProfileScreen(graph, open)
                             }
                         }
                         entry<Route.Page>(swipeDismiss = if ((stack.lastOrNull() as? Route.Page)?.kind in setOf("water", "runtracker", "resetpassword")) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) { route ->

@@ -842,9 +842,66 @@ object AppText {
         const val CAMPUS_RUN: String = "校园跑"
         const val CAMPUS_NETWORK: String = "校园网"
         const val PROFILE: String = "我的"
+        // Ardot 24:22 底部导航板 / 44:130 / 44:318: five tabs 首页/课表/校园网/服务/我的.
+        const val HOME: String = "首页"
+        const val TIMETABLE: String = "课表"
+        const val SERVICES: String = "服务"
         fun greeting(name: String): String = if (name.isBlank()) "你好，同学" else "你好，${name}"
         fun offlineWaterSummary(status: String): String = "蓝牙离线连接 · ${status}"
         fun unreadCount(count: Int): String = "${count} 条未读消息"
+    }
+
+    /** Ardot P00 首页 (44:47) — date greeting, next-class hero and today's course list. */
+    object Home {
+        const val TITLE: String = "首页"
+        fun greeting(hour: Int): String = when {
+            hour < 6 -> "夜深了"
+            hour < 11 -> "早上好"
+            hour < 14 -> "中午好"
+            hour < 18 -> "下午好"
+            else -> "晚上好"
+        }
+        fun date(month: Int, day: Int, weekday: String): String = "${month}月${day}日 $weekday"
+        // Only real data is shown: greeting + the confirmed term name + the selected week. The
+        // design's "江门校区" is placeholder campus metadata the school API does not publish, so
+        // it is not invented here.
+        fun subtitle(greeting: String, term: String, week: Int): String =
+            listOf(greeting, term, "第${week}周").filter { it.isNotBlank() }.joinToString(" · ")
+        const val NEXT_BADGE: String = "下一节"
+        const val HOUR: String = "小时"
+        const val MINUTE: String = "分"
+        const val AFTER_CLASS: String = "后上课"
+        fun todayCourses(count: Int): String = "今天的课 · $count 节"
+        fun periodRange(first: Int, last: Int): String = "$first-$last 节"
+        fun periodLine(range: String, location: String, teacher: String): String =
+            listOf(range, location, teacher).filter { it.isNotBlank() }.joinToString(" · ")
+        const val NO_CLASS_TODAY: String = "今天没有课"
+        const val NO_NEXT_CLASS: String = "暂无下一节课"
+        const val NOT_BOUND_HINT: String = "绑定教务账号后即可在这里查看今天和下一节的课程。"
+        const val NO_CACHE_HINT: String = "课表还没同步完成，暂时排不出今天的课程。"
+        const val CALENDAR_MISSING_HINT: String = "校历里没有今天，暂不推测今日课程与下一节。"
+        const val MANAGE_TIMETABLE: String = "查看完整课表"
+        fun weekday(index: Int): String = when (index) {
+            1 -> "周一"; 2 -> "周二"; 3 -> "周三"; 4 -> "周四"; 5 -> "周五"; 6 -> "周六"; 7 -> "周日"
+            else -> ""
+        }
+    }
+
+    /** Ardot P46 服务 (44:298) — grouped service directory. */
+    object Services {
+        const val TITLE: String = "服务"
+        const val INTRO: String = "按分类查找校园服务。未接入的服务会注明，不会自动打开外部链接。"
+        const val GROUP_CAMPUS_LIFE: String = "校园生活"
+        const val GROUP_ACADEMIC: String = "教务与学习"
+        const val GROUP_APP: String = "应用"
+        const val CAMPUS_RUN: String = "校园跑"
+        const val DORM_WATER: String = "宿舍水电"
+        const val DORM_NETWORK_LOGIN: String = "宿舍网络登录"
+        const val ACADEMIC_MANAGE: String = "教务管理"
+        const val PERIOD_CALIBRATION: String = "作息校准"
+        const val APP_UPDATE: String = "应用更新"
+        const val ABOUT_APP: String = "关于应用"
+        const val WATER_UNAVAILABLE: String = "宿舍热水器仅 Pro 版本可用，当前版本未接入。"
     }
 
     object Profile {

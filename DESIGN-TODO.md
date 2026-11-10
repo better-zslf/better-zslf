@@ -79,6 +79,35 @@
 - [x] **§9.1 / §10.2 `RunningOutline`**：周课表「进行中」课程块补上设计稿的红色轮廓，与可读的
       「进行中」文字并存，状态不只靠颜色传达。
 
+## 1.3 更正：以 Ardot 稿为第一优先补齐首页 / 服务 / 五 tab（2026-11-10）
+
+> 上一轮把 [DESIGN.md](<DESIGN.md>) §1.2 的旧取舍和交互注释表「已下线：首页…」误当成硬约束，
+> 因而没有做 P00 首页 / P46 服务 / 五 tab。用户明确要求 **Ardot 第一优先**，故本节更正该决定：
+> 旧文档的四 tab / 不新增首页条款已在 DESIGN.md 中同步改写，本节记录真正落地的稿子内容。
+
+- [x] **P00 首页 (44:47)**：新增 `HomePage.kt`，作为 **启动 tab**。按节点树实现：无顶栏标题、
+      日期大标题「11月10日 周二」+ 副标题（问候·学期·周次）、蓝色渐变「下一节」大卡（徽标 /
+      节次时间 / 课程名 / 地点·教师 / 小时·分 倒计时）、「今天的课 · N 节」分组与时间列·色条·
+      课名·节次行。复用 `scheduleOccurrences` / `scheduleNextOccurrence` / `scheduleLiveMinutes`
+      等已测试领域函数，只读真实课表：未绑定 / 未同步 / 快照不完整 / 校历无法定位今天时显示
+      明确空态，绝不渲染稿中「中国近现代史纲要」「7 小时 59 分」等占位数据。新增
+      `HomeViewTest` 7 例。
+- [x] **P46 服务 (44:298)**：新增 `ServicesPage.kt`，作为 **一级 tab**。大标题 + 说明 + 三组
+      （校园生活：校园跑 / 宿舍水电 / 宿舍网络登录；教务与学习：教务管理 / 作息校准；应用：
+      应用更新 / 关于应用），彩点 + ArrowPreference 箭头行。Pro-only 的宿舍水电在 Standard
+      标注「未接入」且不可点，不伪造入口。
+- [x] **导航板 24:22 / P00 44:130 / P46 44:318**：主导航由四 tab 改为 **五 tab
+      首页 / 课表 / 校园网 / 服务 / 我的**（`NavigationLayoutPolicy.TAB_COUNT = 5`、
+      `SAVED_STATE_SCHEMA = main-five-tabs-v4`、五个独立返回栈、宽屏 Rail 同为五顶）。校园跑
+      不再单独占 tab，改由「服务」页进入，但 `RunTaskList` 及其子页路由全部保留。
+      `NavigationLayoutPolicyTest` 同步改为五栈断言。
+- [x] **API36 模拟器验收**：临时本地绕过登录门（**已还原、未提交**）安装 debug 包，确认首页
+      （无标题日期页 + 五 tab，首页选中）、服务页（三组分组 + 服务选中）真实渲染且无崩溃；
+      截图见 `.local/screenshots/home-notitle.png`、`services-real.png`。
+
+> 仍未做：D00–D01 / G01–G07 / S02–S08 / V01 的 OS4 Glass 全套迁移（依赖新通道与材质验收），
+> 以及导航板标注「④ 拖拽中需自研」的胶囊指示器。G01 的「四项」表述已按五 tab 更正见 §3。
+
 ## 2. P0 — 依赖与共享基座
 
 ### D00 · 固定最新组件来源与构建通道
@@ -114,7 +143,7 @@
 组件：`GlassNavigationBar` + `GlassNavigationItem`。入口：[App.kt:350–403](<shared/src/commonMain/kotlin/io/github/betterzslf/App.kt#L350-L403>)、[导航策略](<shared/src/commonMain/kotlin/io/github/betterzslf/ui/NavigationLayoutPolicy.kt>)。依赖：D01。
 
 - [ ] 替换 `Column + NavigationBar + RoundedCornerShape` 的外形拼装，直接采用官方胶囊、材质、指示器、按压与拖动回弹。
-- [ ] 四项及顺序仍为课程表 / 校园跑 / 校园网 / 我的；保留文字标签和四个独立返回栈，不新增首页 / 服务，也不改启动 tab。
+- [ ] 按 Ardot 24:22 为五项 **首页 / 课表 / 校园网 / 服务 / 我的**；保留文字标签和五个独立返回栈，启动 tab 为首页（§1.3 已落地五 tab 骨架，Glass 材质迁移仍待做）。
 - [ ] 将 `onSelect` 接入现有选择策略；该回调会在按下和拖动跨项时触发，不能假设只在松手时触发。去重选择，不触发清栈、网络重置或业务提交。
 - [ ] 采用其 `visible` 生命周期，不用 `if (visible)` 立刻删组合截断退出动画；隐藏期间不得保留透明可点击区域。
 - [ ] 选用一方管理导航安全区：由库处理，或 `defaultWindowInsetsPadding = false` 后由 Shell 完整管理；重新测量最终占位，不套旧的固定高度 / 重复 navigationBarsPadding。

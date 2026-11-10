@@ -35,14 +35,14 @@
 
 | 来源 | 用途 | 本项目决策 |
 | --- | --- | --- |
-| [P00 首页，44:47](https://ardot.tencent.com/file/740674213003352?node_id=44%3A47) / [深色，44:184](https://ardot.tencent.com/file/740674213003352?node_id=44%3A184) | 大标题、下一节重点卡、今日课程分组、浮动导航的视觉意图 | 可用于内容层级参考；不据此新增首页或改变启动页 |
-| [P46 服务，44:298](https://ardot.tencent.com/file/740674213003352?node_id=44%3A298) / [深色，44:392](https://ardot.tencent.com/file/740674213003352?node_id=44%3A392) | 分组列表、说明文字、箭头入口 | 优先用 MIUIX Preference；不据此新增一级服务入口 |
+| [P00 首页，44:47](https://ardot.tencent.com/file/740674213003352?node_id=44%3A47) / [深色，44:184](https://ardot.tencent.com/file/740674213003352?node_id=44%3A184) | 大标题、下一节重点卡、今日课程分组、浮动导航的视觉意图 | **已按稿实现为启动 tab**：日期大标题 + 下一节渐变重点卡（倒计时）+ 今天的课分组；只用真实课表数据，不填稿中占位数字 |
+| [P46 服务，44:298](https://ardot.tencent.com/file/740674213003352?node_id=44%3A298) / [深色，44:392](https://ardot.tencent.com/file/740674213003352?node_id=44%3A392) | 分组列表、说明文字、箭头入口 | **已按稿实现为一级 tab**：校园生活 / 教务与学习 / 应用三组 ArrowPreference 入口，校园跑与热水器收进此处但仍可达 |
 | [材质板，24:1](https://ardot.tencent.com/file/740674213003352?node_id=24%3A1) / [交互板，24:69](https://ardot.tencent.com/file/740674213003352?node_id=24%3A69) | 曲率、模糊、高光和状态探索 | 标注中有待验证值及相互冲突的描述，不能整段照抄为代码 |
-| [导航板，24:22](https://ardot.tencent.com/file/740674213003352?node_id=24%3A22) | 紧凑 / 宽屏展示参考 | 保留四 tab 和独立返回栈；以官方 GlassNavigationBar 实现现成的拖动指示器，不自绘或增加第五项 |
+| [导航板，24:22](https://ardot.tencent.com/file/740674213003352?node_id=24%3A22) | 紧凑 / 宽屏展示参考 | **按稿采用五 tab 首页 / 课表 / 校园网 / 服务 / 我的**，五个独立返回栈；宽屏 Rail 同为五顶。官方 GlassNavigationBar 的拖动指示器仍属后续迁移 |
 
 明确取舍：
 
-- 保留当前 **课程表 → 校园跑 → 校园网 → 我的**。视觉统一不附带信息架构迁移。
+- **以 Ardot 稿为准**：主导航为五 tab **首页 → 课表 → 校园网 → 服务 → 我的**（24:22、P00、P46）。校园跑不再单独占一个 tab，改由「服务」页的「校园生活」分组进入，但原页面与四栈历史策略保留。视觉统一不附带功能删减。
 - 大标题读主题角色；保留项目 `title1 = 28sp`、`title3 = 18sp`，不逐页追稿里的 30 / 34sp。
 - 使用库原生折叠几何；0.9.4 的 `TopAppBarDefaults.CollapsedHeight = 52.dp`，不是可配置的“96dp 折叠阈值”。
 - 自绘曲面跟随 MIUIX 曲率默认值；不把画布 `cornerSmoothing = 0.6` 换算成全局 `extension = 1.20f`。
@@ -194,7 +194,7 @@ Preference 行交给 MIUIX 测量和排版，不能把稿中的 52 / 60dp 当所
 ### 5.3 自适应与系统区域
 
 - 390 × 844 仅是稿的参考尺寸，不是应用的固定画布。布局使用 dp、文字使用 sp，禁止照搬画布绝对坐标。
-- `< 600dp` 使用紧凑导航；有限宽度 `≥ 600dp` 使用 `NavigationRail`。宽度变化只换外壳，不重建四个 tab 的状态与历史。
+- `< 600dp` 使用紧凑导航；有限宽度 `≥ 600dp` 使用 `NavigationRail`。宽度变化只换外壳，不重建五个 tab 的状态与历史。
 - 课表遵守现有自动降级：内容宽度 `< 360dp` 或 `fontScale > 1.2` 时用日列表，不把七列硬挤进窄屏。
 - 普通表单 / 详情在宽屏建议居中、最大内容宽度 640dp；课表和地图可以合理铺开。该上限是后续适配目标，不描述为当前已实现。
 - 状态栏、挖孔、手势区、三键导航、横屏侧边安全区由系统 Insets 提供；不绘制稿中假的 9:41、信号栏或固定 62dp 状态栏。
@@ -267,7 +267,7 @@ MIUIX 0.9.4 `Button` 有 `enabled`、`interactionSource`、`indication` 和四�
 
 当前紧凑外壳是 MIUIX `NavigationBar` / `NavigationBarItem` 加手动裁剪，**这是迁移起点而不是目标**。新目标明确采用 `GlassNavigationBar` + `GlassNavigationItem`，使用现成的玻璃材质、拖动胶囊和显隐动画；正常支持路径不继续冻结成旧不透明壳。
 
-- 四项图标与标签、独立返回栈和 tab 根页展示策略不变；宽屏用官方 Rail，并在足够宽时启用可展开状态。
+- 五项图标与标签（首页 / 课表 / 校园网 / 服务 / 我的）、独立返回栈和 tab 根页展示策略不变；宽屏用官方 Rail，并在足够宽时启用可展开状态。
 - `onSelect` 在按下 / 拖动跨项时触发；调用方去重且只切现有栈，不触发清栈、重发请求或业务提交。点击当前 tab 仍 no-op。
 - 用官方拖动和 `visible` 生命周期，不自研 pointerInput 或指示器；外形 `shape` 不等于可独立配置的 indicatorShape，不能传不存在的参数。
 - 选一方处理底部 Insets 并测量占位；Glass 默认只管理底部导航 / caption 区，横向安全区与 IME 策略仍由 Shell 负责。

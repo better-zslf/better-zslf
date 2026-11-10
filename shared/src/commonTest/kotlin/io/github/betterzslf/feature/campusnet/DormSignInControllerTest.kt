@@ -104,25 +104,32 @@ class DormSignInControllerTest {
     @Test fun aSecondAttemptWhileOneIsRunningIsRefusedNotQueued() = runTest {
         // Sequential calls are legitimate (retry after a failure); it is a *concurrent* tap that
         // must not start a second dial, because each dial spends a rate-limited login attempt.
-        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        //
+        // The first attempt is launched on runTest's structured backgroundScope (never a detached
+        // CoroutineScope), and the transport signals *exactly* when the mutex is held. That removes
+        // the old delay(120) race, which on a slow CI runner let the test outlive runTest and fail
+        // with UncompletedCoroutinesError. backgroundScope is cancelled automatically at the end.
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
         var posts = 0
         val slow = DormTransport { _, _, algoId, _ ->
             posts++
             if (algoId == DORM_NIL_ALGO_ID) {
-                gate.await()
+                entered.complete(Unit)
+                release.await()
                 DormRoundResult.CipherUpdate(supported)
             } else DormRoundResult.Reply("200", "", DormCipher.encryptHex(algoId,
                 "<request><ticket>T</ticket></request>".encodeToByteArray())!!.encodeToByteArray())
         }
         val c = controller(slow)
-        val first = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default)
-            .launch { c.signIn("13800138000", "pw") }
-        // Give the first attempt time to take the lock, then try to start another.
-        kotlinx.coroutines.delay(120)
+        val first = backgroundScope.launch { c.signIn("13800138000", "pw") }
+        // Deterministic: the first dial is now inside signIn and holding the flight mutex.
+        entered.await()
         val whileRunning = c.signIn("13800138000", "pw")
-        gate.complete(Unit)
-        first.join()
         assertFalse(whileRunning, "a concurrent attempt must be refused, not queued")
+        assertEquals(1, posts, "the refused attempt must not reach the gateway")
+        release.complete(Unit)
+        first.join()
     }
 
     @Test fun keepRetryFromAReplyIsHonouredAndBounded() {

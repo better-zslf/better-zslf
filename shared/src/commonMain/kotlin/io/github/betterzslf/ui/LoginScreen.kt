@@ -422,9 +422,8 @@ internal fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
                             modifier = Modifier.fillMaxWidth().testTag("dormPhone"),
                         )
                         // Never pre-filled and never restored: the design forbids remembering it.
-                        // Design §5.3 shows an eye toggle on this field. Kept as a separate row
-                        // instead of an in-field trailing icon because Miuix's TextField has no
-                        // slot for one, and the reference page puts it beside the field too.
+                        // S01: Miuix 0.9.4 TextField does have a trailingIcon slot, so the reveal
+                        // control lives inside the field instead of taking a whole extra row.
                         TextField(
                             value = broadbandPassword,
                             onValueChange = { broadbandPassword = it },
@@ -437,17 +436,11 @@ internal fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
                             cornerRadius = AppUiTokens.FieldRadius,
                             visualTransformation = if (passwordVisible) VisualTransformation.None
                             else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                PasswordVisibilityIcon(passwordVisible, { passwordVisible = !passwordVisible },
+                                    modifier = Modifier.testTag("dormPasswordVisibility"))
+                            },
                             modifier = Modifier.fillMaxWidth().testTag("dormPassword"),
-                        )
-                        // The design requires a way to check what was typed; a wrong password here
-                        // costs one of the account's rate-limited login attempts.
-                        TextButton(
-                            text = if (passwordVisible) AppText.CampusNetwork.DORM_HIDE_PASSWORD
-                            else AppText.CampusNetwork.DORM_SHOW_PASSWORD,
-                            modifier = Modifier.fillMaxWidth().testTag("dormPasswordVisibility"),
-                            minHeight = 40.dp,
-                            cornerRadius = AppUiTokens.ButtonRadius,
-                            onClick = { passwordVisible = !passwordVisible },
                         )
                     }
                 }
@@ -484,7 +477,7 @@ internal fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().testTag("dormSignIn"),
                     minHeight = AppUiTokens.ButtonHeight,
                     cornerRadius = AppUiTokens.ButtonRadius,
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    colors = primaryTextActionColors(),
                     onClick = {
                         val phone = taken ?: manualPhone
                         dormScope.launch {

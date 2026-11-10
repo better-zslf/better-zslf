@@ -15,6 +15,7 @@ import io.github.betterzslf.feature.accountrecovery.*
 import io.github.betterzslf.ui.AppUiTokens
 import io.github.betterzslf.ui.ConfirmationCheckRow
 import io.github.betterzslf.ui.InfoBanner
+import io.github.betterzslf.ui.primaryTextActionColors
 import io.github.betterzslf.ui.Screen
 import io.github.betterzslf.ui.SectionTitle
 import io.github.betterzslf.ui.UiTone
@@ -43,7 +44,7 @@ fun AccountRecoveryPage(graph: AppGraph, onBack: () -> Unit) {
                     tone = if (receipt == PasswordResetLogout.CLEAR_FAILED) UiTone.Warning else UiTone.Positive)
                 TextButton(AppText.Auth.BACK_TO_LOGIN, onClick = onBack, modifier = Modifier.fillMaxWidth(),
                     minHeight = AppUiTokens.ButtonHeight, cornerRadius = AppUiTokens.ButtonRadius,
-                    colors = ButtonDefaults.textButtonColorsPrimary())
+                    colors = primaryTextActionColors())
             }
         }
     } else key(session) {
@@ -145,7 +146,7 @@ private fun AccountRecoveryBody(controller: AccountRecoveryController, onBack: (
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                         TextButton(if (state.cooldownSeconds > 0) AppText.Recovery.cooldown(state.cooldownSeconds) else AppText.Recovery.REQUEST_SMS_CODE,
                             enabled = sendEnabled, modifier = Modifier.fillMaxWidth(), minHeight = AppUiTokens.ButtonHeight,
-                            cornerRadius = AppUiTokens.ButtonRadius, colors = ButtonDefaults.textButtonColorsPrimary(),
+                            cornerRadius = AppUiTokens.ButtonRadius, colors = primaryTextActionColors(),
                             onClick = { sendDialog = true })
                         TextButton(if (state.verified) AppText.Recovery.CURRENT_VERIFICATION_COMPLETED else AppText.Recovery.VERIFY_CURRENT_PHONE_AND_CODE,
                             enabled = editable && !state.verified && state.codeRequested && code.isNotBlank(),
@@ -186,7 +187,7 @@ private fun AccountRecoveryBody(controller: AccountRecoveryController, onBack: (
                 item("prepare") {
                     TextButton(AppText.Recovery.REVIEW_SCHOOL_PASSWORD_RESET_PREVIEW, enabled = editable,
                         modifier = Modifier.fillMaxWidth(), minHeight = AppUiTokens.ButtonHeight,
-                        cornerRadius = AppUiTokens.ButtonRadius, colors = ButtonDefaults.textButtonColorsPrimary(),
+                        cornerRadius = AppUiTokens.ButtonRadius, colors = primaryTextActionColors(),
                         onClick = { controller.prepare(phone, code, password, confirmation) })
                 }
             }
@@ -199,7 +200,7 @@ private fun AccountRecoveryBody(controller: AccountRecoveryController, onBack: (
                         if (state.phase == AccountRecoveryPhase.PREVIEW) {
                             TextButton(AppText.Common.CONTINUE_TO_FINAL_CONFIRMATION, modifier = Modifier.fillMaxWidth(),
                                 minHeight = AppUiTokens.ButtonHeight, cornerRadius = AppUiTokens.ButtonRadius,
-                                colors = ButtonDefaults.textButtonColorsPrimary(), onClick = { resetDialog = true })
+                                colors = primaryTextActionColors(), onClick = { resetDialog = true })
                             TextButton(AppText.Common.BACK_TO_EDIT, modifier = Modifier.fillMaxWidth(), onClick = { controller.editPreview() })
                         }
                     }

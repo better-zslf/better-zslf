@@ -59,6 +59,21 @@ class DesignSystemTest {
         assertEquals(listOf("下拉刷新", "松开刷新", "正在刷新…", ""), appRefreshTexts())
     }
 
+    @Test fun primaryActionPairingClearsTheSmallTextContrastFloor() {
+        // §3.3: the stock brand primary with white text is below 4.5:1 for the 16sp action
+        // label. The project action pairing is defined once and must actually pass on both
+        // fixed-brand surfaces. Monet/dynamic schemes keep their own semantic onPrimary pair.
+        val lightPair = contrast(AppUiTokens.OnPrimaryActionLight, AppUiTokens.PrimaryActionLight)
+        val darkPair = contrast(AppUiTokens.OnPrimaryActionDark, AppUiTokens.PrimaryActionDark)
+        assertTrue(lightPair >= 4.5f, "light action pair was $lightPair")
+        assertTrue(darkPair >= 4.5f, "dark action pair was $darkPair")
+        // The old stock combination is the thing being fixed, recorded as a regression guard.
+        assertTrue(contrast(Color.White, AppUiTokens.Primary) < 4.5f)
+        assertTrue(contrast(Color.White, AppUiTokens.PrimaryDark) < 4.5f)
+        assertEquals(Color(0xFF266BF2), AppUiTokens.PrimaryActionLight)
+        assertEquals(Color(0xFF0D0F12), AppUiTokens.OnPrimaryActionDark)
+    }
+
     @Test fun dimensionsAndTypographyMatchTheFinalNativeLayouts() {
         assertEquals(20.dp, AppUiTokens.PagePadding)
         assertEquals(24.dp, AppUiTokens.FormPadding)

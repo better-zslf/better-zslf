@@ -85,9 +85,11 @@ fun ScheduleBindingPage(
                     }, label = AppText.Schedule.PASSWORD_FIELD, singleLine = true, enabled = !saving,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        // S01: reveal control in the field's own trailing slot, not a separate row.
+                        trailingIcon = {
+                            PasswordVisibilityIcon(showPassword, { showPassword = !showPassword })
+                        },
                         modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.FieldRadius)
-                    TextButton(if (showPassword) AppText.Schedule.HIDE_PASSWORD else AppText.Schedule.SHOW_PASSWORD,
-                        enabled = !saving, onClick = { showPassword = !showPassword })
                 }
             }
             item("binding-verification") {

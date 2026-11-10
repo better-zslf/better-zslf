@@ -12,6 +12,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,8 +29,10 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 internal fun RunAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, primary: Boolean = false) {
     Button(onClick = onClick, modifier = modifier.heightIn(min = AppUiTokens.ButtonHeight), enabled = enabled,
         cornerRadius = AppUiTokens.ButtonRadius,
-        colors = if (primary) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors()) {
-        Text(text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        // A primary run action uses the same central readable pairing as PrimaryAction (§3.3).
+        colors = if (primary) primaryActionColors() else ButtonDefaults.buttonColors()) {
+        // §4.1: no page-local 15sp tier; the shared action label is 16sp SemiBold.
+        Text(text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -41,10 +44,13 @@ internal fun RunCard(modifier: Modifier = Modifier, content: @Composable ColumnS
 
 @Composable
 internal fun RunStatus(text: String, tone: UiTone = UiTone.Neutral) {
+    // §10.2: the status chip must resolve semantic colors for light AND dark, not hard-code the
+    // light constants. Reuse the same dark-aware mapping the shared InfoBanner uses.
+    val dark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
     val color = when (tone) {
-        UiTone.Positive -> AppUiTokens.Positive
-        UiTone.Warning -> AppUiTokens.Warning
-        UiTone.Negative -> AppUiTokens.Negative
+        UiTone.Positive -> if (dark) AppUiTokens.PositiveDark else AppUiTokens.Positive
+        UiTone.Warning -> if (dark) AppUiTokens.WarningDark else AppUiTokens.Warning
+        UiTone.Negative -> if (dark) AppUiTokens.NegativeDark else AppUiTokens.Negative
         UiTone.Info -> MiuixTheme.colorScheme.primary
         UiTone.Neutral -> MiuixTheme.colorScheme.onSurfaceVariantSummary
     }

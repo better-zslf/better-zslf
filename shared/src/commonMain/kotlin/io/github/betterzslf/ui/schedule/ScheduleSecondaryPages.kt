@@ -52,7 +52,7 @@ internal fun ScheduleTermWeekPage(runtime: ScheduleRuntime, onBack: () -> Unit) 
                                     modifier = Modifier.fillMaxWidth(),
                                     minHeight = 44.dp,
                                     cornerRadius = 22.dp,
-                                    colors = if (selected) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors(),
+                                    colors = if (selected) primaryActionColors() else ButtonDefaults.buttonColors(),
                                     insideMargin = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                 ) {
                                     Text(term.name + if (selected) "" else optionalSuffix(term),
@@ -83,7 +83,7 @@ internal fun ScheduleTermWeekPage(runtime: ScheduleRuntime, onBack: () -> Unit) 
                                     modifier = Modifier.fillMaxWidth(),
                                     minHeight = 40.dp,
                                     cornerRadius = 20.dp,
-                                    colors = if (selected) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors(),
+                                    colors = if (selected) primaryActionColors() else ButtonDefaults.buttonColors(),
                                     insideMargin = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                                 ) { Text(AppText.Schedule.weekLabel(week), fontSize = 13.sp, maxLines = 1) }
                             }

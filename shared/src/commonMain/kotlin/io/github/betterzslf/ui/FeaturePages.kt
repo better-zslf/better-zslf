@@ -30,7 +30,7 @@ fun ConfirmDialog(show: Boolean, title: String, summary: String, dismiss: () -> 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = dismiss, modifier = Modifier.weight(1f), minHeight = 48.dp, cornerRadius = AppUiTokens.ButtonRadius) { Text(AppText.Common.CANCEL) }
             Button(onClick = confirm, modifier = Modifier.weight(1f), minHeight = 48.dp, cornerRadius = AppUiTokens.ButtonRadius,
-                colors = ButtonDefaults.buttonColorsPrimary()) { Text(AppText.Common.CONFIRM) }
+                colors = primaryActionColors()) { Text(AppText.Common.CONFIRM) }
         }
     }
 }

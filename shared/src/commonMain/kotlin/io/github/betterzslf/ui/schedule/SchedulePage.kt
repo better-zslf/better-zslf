@@ -67,14 +67,13 @@ fun SchedulePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onB
 }
 
 /**
- * The shell owns the selected third tab and all navigation-bar/rail drawing.
+ * The shared Shell owns the four-tab navigation and rail drawing; this is the 课程表 tab root.
  *
- * Laid out as Ardot P39: a 34sp page title, one row holding the week pill and the date range,
- * then the board card. The design has no week/day view switcher on this screen, so the grid is
- * the only body mode; the day list appears automatically on narrow screens or large font
- * scales, where 46dp columns cannot hold text.
+ * Title sizing comes from the shared `title1` role, not a page-local 34sp value (§4.1 reads
+ * MiuixTheme.textStyles). The body is a week grid; it degrades to a day list automatically on
+ * narrow screens or large font scales where the columns cannot hold text (§5.3).
  *
- * The design also draws no toolbar button, but a timetable without a visible entry to its own
+ * The design draws no toolbar button, but a timetable without a visible entry to its own
  * settings is not usable -- binding, credential update, period calibration, reminders and the
  * week-visibility setting all live behind it. So the top bar carries one settings button for
  * every body state, including the unbound one, where it is the only way to reach binding.
@@ -213,11 +212,12 @@ private fun ScheduleWeekScreenContent(
 }
 
 /**
- * The white rounded card the design wraps the whole grid in (Ardot 14:47).
+ * The rounded card the design wraps the whole grid in (Ardot 14:47).
  *
  * `surfaceVariant` is white in both schemes and `surface` is the gray page in light mode, so
  * neither is the right card colour. The card tone is the design's `card` token, which the
- * scheme exposes as `secondaryContainer` (#FFFFFF light / #1A1C21 dark).
+ * scheme exposes as `secondaryContainer` (#FFFFFF light / #22262D dark — the deliberately
+ * raised dark card, not the older #1A1C21 page background).
  */
 @Composable
 private fun ScheduleBoardCardContainer(content: @Composable () -> Unit) {
@@ -230,8 +230,9 @@ private fun ScheduleBoardCardContainer(content: @Composable () -> Unit) {
 }
 
 /**
- * Ardot P39 header: 34sp title is supplied by the host bar, so this row draws only the
- * week pill (primary, radius 18, height 36) and the right-aligned range/today label.
+ * Header row: the large title is supplied by the host TopAppBar (shared `title1`), so this row
+ * draws only the week pill (primary, radius 18, height 36) and the right-aligned range/today
+ * label.
  */
 @Composable
 private fun ScheduleHeader(

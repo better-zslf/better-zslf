@@ -114,7 +114,7 @@ internal fun RunImportPage(graph: AppGraph, page: Route.Page, open: (Route) -> U
         TextButton(AppText.Run.CLEAR_DRAFT, enabled = !busy, onClick = { scope.launch { controller.clear(); chosenPreview = null; mapStage = 0 } })
     }) { padding ->
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentPadding = PaddingValues(AppUiTokens.PagePadding), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentPadding = PaddingValues(AppUiTokens.PagePadding), verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                 item("local-only") { InfoBanner(AppText.Run.IMPORT_PREVIEW_ISOLATION_HINT, AppText.Run.LOCAL_ROUTE_PREVIEW_ONLY_TITLE, UiTone.Neutral) }
                 runFeedback(query, { refresh++ })
                 item("source-picker") { RunCard {

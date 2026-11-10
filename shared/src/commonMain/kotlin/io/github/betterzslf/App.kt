@@ -214,7 +214,10 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
     val initialized = remember(platform, graphProvider, startupAttempt) { runCatching { graphProvider?.invoke() ?: AppGraph(platform) } }
     val graph = initialized.getOrNull()
     if (graph == null) {
-        MiuixTheme(controller = remember { ThemeController(ColorSchemeMode.System, lightColors = ardotLightColors(), darkColors = ardotDarkColors()) }) {
+        // §10.2: the startup-failure surface must use the same shared text styles as the normal
+        // graph, otherwise the exception page silently falls back to library typography.
+        MiuixTheme(controller = remember { ThemeController(ColorSchemeMode.System, lightColors = ardotLightColors(), darkColors = ardotDarkColors()) },
+            textStyles = remember { ardotTextStyles() }) {
             Screen(AppText.App.LOCAL_DATA_TEMPORARILY_UNAVAILABLE_TITLE) { padding ->
                 PageList(padding) {
                     item { SectionCard(AppText.App.SESSION_READ_FAILED_TITLE, AppText.App.UNLOCK_OR_RETRY_ORIGINAL_DATA_RETAINED_HINT) }

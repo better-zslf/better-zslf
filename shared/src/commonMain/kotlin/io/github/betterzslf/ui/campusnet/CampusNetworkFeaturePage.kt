@@ -24,6 +24,7 @@ import io.github.betterzslf.ui.AppUiTokens
 import io.github.betterzslf.ui.ConfirmationCheckRow
 import io.github.betterzslf.ui.EmptyCard
 import io.github.betterzslf.ui.InfoBanner
+import io.github.betterzslf.ui.primaryTextActionColors
 import io.github.betterzslf.ui.Screen
 import io.github.betterzslf.ui.SectionTitle
 import io.github.betterzslf.ui.UiTone
@@ -360,7 +361,7 @@ private fun CampusNetworkPage(
                     item("prepare") {
                         TextButton(AppText.CampusNetwork.REVIEW_AND_PREPARE_PREVIEW, enabled = editable && state.phoneChecked,
                             modifier = Modifier.fillMaxWidth(), minHeight = AppUiTokens.ButtonHeight,
-                            cornerRadius = AppUiTokens.ButtonRadius, colors = ButtonDefaults.textButtonColorsPrimary(),
+                            cornerRadius = AppUiTokens.ButtonRadius, colors = primaryTextActionColors(),
                             onClick = { controller.prepare(phone, password, confirmation) })
                     }
                 }
@@ -374,7 +375,7 @@ private fun CampusNetworkPage(
                                 if (state.phase == CampusPasswordPhase.PREVIEW) {
                                     TextButton(AppText.Common.CONTINUE_TO_FINAL_CONFIRMATION, modifier = Modifier.fillMaxWidth(),
                                         minHeight = AppUiTokens.ButtonHeight, cornerRadius = AppUiTokens.ButtonRadius,
-                                        colors = ButtonDefaults.textButtonColorsPrimary(), onClick = { finalDialog = true })
+                                        colors = primaryTextActionColors(), onClick = { finalDialog = true })
                                     TextButton(AppText.Common.BACK_TO_EDIT, modifier = Modifier.fillMaxWidth(), onClick = { controller.editPreview() })
                                 }
                             }

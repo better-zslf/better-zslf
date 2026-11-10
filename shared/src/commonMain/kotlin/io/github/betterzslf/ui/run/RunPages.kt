@@ -71,18 +71,14 @@ fun RunTaskList(graph: AppGraph, onOpen: (Route) -> Unit, onBack: (() -> Unit)? 
         Screen(AppText.Navigation.CAMPUS_RUN, onBack, actions = {
             TextButton(AppText.Run.LOCAL_RECORD_TITLE, onClick = { onOpen(Route.Page("runtracker", title = AppText.Run.REAL_RUN_RECORD_TITLE)) })
         }) { padding ->
-            val direction = LocalLayoutDirection.current
-            // Reserve chrome in scroll content so cards can move under the blur and clear the floating tab bar.
-            val contentPadding = PaddingValues(
-                start = padding.calculateStartPadding(direction) + AppUiTokens.PagePadding,
-                top = padding.calculateTopPadding() + AppUiTokens.PagePadding,
-                end = padding.calculateEndPadding(direction) + AppUiTokens.PagePadding,
-                bottom = padding.calculateBottomPadding() + LocalNavigationBottomInset.current + AppUiTokens.PagePadding,
-            )
+            // §10.2 / §5.3: use the shared pageContentPadding (12dp Gap, max() overlay inset,
+            // SectionGap breathing room) instead of adding scaffold, overlay and a stray 20dp
+            // together. This keeps the last row clear of the floating bar without double insets.
+            val contentPadding = pageContentPadding(padding, LocalNavigationBottomInset.current, LocalLayoutDirection.current)
             PullToRefresh(state.loading, { scope.launch { controller.refresh() } },
                 modifier = Modifier.fillMaxSize().consumeWindowInsets(padding), contentPadding = padding,
                 refreshTexts = io.github.betterzslf.ui.appRefreshTexts()) {
-                LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                     item("filters") {
                         val filters = listOf(RunTaskFilter.ALL, RunTaskFilter.UNFINISHED, RunTaskFilter.FINISHED)
                         TabRow(tabs = listOf(AppText.Common.ALL, AppText.Common.INCOMPLETE, AppText.Common.COMPLETED),
@@ -116,7 +112,7 @@ fun RunTaskList(graph: AppGraph, onOpen: (Route) -> Unit, onBack: (() -> Unit)? 
                             Text(listOfNotNull("${AppText.Run.DISTANCE_REQUIREMENT_TITLE} · ${RunDisplay.distance(minimum, settings.metricUnits)}", task.endText?.let(AppText.Run::endsAt)).joinToString(" · "),
                                 fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                             if (selection == null) InfoBanner(AppText.Run.MISSING_TASK_OR_SCHEDULE_READ_ONLY, tone = UiTone.Warning)
-                            Spacer(Modifier.height(14.dp))
+                            Spacer(Modifier.height(AppUiTokens.Gap))
                             Row(horizontalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                                 RunAction(AppText.Run.SCHEDULE_SCORES_AND_HISTORY, enabled = selection != null, modifier = Modifier.weight(1f), onClick = {
                                     selection?.let { onOpen(Route.Page("runrecords", it.encode(), AppText.Run.SCHEDULE_RUN_RECORDS_TITLE)) }
@@ -153,7 +149,7 @@ private fun RunDetailPage(graph: AppGraph, page: Route.Page, open: (Route) -> Un
     val detail = remember(query.data, selection) { query.data?.let(RunDataDecoder::detail)?.let { data -> selection?.let(data::withQueryContext) ?: data } }
     val settings by graph.settings.settings.collectAsState()
     Screen(AppText.Run.TASK_DETAIL_TITLE, back, actions = { TextButton(AppText.Common.REFRESH, enabled = !query.loading, onClick = { refresh++ }) }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentPadding = PaddingValues(AppUiTokens.PagePadding), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentPadding = PaddingValues(AppUiTokens.PagePadding), verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
             runFeedback(query, { refresh++ })
             if (detail != null) {
                 item("map") { RunMapPreview(graph, detail.walkPaths.mapIndexed { index, points -> AppText.Run.recommendedPath(index + 1) to points }, detail.checkpoints, role = RunMapRole.RECOMMENDED, height = 200.dp) }
@@ -277,7 +273,7 @@ private fun RunRecordPage(graph: AppGraph, page: Route.Page, back: () -> Unit) {
     val record = remember(recordQuery.data) { recordQuery.data?.let(RunDataDecoder::record) }
     val points = remember(trackQuery.data, record) { trackQuery.data?.let(RunDataDecoder::track).orEmpty().ifEmpty { record?.points.orEmpty() } }
     Screen(AppText.Run.RUN_SCORES_TITLE, back, actions = { TextButton(AppText.Common.QUERY_AGAIN, enabled = !recordQuery.loading && !trackQuery.loading, onClick = { refresh++ }) }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentPadding = PaddingValues(AppUiTokens.PagePadding), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentPadding = PaddingValues(AppUiTokens.PagePadding), verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
             runFeedback(recordQuery, { refresh++ }, "record")
             runFeedback(trackQuery, { refresh++ }, "track")
             item("map") { RunMapPreview(graph, listOf(AppText.Run.SERVER_TRACK_TITLE to points), role = RunMapRole.ACTUAL, height = 260.dp) }

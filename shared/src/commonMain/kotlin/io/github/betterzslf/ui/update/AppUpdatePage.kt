@@ -15,6 +15,7 @@ import io.github.betterzslf.ui.AppUiTokens
 import io.github.betterzslf.ui.ConfirmDialog
 import io.github.betterzslf.ui.InfoBanner
 import io.github.betterzslf.ui.PageList
+import io.github.betterzslf.ui.primaryTextActionColors
 import io.github.betterzslf.ui.Screen
 import io.github.betterzslf.ui.SectionTitle
 import io.github.betterzslf.ui.UiTone
@@ -58,7 +59,7 @@ fun AppUpdatePage(
                 TextButton(if (state.checking) AppText.Common.CHECKING else AppText.Updates.CHECK_FOR_UPDATES,
                     enabled = controller.canCheck(), onClick = controller::check, modifier = Modifier.fillMaxWidth(),
                     minHeight = AppUiTokens.ButtonHeight, cornerRadius = AppUiTokens.ButtonRadius,
-                    colors = ButtonDefaults.textButtonColorsPrimary())
+                    colors = primaryTextActionColors())
                 if (state.checking) {
                     Spacer(Modifier.height(AppUiTokens.Gap))
                     LinearProgressIndicator()
@@ -102,7 +103,7 @@ fun AppUpdatePage(
                         TextButton(AppText.Updates.DOWNLOAD_UPDATE_ACTION, enabled = controller.canDownload(),
                             onClick = controller::requestDownload, modifier = Modifier.fillMaxWidth(),
                             minHeight = AppUiTokens.ButtonHeight, cornerRadius = AppUiTokens.ButtonRadius,
-                            colors = ButtonDefaults.textButtonColorsPrimary())
+                            colors = primaryTextActionColors())
                     }
                 }
             }
@@ -149,7 +150,7 @@ fun AppUpdatePage(
                         AppText.Updates.OPEN_SETTINGS_OR_RECONFIRM_INSTALL else AppText.Updates.OPEN_SYSTEM_INSTALL_CONFIRMATION,
                         onClick = controller::requestInstall, modifier = Modifier.fillMaxWidth(),
                         minHeight = AppUiTokens.ButtonHeight, cornerRadius = AppUiTokens.ButtonRadius,
-                        colors = ButtonDefaults.textButtonColorsPrimary())
+                        colors = primaryTextActionColors())
                 }
             }
             if (state.actionMessage.isNotBlank()) item("action-message") {

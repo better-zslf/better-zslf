@@ -25,6 +25,8 @@ import io.github.betterzslf.feature.water.WaterFailureGuard
 import io.github.betterzslf.ui.AppUiTokens
 import io.github.betterzslf.ui.InfoBanner
 import io.github.betterzslf.ui.PageList
+import io.github.betterzslf.ui.primaryActionColors
+import io.github.betterzslf.ui.primaryTextActionColors
 import io.github.betterzslf.ui.Screen
 import io.github.betterzslf.ui.SectionTitle
 import io.github.betterzslf.ui.UiTone
@@ -69,7 +71,7 @@ fun WaterHeaterScreen(controller: WaterBleController, onBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap), horizontalAlignment = Alignment.CenterHorizontally) {
                     Button(onClick = presenter::requestBegin, enabled = model.canBegin,
                         modifier = Modifier.size(140.dp), minHeight = 140.dp, cornerRadius = 70.dp,
-                        colors = ButtonDefaults.buttonColorsPrimary()) {
+                        colors = primaryActionColors()) {
                         Text(model.beginActionLabel, textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold)
                     }
                     model.beginActionHint?.let { hint ->
@@ -82,7 +84,7 @@ fun WaterHeaterScreen(controller: WaterBleController, onBack: () -> Unit) {
             item(key = "normal-end") {
                 TextButton(AppText.Water.REQUEST_NORMAL_STOP, onClick = presenter::requestEnd,
                     enabled = model.canEnd, modifier = Modifier.fillMaxWidth(), minHeight = AppUiTokens.ButtonHeight,
-                    cornerRadius = AppUiTokens.ButtonRadius, colors = ButtonDefaults.textButtonColorsPrimary())
+                    cornerRadius = AppUiTokens.ButtonRadius, colors = primaryTextActionColors())
             }
             item(key = "end-notice") {
                 InfoBanner(AppText.Water.OBSERVED_SESSION_DURATION_LIMITS_HINT + "\n" + AppText.Water.NORMAL_STOP_HANDSHAKE_HINT,
@@ -162,12 +164,12 @@ private fun BluetoothAccessCard(model: WaterHeaterModel, access: BluetoothAccess
             Spacer(Modifier.height(12.dp))
             TextButton(AppText.Water.GRANT_BLUETOOTH_PERMISSION, onClick = access::requestPermissions, modifier = Modifier.fillMaxWidth(),
                 minHeight = AppUiTokens.ButtonHeight, cornerRadius = AppUiTokens.ButtonRadius,
-                colors = ButtonDefaults.textButtonColorsPrimary())
+                colors = primaryTextActionColors())
         } else if (state.available && !state.enabled) {
             Spacer(Modifier.height(12.dp))
             TextButton(AppText.Water.ENABLE_BLUETOOTH, onClick = access::requestEnable, modifier = Modifier.fillMaxWidth(),
                 minHeight = AppUiTokens.ButtonHeight, cornerRadius = AppUiTokens.ButtonRadius,
-                colors = ButtonDefaults.textButtonColorsPrimary())
+                colors = primaryTextActionColors())
         }
     }
 }
@@ -276,7 +278,7 @@ private fun WaterConfirmationDialog(model: WaterHeaterModel, presenter: WaterHea
             }
             TextButton(confirmLabel, onClick = presenter::confirm, modifier = Modifier.fillMaxWidth(),
                 enabled = confirmation != null && (!confirmation.requiresAcknowledgement || model.acknowledged),
-                colors = ButtonDefaults.textButtonColorsPrimary())
+                colors = primaryTextActionColors())
             TextButton(AppText.Water.CANCEL_AND_STAY, onClick = presenter::dismissConfirmation, modifier = Modifier.fillMaxWidth())
         }
     }

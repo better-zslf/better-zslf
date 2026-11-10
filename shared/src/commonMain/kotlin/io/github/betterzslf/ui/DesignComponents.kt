@@ -30,15 +30,20 @@ import androidx.compose.ui.unit.Dp
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
+import top.yukonga.miuix.kmp.icon.extended.Hide
 import top.yukonga.miuix.kmp.icon.extended.Home
+import top.yukonga.miuix.kmp.icon.extended.Show
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import top.yukonga.miuix.kmp.theme.defaultTextStyles
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonColors
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.TextButtonColors
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -83,6 +88,16 @@ object AppUiTokens {
     val NavigationRadius = 30.dp
     val Primary = Color(0xFF3382FF)
     val PrimaryDark = Color(0xFF5C94FF)
+    /**
+     * §3.3 readable action pairings. The stock brand primary is too light to carry 16sp white
+     * text (#3382FF ~3.63:1, #5C94FF ~2.94:1). For the fixed brand theme we darken the light
+     * fill and use dark text on the dark fill; Monet keeps its own semantic onPrimary pairing.
+     * These are project action colors, not new Miuix theme tokens, and are defined only here.
+     */
+    val PrimaryActionLight = Color(0xFF266BF2)
+    val OnPrimaryActionLight = Color.White
+    val PrimaryActionDark = Color(0xFF5C94FF)
+    val OnPrimaryActionDark = Color(0xFF0D0F12)
     val Background = Color(0xFFF2F2F5)
     val BackgroundDark = Color(0xFF0D0F12)
     val Card = Color.White
@@ -201,6 +216,48 @@ fun MetricStrip(metrics: List<UiMetric>, modifier: Modifier = Modifier, onClick:
     }
 }
 
+/**
+ * The single readable primary-button color factory (DESIGN.md §3.3).
+ *
+ * The stock Miuix `buttonColorsPrimary()` puts white text on the brand primary, which measures
+ * only ~3.63:1 (light) / ~2.94:1 (dark) — below the 4.5:1 floor for the 16sp action label.
+ * When the active color scheme is the fixed brand theme we substitute the readable pair
+ * (#266BF2 + white = ~4.70:1; #5C94FF + #0D0F12 = ~6.52:1). Monet/dynamic schemes are left
+ * untouched so their own semantic `onPrimary` pairing is not overwritten with a fixed blue.
+ * All other callers (RunAction, dialogs, water, secondary pages) must go through this factory
+ * instead of calling ButtonDefaults.buttonColorsPrimary() directly.
+ */
+@Composable
+fun primaryActionColors(): ButtonColors {
+    val scheme = MiuixTheme.colorScheme
+    val dark = scheme.surface.luminance() < 0.5f
+    val isFixedBrand = scheme.primary == if (dark) AppUiTokens.PrimaryDark else AppUiTokens.Primary
+    val defaults = ButtonDefaults.buttonColorsPrimary()
+    if (!isFixedBrand) return defaults
+    return ButtonDefaults.buttonColorsPrimary(
+        color = if (dark) AppUiTokens.PrimaryActionDark else AppUiTokens.PrimaryActionLight,
+        contentColor = if (dark) AppUiTokens.OnPrimaryActionDark else AppUiTokens.OnPrimaryActionLight,
+    )
+}
+
+/**
+ * TextButton twin of [primaryActionColors]. The dorm-network sign-in is a primary TextButton
+ * rather than a PrimaryAction, so it needs the same readable label/surface pairing (§3.3).
+ * Monet schemes are again left on their own semantic pairing.
+ */
+@Composable
+fun primaryTextActionColors(): TextButtonColors {
+    val scheme = MiuixTheme.colorScheme
+    val dark = scheme.surface.luminance() < 0.5f
+    val isFixedBrand = scheme.primary == if (dark) AppUiTokens.PrimaryDark else AppUiTokens.Primary
+    val defaults = ButtonDefaults.textButtonColorsPrimary()
+    if (!isFixedBrand) return defaults
+    return ButtonDefaults.textButtonColorsPrimary(
+        color = if (dark) AppUiTokens.PrimaryActionDark else AppUiTokens.PrimaryActionLight,
+        textColor = if (dark) AppUiTokens.OnPrimaryActionDark else AppUiTokens.OnPrimaryActionLight,
+    )
+}
+
 /** The primary action uses Miuix's disabled/content colors and native squircle press behavior. */
 @Composable
 fun PrimaryAction(text: String, onClick: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier) {
@@ -210,7 +267,7 @@ fun PrimaryAction(text: String, onClick: () -> Unit, enabled: Boolean = true, mo
         modifier = modifier.fillMaxWidth().heightIn(min = AppUiTokens.ButtonHeight),
         minHeight = AppUiTokens.ButtonHeight,
         cornerRadius = AppUiTokens.ButtonRadius,
-        colors = ButtonDefaults.buttonColorsPrimary(),
+        colors = primaryActionColors(),
         insideMargin = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
     ) { Text(text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
 }
@@ -270,6 +327,25 @@ fun ardotDarkColors(): Colors = darkColorScheme(
     dividerLine = Color(0xFF292E36),
     error = Color(0xFFFF4D59),
 )
+
+/**
+ * S01: the one shared show/hide-password control, used as a TextField `trailingIcon`.
+ * Miuix 0.9.4 has the slot; a whole separate TextButton row is no longer needed. The button
+ * keeps a 48dp touch target (§5.1) while the glyph is the compact 20dp auxiliary size (§4.2),
+ * and the label is carried as contentDescription so screen readers announce the action.
+ */
+@Composable
+fun PasswordVisibilityIcon(visible: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    IconButton(onClick = onToggle, modifier = modifier, minWidth = 48.dp, minHeight = 48.dp) {
+        Icon(
+            imageVector = if (visible) MiuixIcons.Hide else MiuixIcons.Show,
+            contentDescription = if (visible) AppText.CampusNetwork.DORM_HIDE_PASSWORD
+            else AppText.CampusNetwork.DORM_SHOW_PASSWORD,
+            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
 
 @Composable
 fun SectionTitle(title: String, actionLabel: String? = null, onAction: (() -> Unit)? = null) {

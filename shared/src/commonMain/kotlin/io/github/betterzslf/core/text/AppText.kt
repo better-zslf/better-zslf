@@ -885,6 +885,55 @@ object AppText {
             1 -> "周一"; 2 -> "周二"; 3 -> "周三"; 4 -> "周四"; 5 -> "周五"; 6 -> "周六"; 7 -> "周日"
             else -> ""
         }
+
+        // Ardot 94:1 「下一节栏 · 八态状态板」. Blue-gradient states A/B/C/G, surface states D/E/F/H.
+        const val BADGE_JUST_BEFORE: String = "马上"
+        const val BADGE_IN_CLASS: String = "进行中"
+        const val BADGE_LONG_GAP: String = "空档中"
+        const val BADGE_DONE_TODAY: String = "今日已上完"
+        const val BADGE_FREE_TODAY: String = "今天没课"
+        const val BADGE_UNAVAILABLE_UNBOUND: String = "待绑定"
+        const val BADGE_UNAVAILABLE_UNSYNCED: String = "待同步"
+        const val BADGE_UNAVAILABLE_PARTIAL: String = "数据不完整"
+        const val BADGE_UNAVAILABLE_CALENDAR: String = "校历待核对"
+        const val BADGE_NO_PLAN: String = "暂无排课"
+
+        // A 课前 / G 长空档 / B 课间 minutes / C 上课中.
+        const val MINUTES_LATER_START: String = "分钟后开始"
+        const val CLASS_ENDS_IN_PREFIX: String = "还有 "
+        const val CLASS_ENDS_IN_SUFFIX: String = " 下课"
+        const val NEXT_HINT_PREFIX: String = "下一节 "
+        fun gapDuration(hours: Long, minutes: Long): String = "距下一节 $hours 小时 $minutes 分"
+        fun longGapSubtitle(remaining: Int, time: String, title: String, location: String): String =
+            listOf("今天还剩 $remaining 节，$time 开始", "$title $location")
+                .filter { it.isNotBlank() }.joinToString(" · ")
+        const val FREE_TIME_TITLE: String = "现在没有课"
+
+        // D 今日已上完 / E 今天没课 / H 无排课.
+        fun doneTodaySummary(count: Int, lastEnd: String): String = "共 $count 节 · 最后一节 $lastEnd 下课"
+        const val FREE_TODAY_SUBTITLE: String = "不用早起"
+        fun nextClassHeading(weekday: String): String = "下一次有课 · $weekday"
+        fun tomorrowHeading(weekday: String): String = "明天 · $weekday"
+        const val WEEK_TIMETABLE_ACTION: String = "看看本周课表"
+        const val OPEN_WEEK_TIMETABLE_ACTION: String = "打开本周课表"
+        const val ACTION_ARROW: String = "›"
+        fun courseLine(time: String, title: String): String = "$time $title"
+        fun courseMeta(periodRange: String, timeRange: String, location: String, teacher: String): String =
+            listOf(periodRange, timeRange, location, teacher).filter { it.isNotBlank() }.joinToString(" · ")
+        const val UNAVAILABLE_UNBOUND_SUB: String = "还没有连接教务"
+        const val UNAVAILABLE_UNBOUND_BODY: String = "绑定教务账号后，这里会显示今天要上的课和下一节的倒计时。"
+        const val UNAVAILABLE_UNSYNCED_SUB: String = "课表还没同步完成"
+        const val UNAVAILABLE_UNSYNCED_BODY: String = "同步完成后，这里会显示今天的课程和下一节倒计时。"
+        const val UNAVAILABLE_PARTIAL_SUB: String = "课表数据不完整"
+        const val UNAVAILABLE_PARTIAL_BODY: String = "部分课程还没读到，重新同步后再看这里。"
+        const val UNAVAILABLE_CALENDAR_SUB: String = "校历里没有今天"
+        const val UNAVAILABLE_CALENDAR_BODY: String = "请核对周次，或重新同步课表后再查看。"
+        const val ACTION_BIND: String = "去绑定教务"
+        const val ACTION_SYNC: String = "重新同步"
+        const val NO_PLAN_SUB: String = "已查 14 天"
+        const val NO_PLAN_TITLE: String = "接下来两周都没有课"
+        const val NO_PLAN_BODY: String = "如果这不对，可能是校历周次还没对上，或教务那边改了排课。"
+        const val ACTION_CHECK_WEEK: String = "核对周次"
     }
 
     /** Ardot P46 服务 (44:298) — grouped service directory. */

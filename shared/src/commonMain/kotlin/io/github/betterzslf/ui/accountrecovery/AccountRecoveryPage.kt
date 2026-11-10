@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.data.PasswordResetLogout
@@ -15,6 +16,7 @@ import io.github.betterzslf.feature.accountrecovery.*
 import io.github.betterzslf.ui.AppUiTokens
 import io.github.betterzslf.ui.ConfirmationCheckRow
 import io.github.betterzslf.ui.InfoBanner
+import io.github.betterzslf.ui.PasswordVisibilityIcon
 import io.github.betterzslf.ui.primaryTextActionColors
 import io.github.betterzslf.ui.Screen
 import io.github.betterzslf.ui.SectionTitle
@@ -66,6 +68,10 @@ private fun AccountRecoveryBody(controller: AccountRecoveryController, onBack: (
     var code by remember(controller) { mutableStateOf("") }
     var password by remember(controller) { mutableStateOf("") }
     var confirmation by remember(controller) { mutableStateOf("") }
+    // S01: reveal control for the two new-password fields, shared with every password form.
+    var passwordVisible by remember(controller) { mutableStateOf(false) }
+    val transformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation()
+    val reveal: @Composable () -> Unit = { PasswordVisibilityIcon(passwordVisible, { passwordVisible = !passwordVisible }) }
     var sendDialog by remember(controller) { mutableStateOf(false) }
     var resetDialog by remember(controller) { mutableStateOf(false) }
     var backNotice by remember(controller) { mutableStateOf(false) }
@@ -173,11 +179,11 @@ private fun AccountRecoveryBody(controller: AccountRecoveryController, onBack: (
                         Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                             TextField(password, { password = it }, label = AppText.Recovery.NEW_SCHOOL_LOGIN_PASSWORD_FIELD,
                                 enabled = editable, singleLine = true, cornerRadius = AppUiTokens.FieldRadius,
-                                visualTransformation = PasswordVisualTransformation(),
+                                visualTransformation = transformation, trailingIcon = reveal,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
                             TextField(confirmation, { confirmation = it }, label = AppText.Recovery.REPEAT_SCHOOL_LOGIN_PASSWORD_FIELD,
                                 enabled = editable, singleLine = true, cornerRadius = AppUiTokens.FieldRadius,
-                                visualTransformation = PasswordVisualTransformation(),
+                                visualTransformation = transformation, trailingIcon = reveal,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
                             Text(AppText.Recovery.PASSWORD_RULES_AND_MEMORY_ONLY_HINT,
                                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary)

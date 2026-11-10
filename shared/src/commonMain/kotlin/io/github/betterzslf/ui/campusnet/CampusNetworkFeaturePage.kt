@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.betterzslf.AppGraph
@@ -24,6 +25,7 @@ import io.github.betterzslf.ui.AppUiTokens
 import io.github.betterzslf.ui.ConfirmationCheckRow
 import io.github.betterzslf.ui.EmptyCard
 import io.github.betterzslf.ui.InfoBanner
+import io.github.betterzslf.ui.PasswordVisibilityIcon
 import io.github.betterzslf.ui.primaryTextActionColors
 import io.github.betterzslf.ui.Screen
 import io.github.betterzslf.ui.SectionTitle
@@ -204,6 +206,10 @@ private fun CampusNetworkPage(
     var phone by remember(controller) { mutableStateOf("") }
     var password by remember(controller) { mutableStateOf("") }
     var confirmation by remember(controller) { mutableStateOf("") }
+    // S01: reveal control for the two broadband-password fields, shared with every password form.
+    var passwordVisible by remember(controller) { mutableStateOf(false) }
+    val transformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation()
+    val reveal: @Composable () -> Unit = { PasswordVisibilityIcon(passwordVisible, { passwordVisible = !passwordVisible }) }
     var finalDialog by remember(controller) { mutableStateOf(false) }
     // Local only: whether the last "open portal" tap actually handed the address to the OS.
     var openFailed by remember(portal) { mutableStateOf(false) }
@@ -349,11 +355,11 @@ private fun CampusNetworkPage(
                                 // The next step is visible, but stays disabled until this exact phone check passes.
                                 TextField(password, { password = it }, label = AppText.CampusNetwork.NEW_BROADBAND_PASSWORD_FIELD,
                                     singleLine = true, enabled = editable && state.phoneChecked, cornerRadius = AppUiTokens.FieldRadius,
-                                    visualTransformation = PasswordVisualTransformation(),
+                                    visualTransformation = transformation, trailingIcon = reveal,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
                                 TextField(confirmation, { confirmation = it }, label = AppText.CampusNetwork.CONFIRM_BROADBAND_PASSWORD_FIELD,
                                     singleLine = true, enabled = editable && state.phoneChecked, cornerRadius = AppUiTokens.FieldRadius,
-                                    visualTransformation = PasswordVisualTransformation(),
+                                    visualTransformation = transformation, trailingIcon = reveal,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
                             }
                         }

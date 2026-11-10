@@ -1,6 +1,7 @@
 package io.github.betterzslf.ui.schedule
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
@@ -168,8 +169,11 @@ private fun ScheduleBoardCard(
         if (block.running) AppText.Schedule.IN_PROGRESS else "",
     ).filter { it.isNotBlank() }.joinToString(", ")
 
+    // §9.1 / §10.2: the in-progress block carries the design's red running outline in addition
+    // to its readable 进行中 label, so the state is not signalled by colour alone.
+    val cardModifier = if (block.running) modifier.border(1.dp, SchedulePalettes.RunningOutline, shape) else modifier
     Card(
-        modifier = modifier.semantics { contentDescription = description },
+        modifier = cardModifier.semantics { contentDescription = description },
         cornerRadius = 8.dp,
         insideMargin = PaddingValues(vertical = 4.dp, horizontal = 4.dp),
         showIndication = true,

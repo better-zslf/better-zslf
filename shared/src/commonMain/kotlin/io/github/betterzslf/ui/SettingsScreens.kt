@@ -7,6 +7,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.Route
@@ -91,18 +92,23 @@ fun PasswordScreen(graph: AppGraph, back: () -> Unit) {
     var message by remember { mutableStateOf("") }
     var confirming by remember { mutableStateOf(false) }
     var submitting by remember { mutableStateOf(false) }
+    // S01: one shared reveal toggle for the matched set of password fields, using the same
+    // in-field trailing icon as every other password form (48dp target, readable description).
+    var passwordVisible by remember { mutableStateOf(false) }
+    val transformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation()
+    val reveal: @Composable () -> Unit = { PasswordVisibilityIcon(passwordVisible, { passwordVisible = !passwordVisible }) }
     val scope = rememberCoroutineScope()
     Screen(AppText.Auth.CHANGE_PASSWORD_TITLE, back) { padding ->
         PageList(padding) {
             item { InfoBanner(AppText.Auth.CHANGE_SCHOOL_PASSWORD_RELOGIN_HINT) }
             item { TextField(old, { old = it }, label = AppText.Auth.CURRENT_PASSWORD_FIELD, singleLine = true, enabled = !submitting,
-                cornerRadius = AppUiTokens.FieldRadius, visualTransformation = PasswordVisualTransformation(),
+                cornerRadius = AppUiTokens.FieldRadius, visualTransformation = transformation, trailingIcon = reveal,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth()) }
             item { TextField(new, { new = it }, label = AppText.Auth.NEW_PASSWORD_FIELD, singleLine = true, enabled = !submitting,
-                cornerRadius = AppUiTokens.FieldRadius, visualTransformation = PasswordVisualTransformation(),
+                cornerRadius = AppUiTokens.FieldRadius, visualTransformation = transformation, trailingIcon = reveal,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth()) }
             item { TextField(confirmation, { confirmation = it }, label = AppText.Auth.CONFIRM_NEW_PASSWORD_FIELD, singleLine = true, enabled = !submitting,
-                cornerRadius = AppUiTokens.FieldRadius, visualTransformation = PasswordVisualTransformation(),
+                cornerRadius = AppUiTokens.FieldRadius, visualTransformation = transformation, trailingIcon = reveal,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth()) }
             if (message.isNotBlank()) item { InfoBanner(message, title = AppText.Common.NOTICE_TITLE, tone = UiTone.Warning) }
             item { PrimaryAction(text = if (submitting) AppText.Common.SUBMITTING else AppText.Auth.CHANGE_PASSWORD_TITLE,

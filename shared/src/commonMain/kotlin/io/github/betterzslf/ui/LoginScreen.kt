@@ -44,7 +44,6 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.*
-import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -696,15 +695,14 @@ private fun LoginForm(
                     modifier = Modifier.fillMaxWidth().heightIn(min = AppUiTokens.ButtonHeight).testTag("username"))
             }
             item {
+                // S01: the reveal control lives in the field's own trailing slot, not a whole
+                // SwitchPreference row. Same shared icon/target/description as every password form.
                 TextField(value = password, onValueChange = onPassword, label = AppText.Auth.PASSWORD_FIELD,
                     singleLine = true, cornerRadius = AppUiTokens.FieldRadius, enabled = !loading,
                     visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                    trailingIcon = { PasswordVisibilityIcon(visible, { onVisible(!visible) }) },
                     modifier = Modifier.fillMaxWidth().heightIn(min = AppUiTokens.ButtonHeight).testTag("password"))
-            }
-            item {
-                SwitchPreference(title = AppText.Auth.SHOW_PASSWORD, checked = visible,
-                    enabled = !loading, onCheckedChange = onVisible)
             }
             if (notice.isNotBlank()) item { InfoBanner(notice, title = noticeTitle, tone = UiTone.Warning) }
             item {

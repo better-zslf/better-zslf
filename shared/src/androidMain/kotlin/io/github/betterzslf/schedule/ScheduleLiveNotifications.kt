@@ -135,6 +135,20 @@ internal class ScheduleLiveNotifications(private val context: Context) {
         return result.getOrDefault(emptyMap())
     }
 
+    /**
+     * Take the standard card down but keep the data behind it.
+     *
+     * A vendor island and the standard card describe the same class, so whichever one claims it the
+     * other must not also post. Removing the *stored blocks* to achieve that was wrong: those blocks
+     * are what a later reconcile rebuilds the card from, so the next tick found nothing and the card
+     * came back with its title still present but every column empty -- the fields "disappearing by
+     * themselves" after a long spell in the background.
+     */
+    fun withdrawCard() {
+        runCatching { notifications.cancel(TAG, NOTIFICATION_ID) }
+    }
+
+    /** Forget the class blocks outright. For sign-out and a revoked status only. */
     fun clear() {
         store.edit().remove(KEY).commit()
         runCatching { notifications.cancel(TAG, NOTIFICATION_ID) }

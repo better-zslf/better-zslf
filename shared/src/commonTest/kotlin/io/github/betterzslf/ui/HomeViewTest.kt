@@ -81,6 +81,22 @@ class HomeViewTest {
         assertTrue(view.hero.hours >= 2)
     }
 
+    @Test fun bRoomChangeToALaterClassKeepsItsHours() {
+        // The reported bug: at 11:43 the next class was 14:30 -- 167 minutes away, in a different
+        // room. The room change forced B, and B rendered only the minute remainder, so the hero
+        // read "47 分钟后开始" for a wait of nearly three hours.
+        // P1 08:00-08:45 in A101, P5 14:30 in B204: at 08:46 the room change selects B even though
+        // the gap is far beyond the 15 minutes B is designed for.
+        val view = homeView(snapshot(course("c1", "高等数学", 1, 1, location = "A101"),
+            course("c2", "军事理论", 1, 5, location = "B204")), periods, 9, at(1, 8, 46))
+        assertEquals(HomeHeroMode.JUST_BEFORE, view.hero.mode)
+        assertTrue(view.hero.roomChanged)
+        // 08:46 -> 14:30 is 344 min: 5 h 44 min, and the total must survive so the hero can show it.
+        assertEquals(344L, view.hero.totalMinutes)
+        assertEquals(5L, view.hero.hours)
+        assertEquals(44L, view.hero.minutes)
+    }
+
     @Test fun dDoneTodayKeepsTheBarWithASummaryAndTomorrow() {
         // 20:56 Monday: today's classes are over, Tuesday has one. D must NOT collapse into E/H.
         val merged = ScheduleSnapshot(term, listOf(

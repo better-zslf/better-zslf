@@ -109,7 +109,15 @@ internal data class HomeHero(
     val next: ScheduleOccurrence?,     // C (today's next after current) / E (next in window)
     val tomorrow: ScheduleOccurrence?, // D: first occurrence after today
     val hours: Long,                   // A/G countdown hours
-    val minutes: Long,                 // A/B/C/G countdown minutes
+    val minutes: Long,                 // A/B/C/G countdown minutes (remainder after hours)
+    /**
+     * Total minutes to the deadline, before it is split into hours and minutes.
+     *
+     * B used to render [minutes] alone, which is only correct while it really is the whole wait.
+     * A room change pulls classes into B from arbitrarily far away, so a 167-minute gap rendered as
+     * "47 分钟后开始" -- the hours were silently dropped.
+     */
+    val totalMinutes: Long,
     val periodLabel: String,
     val timeRange: String,
     val todayCount: Int,               // D 今日小结
@@ -148,7 +156,7 @@ private fun timeBounds(o: ScheduleOccurrence, all: List<SchedulePeriod>): Pair<S
 
 private fun emptyHero(mode: HomeHeroMode, reason: HomeUnavailableReason? = null) = HomeHero(
     mode = mode, course = null, next = null, tomorrow = null,
-    hours = 0, minutes = 0, periodLabel = "", timeRange = "", todayCount = 0, lastEnd = "",
+    hours = 0, minutes = 0, totalMinutes = 0, periodLabel = "", timeRange = "", todayCount = 0, lastEnd = "",
     remainingToday = 0, roomChanged = false, reason = reason)
 
 private fun unavailableHero(reason: HomeUnavailableReason) = emptyHero(HomeHeroMode.UNAVAILABLE, reason)
@@ -193,7 +201,7 @@ internal fun homeView(snapshot: ScheduleSnapshot?, periods: List<SchedulePeriod>
              extraNext: ScheduleOccurrence? = null, tomorrow: ScheduleOccurrence? = null,
              roomChanged: Boolean = false, remainingToday: Int = 0) = HomeHero(
         mode = mode, course = course, next = extraNext, tomorrow = tomorrow,
-        hours = total / 60, minutes = total % 60,
+        hours = total / 60, minutes = total % 60, totalMinutes = total,
         periodLabel = course?.let { periodLabel(it.periods) }.orEmpty(),
         timeRange = course?.let { coursePeriodTimes(it.course.copy(periods = it.periods), periods) }.orEmpty(),
         todayCount = today.size, lastEnd = today.lastOrNull()?.let { timeBounds(it, periods).second }.orEmpty(),
@@ -332,8 +340,23 @@ private fun JustBeforeContent(hero: HomeHero, o: ScheduleOccurrence?) {
             }
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text("${hero.minutes}", color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Bold)
-            Text(AppText.Home.MINUTES_LATER_START, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+            // A room change can pull a class into this mode from any distance, so the wait is not
+            // necessarily under an hour. Rendering only the minute remainder turned a 167-minute gap
+            // into "47 分钟后开始"; past an hour the hours are shown too.
+            if (hero.totalMinutes >= 60) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text("${hero.hours}", color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Bold)
+                    Text(AppText.Home.HOUR, color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp,
+                        modifier = Modifier.padding(bottom = 4.dp, end = 6.dp))
+                    Text("${hero.minutes}", color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Bold)
+                    Text(AppText.Home.MINUTE, color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp,
+                        modifier = Modifier.padding(bottom = 4.dp, end = 6.dp))
+                }
+                Text(AppText.Home.AFTER_CLASS, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+            } else {
+                Text("${hero.minutes}", color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Bold)
+                Text(AppText.Home.MINUTES_LATER_START, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+            }
         }
     }
 }

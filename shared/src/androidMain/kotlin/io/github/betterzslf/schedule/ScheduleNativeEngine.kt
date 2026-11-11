@@ -243,7 +243,9 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
             val vendorClaimed = state != null && vendorLive.publish(
                 context, state, capability.vendor, capsuleLongText = projection.publication?.capsuleLongText == true)
             if (vendorClaimed) {
-                liveNotifications.clear()
+                // Only the standard card is withdrawn; the blocks stay so the next tick can rebuild
+                // the vendor card's columns. Calling clear() here deleted the data instead.
+                liveNotifications.withdrawCard()
                 liveDebug.value += " vendor=" + capability.vendor
             } else {
                 vendorLive.cancel(context)
@@ -257,7 +259,10 @@ internal class ScheduleNativeEngine private constructor(private val context: Con
             withdrawRemindersForLiveBlocks(projection, liveBlocks, now)
         } else {
             liveDebug.value = "skip status=" + projection.status + " granted=" + capability.notificationsGranted
-            liveNotifications.clear()
+            // Status can recover on the next sync (a cached or needs-login publication becomes
+            // READY again), so this only withdraws the visible card. Discarding the blocks here
+            // meant a transient status left the card permanently blank once it recovered.
+            liveNotifications.withdrawCard()
             vendorLive.cancel(context)
         }
         if (!ScheduleWidgets.update(context, projection)) success = false

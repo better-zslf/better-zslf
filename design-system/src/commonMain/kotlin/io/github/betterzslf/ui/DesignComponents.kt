@@ -1,0 +1,357 @@
+package io.github.betterzslf.ui
+
+import io.github.betterzslf.core.text.AppText
+
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.unit.Dp
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.ArrowRight
+import top.yukonga.miuix.kmp.icon.extended.Hide
+import top.yukonga.miuix.kmp.icon.extended.Home
+import top.yukonga.miuix.kmp.icon.extended.Show
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import top.yukonga.miuix.kmp.theme.defaultTextStyles
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonColors
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.TextButtonColors
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.Colors
+import top.yukonga.miuix.kmp.theme.lightColorScheme
+import top.yukonga.miuix.kmp.theme.darkColorScheme
+
+/** Shared mirrored back glyph for screen chrome and account-entry navigation. */
+val BackChevron: ImageVector = ImageVector.Builder(
+    name = "Back", defaultWidth = 24.dp, defaultHeight = 24.dp,
+    viewportWidth = 24f, viewportHeight = 24f, autoMirror = true,
+).apply {
+    path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 2f,
+        strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+        moveTo(15f, 18f); lineTo(9f, 12f); lineTo(15f, 6f)
+    }
+}.build()
+
+@Composable
+fun AppBrandMark(modifier: Modifier = Modifier, size: Dp = 84.dp) {
+    Box(
+        modifier.size(size)
+            .shadow(10.dp, RoundedCornerShape(24.dp), ambientColor = AppUiTokens.Primary.copy(alpha = 0.18f), spotColor = AppUiTokens.Primary.copy(alpha = 0.18f))
+            .clip(RoundedCornerShape(24.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF599EFF), Color(0xFF266BF2)))),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(MiuixIcons.Home, contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.52f))
+    }
+}
+
+/** Shared dimensions from the final 390dp Ardot layouts; native insets are applied separately. */
+object AppUiTokens {
+    val PagePadding = 20.dp
+    val FormPadding = 24.dp
+    val CardPadding = 16.dp
+    val Gap = 12.dp
+    val SectionGap = 20.dp
+    val CardRadius = 16.dp
+    val FieldRadius = 14.dp
+    val ButtonRadius = 26.dp
+    val ButtonHeight = 52.dp
+    val NavigationRadius = 30.dp
+    val Primary = Color(0xFF3382FF)
+    val PrimaryDark = Color(0xFF5C94FF)
+    /**
+     * §3.3 readable action pairings. The stock brand primary is too light to carry 16sp white
+     * text (#3382FF ~3.63:1, #5C94FF ~2.94:1). For the fixed brand theme we darken the light
+     * fill and use dark text on the dark fill; Monet keeps its own semantic onPrimary pairing.
+     * These are project action colors, not new Miuix theme tokens, and are defined only here.
+     */
+    val PrimaryActionLight = Color(0xFF266BF2)
+    val OnPrimaryActionLight = Color.White
+    val PrimaryActionDark = Color(0xFF5C94FF)
+    val OnPrimaryActionDark = Color(0xFF0D0F12)
+    val Background = Color(0xFFF2F2F5)
+    val BackgroundDark = Color(0xFF0D0F12)
+    val Card = Color.White
+    val CardDark = Color(0xFF1A1C21)
+    /**
+     * Dark-mode card surface, deliberately lighter than [CardDark].
+     *
+     * [CardDark] is used for `background` in dark mode, so reusing it for `surfaceContainer` put
+     * cards on a page of exactly the same colour: measured on device the card/page contrast was
+     * 1.13:1 (#1A1C21 on #0D0F12), which makes cards read as holes rather than raised surfaces.
+     * #22262D measures 1.26:1 against the page while body text still clears 13.6:1 on it.
+     * Light mode is unchanged (#FFFFFF on #F2F2F5 is already 1.13 -- the same figure, but there
+     * the card is the *lighter* surface, which the eye reads correctly).
+     */
+    val CardDarkRaised = Color(0xFF22262D)
+    val Positive = Color(0xFF33C759)
+    val PositiveDark = Color(0xFF4DD466)
+    /**
+     * The neutral dot on the campus-network status card (design §7).
+     *
+     * Deliberately a fixed value rather than the theme's `onSurfaceVariantSummary`: the design
+     * specifies this exact grey for both the un-signed-in and offline states, and a theme colour
+     * shifts with the dark palette enough to be a different swatch.
+     */
+    val NeutralDot = Color(0xFF8E8E93)
+    val Warning = Color(0xFFFF9400)
+    val WarningDark = Color(0xFFFFA11A)
+    val Negative = Color(0xFFFA3B3B)
+    val NegativeDark = Color(0xFFFF4D59)
+}
+
+fun appRefreshTexts(): List<String> = listOf(
+    AppText.Common.PULL_TO_REFRESH,
+    AppText.Common.RELEASE_TO_REFRESH,
+    AppText.Common.REFRESHING,
+    "", // Completion is not evidence of a successful request; the owning state reports errors.
+)
+
+enum class UiTone { Info, Positive, Warning, Negative, Neutral }
+
+@Composable
+private fun UiTone.color(): Color {
+    val dark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
+    return when (this) {
+        UiTone.Info -> MiuixTheme.colorScheme.primary
+        UiTone.Positive -> if (dark) AppUiTokens.PositiveDark else AppUiTokens.Positive
+        UiTone.Warning -> if (dark) AppUiTokens.WarningDark else AppUiTokens.Warning
+        UiTone.Negative -> if (dark) AppUiTokens.NegativeDark else AppUiTokens.Negative
+        UiTone.Neutral -> MiuixTheme.colorScheme.onSurfaceVariantSummary
+    }
+}
+
+/** A concise, in-page status. Technical details stay in the owning feature's expanded content. */
+@Composable
+fun InfoBanner(
+    message: String,
+    title: String = "",
+    tone: UiTone = UiTone.Info,
+    modifier: Modifier = Modifier,
+) {
+    val accent = tone.color()
+    val displayedTitle = if (tone == UiTone.Warning && title.isBlank()) AppText.Common.WARNING_NOTICE_TITLE else title
+    val bannerModifier = if (tone == UiTone.Warning) {
+        val description = listOf(displayedTitle, message).filter { it.isNotBlank() }.distinct().joinToString(", ")
+        // Speak one complete warning; the visible Text children must not be announced again.
+        modifier.clearAndSetSemantics {
+            contentDescription = description
+            liveRegion = LiveRegionMode.Polite
+        }
+    } else modifier
+    Column(
+        bannerModifier.fillMaxWidth()
+            .clip(RoundedCornerShape(AppUiTokens.FieldRadius))
+            .background(accent.copy(alpha = 0.10f))
+            .animateContentSize()
+            .padding(AppUiTokens.CardPadding),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (displayedTitle.isNotBlank()) Text(displayedTitle, color = accent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        if (message.isNotBlank()) Text(message, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+    }
+}
+
+/** Labels and values are explicit so callers never accidentally invert an untyped pair. */
+data class UiMetric(val value: String, val label: String)
+
+@Composable
+fun MetricStrip(metrics: List<UiMetric>, modifier: Modifier = Modifier, onClick: ((index: Int) -> Unit)? = null) {
+    if (metrics.isEmpty()) return
+    Card(modifier = modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+        insideMargin = PaddingValues(if (onClick == null) AppUiTokens.CardPadding else 0.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
+            metrics.forEachIndexed { index, metric ->
+                if (onClick == null) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(metric.value, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                        Text(metric.label, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    }
+                } else {
+                    Row(Modifier.weight(1f).clip(RoundedCornerShape(AppUiTokens.FieldRadius))
+                        .clickable(role = Role.Button) { onClick(index) }
+                        .semantics(mergeDescendants = true) { contentDescription = "${metric.label}, ${metric.value}" }
+                        .padding(AppUiTokens.CardPadding).heightIn(min = AppUiTokens.ButtonHeight),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
+                        Column(Modifier.weight(1f).clearAndSetSemantics { }, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(metric.value, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                            Text(metric.label, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        }
+                        Icon(MiuixIcons.Basic.ArrowRight, contentDescription = null, modifier = Modifier.size(14.dp),
+                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The single readable primary-button color factory (DESIGN.md §3.3).
+ *
+ * The stock Miuix `buttonColorsPrimary()` puts white text on the brand primary, which measures
+ * only ~3.63:1 (light) / ~2.94:1 (dark) — below the 4.5:1 floor for the 16sp action label.
+ * When the active color scheme is the fixed brand theme we substitute the readable pair
+ * (#266BF2 + white = ~4.70:1; #5C94FF + #0D0F12 = ~6.52:1). Monet/dynamic schemes are left
+ * untouched so their own semantic `onPrimary` pairing is not overwritten with a fixed blue.
+ * All other callers (RunAction, dialogs, water, secondary pages) must go through this factory
+ * instead of calling ButtonDefaults.buttonColorsPrimary() directly.
+ */
+@Composable
+fun primaryActionColors(): ButtonColors {
+    val scheme = MiuixTheme.colorScheme
+    val dark = scheme.surface.luminance() < 0.5f
+    val isFixedBrand = scheme.primary == if (dark) AppUiTokens.PrimaryDark else AppUiTokens.Primary
+    val defaults = ButtonDefaults.buttonColorsPrimary()
+    if (!isFixedBrand) return defaults
+    return ButtonDefaults.buttonColorsPrimary(
+        color = if (dark) AppUiTokens.PrimaryActionDark else AppUiTokens.PrimaryActionLight,
+        contentColor = if (dark) AppUiTokens.OnPrimaryActionDark else AppUiTokens.OnPrimaryActionLight,
+    )
+}
+
+/**
+ * TextButton twin of [primaryActionColors]. The dorm-network sign-in is a primary TextButton
+ * rather than a PrimaryAction, so it needs the same readable label/surface pairing (§3.3).
+ * Monet schemes are again left on their own semantic pairing.
+ */
+@Composable
+fun primaryTextActionColors(): TextButtonColors {
+    val scheme = MiuixTheme.colorScheme
+    val dark = scheme.surface.luminance() < 0.5f
+    val isFixedBrand = scheme.primary == if (dark) AppUiTokens.PrimaryDark else AppUiTokens.Primary
+    val defaults = ButtonDefaults.textButtonColorsPrimary()
+    if (!isFixedBrand) return defaults
+    return ButtonDefaults.textButtonColorsPrimary(
+        color = if (dark) AppUiTokens.PrimaryActionDark else AppUiTokens.PrimaryActionLight,
+        textColor = if (dark) AppUiTokens.OnPrimaryActionDark else AppUiTokens.OnPrimaryActionLight,
+    )
+}
+
+/** The primary action uses Miuix's disabled/content colors and native squircle press behavior. */
+@Composable
+fun PrimaryAction(text: String, onClick: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.fillMaxWidth().heightIn(min = AppUiTokens.ButtonHeight),
+        minHeight = AppUiTokens.ButtonHeight,
+        cornerRadius = AppUiTokens.ButtonRadius,
+        colors = primaryActionColors(),
+        insideMargin = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+    ) { Text(text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
+}
+
+fun ardotTextStyles() = defaultTextStyles(
+    title1 = TextStyle(fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold),
+    title2 = TextStyle(fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold),
+    title3 = TextStyle(fontSize = 18.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold),
+    title4 = TextStyle(fontSize = 17.sp, lineHeight = 25.sp, fontWeight = FontWeight.SemiBold),
+)
+
+/** The final Ardot tokens remain the default; Monet is an explicit user opt-in. */
+fun ardotLightColors(): Colors = lightColorScheme(
+    primary = AppUiTokens.Primary,
+    primaryVariant = AppUiTokens.Primary,
+    secondaryContainer = AppUiTokens.Card,
+    onSecondaryContainer = Color(0xFF757578),
+    primaryContainer = Color(0xFFE3EDFF),
+    onPrimaryContainer = AppUiTokens.Primary,
+    tertiaryContainer = Color(0xFFE3EDFF),
+    onTertiaryContainer = AppUiTokens.Primary,
+    background = AppUiTokens.Card,
+    onBackground = Color(0xFF1A1A1A),
+    surface = AppUiTokens.Background,
+    surfaceVariant = AppUiTokens.Card,
+    surfaceContainer = AppUiTokens.Card,
+    onSurface = Color(0xFF1A1A1A),
+    onSurfaceContainer = Color(0xFF1A1A1A),
+    onSurfaceVariantSummary = Color(0xFF757578),
+    onSurfaceVariantActions = Color(0xFF757578),
+    onSurfaceContainerVariant = Color(0xFF757578),
+    outline = Color(0xFFE5E5EB),
+    dividerLine = Color(0xFFE5E5EB),
+    error = AppUiTokens.Negative,
+)
+
+fun ardotDarkColors(): Colors = darkColorScheme(
+    primary = AppUiTokens.PrimaryDark,
+    primaryVariant = AppUiTokens.PrimaryDark,
+    secondaryContainer = AppUiTokens.CardDarkRaised,
+    onSecondaryContainer = Color(0xFF99A1A8),
+    primaryContainer = Color(0xFF1F2940),
+    onPrimaryContainer = AppUiTokens.PrimaryDark,
+    tertiaryContainer = Color(0xFF1F2940),
+    onTertiaryContainer = AppUiTokens.PrimaryDark,
+    background = AppUiTokens.CardDark,
+    onBackground = Color(0xFFF2F2F5),
+    surface = AppUiTokens.BackgroundDark,
+    surfaceVariant = AppUiTokens.CardDarkRaised,
+    surfaceContainer = AppUiTokens.CardDarkRaised,
+    onSurface = Color(0xFFF2F2F5),
+    onSurfaceContainer = Color(0xFFF2F2F5),
+    onSurfaceVariantSummary = Color(0xFF99A1A8),
+    onSurfaceVariantActions = Color(0xFF99A1A8),
+    onSurfaceContainerVariant = Color(0xFF99A1A8),
+    outline = Color(0xFF292E36),
+    dividerLine = Color(0xFF292E36),
+    error = Color(0xFFFF4D59),
+)
+
+/**
+ * S01: the one shared show/hide-password control, used as a TextField `trailingIcon`.
+ * Miuix 0.9.4 has the slot; a whole separate TextButton row is no longer needed. The button
+ * keeps a 48dp touch target (§5.1) while the glyph is the compact 20dp auxiliary size (§4.2),
+ * and the label is carried as contentDescription so screen readers announce the action.
+ */
+@Composable
+fun PasswordVisibilityIcon(visible: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    IconButton(onClick = onToggle, modifier = modifier, minWidth = 48.dp, minHeight = 48.dp) {
+        Icon(
+            imageVector = if (visible) MiuixIcons.Hide else MiuixIcons.Show,
+            contentDescription = if (visible) AppText.CampusNetwork.DORM_HIDE_PASSWORD
+            else AppText.CampusNetwork.DORM_SHOW_PASSWORD,
+            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+@Composable
+fun SectionTitle(title: String, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        if (actionLabel != null && onAction != null) TextButton(text = actionLabel, onClick = onAction)
+    }
+}

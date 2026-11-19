@@ -27,16 +27,28 @@ class EditionCompilationTest {
             "ui.run.RunManualDraftSession",
             "ui.run.RunManualDraftSheetKt",
             "edition.ProEditionFeatures",
-        )) assertEquals(BuildEdition.isPro, present(name), name)
+            "platform.RunMapEditing",
+            "pro.map.MapEditorModel",
+            "pro.map.MapEditorEvent",
+            "pro.map.MapEditorWeb",
+            "pro.map.MapEditorDrawing",
+            "pro.map.MapEditorPanelKt",
+            "pro.map.MapEditorPanel_jvmKt",
+            "pro.core.text.ProText",
+            "pro.route.text.RouteText",
+            "pro.composition.ProRuntimeOwner",
+        )) assertFalse(present(name), name)
     }
 
-    @Test fun realRecordingServerTrackAndGeometryRemainInBothClasspaths() {
+    @Test fun realRecordingServerTrackAndGeometryRemainInStandardClasspath() {
         for (name in listOf(
             "feature.runui.RunRuntime", "feature.run.RunSessionCoordinator",
             "feature.run.RunGeo", "feature.run.RunLocationFilter", "feature.run.RunCheckpointProgress",
             "feature.run.RunTrackGenerator", "feature.run.RunTrackValidator",
-            "feature.run.RunUploadQueue", "feature.runui.RunDataDecoder", "feature.runui.RunDisplay",
+            "feature.run.RunUploadQueue", "feature.runui.ApiRunReadSource", "feature.runui.RunDisplay",
             "platform.RunMapWeb", "platform.RunMapCoordinates", "ui.run.RunTrackerPageKt",
         )) assertTrue(present(name), name)
+        // Reflection checks the actual data-module owner without turning its JSON decoder public.
+        assertTrue(present("feature.runui.RunDataDecoder"))
     }
 }

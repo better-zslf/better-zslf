@@ -30,8 +30,6 @@
     <true/>
     <key>UILaunchScreen</key>
     <dict/>
-    <key>NSBluetoothAlwaysUsageDescription</key>
-    <string>仅在使用宿舍热水器时，连接你选择的蓝牙设备。</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>仅在你明确开始校园跑后记录精确路线，后台连续记录会显示系统定位指示；暂停或结束即停止。</string>
     <key>NSLocationDefaultAccuracyReduced</key>

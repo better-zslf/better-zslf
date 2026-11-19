@@ -1,12 +1,13 @@
 package io.github.betterzslf.data
 
+import io.github.betterzslf.core.net.ApiLoginIssue
+import io.github.betterzslf.core.net.ApiLoginOutcome
 import io.github.betterzslf.core.net.ApiTestFixture
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.core.storage.SessionStore
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
-import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -17,45 +18,12 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+/**
+ * The two pure login tests moved into core ApiLoginTest with their original methodnames. The
+ * remaining three tests keep their names here; the mixed login half below drives the real typed
+ * core LOGIN protocol because AuthRepository no longer owns a login path.
+ */
 class AuthRepositoryTest {
-    @Test
-    fun loginUsesPostQueryAndPersistsOnlyTheReturnedSession() = runTest {
-        val fixture = ApiTestFixture(MockEngine { request ->
-            assertEquals(HttpMethod.Post, request.method)
-            assertEquals("fixture-account", request.url.parameters["username"])
-            assertEquals("fixture-password !@#", request.url.parameters["password"])
-            assertNull(request.headers[HttpHeaders.Authorization])
-            respond("""{"code":200,"data":{"accessToken":"fixture-login-token","userInfo":{"id":"fixture-id"},"deptInfo":{"schoolName":"fixture-school"},"mapToken":"fixture-map","mapWebType":"1"},"message":"ok"}""")
-        }, authenticated = false)
-        try {
-            val result = assertIs<ApiResult.Success<*>>(fixture.repositories.auth.login("fixture-account", "fixture-password !@#"))
-            assertEquals("ok", result.message)
-            assertEquals("fixture-login-token", fixture.sessions.session.value?.token)
-            assertEquals("fixture-map", fixture.sessions.session.value?.mapToken)
-            assertEquals("1", fixture.sessions.session.value?.mapWebType)
-            val persisted = assertNotNull(fixture.storage.get(SessionStore.STORAGE_KEY))
-            assertFalse(persisted.contains("fixture-account"))
-            assertFalse(persisted.contains("fixture-password"))
-            assertEquals(fixture.sessions.session.value, SessionStore(fixture.storage).session.value)
-        } finally { fixture.close() }
-    }
-
-    @Test
-    fun malformedLoginDoesNotCreateASession() = runTest {
-        for (body in listOf(
-            "{\"code\":200,\"data\":{\"accessToken\":\"fixture\"}}",
-            "{\"code\":200,\"data\":\"\"}",
-            "{\"code\":200,\"data\":{\"accessToken\":\"\",\"userInfo\":{},\"deptInfo\":{}}}",
-        )) {
-            val fixture = ApiTestFixture(MockEngine { respond(body) }, authenticated = false)
-            try {
-                assertIs<ApiError.Decode>(assertIs<ApiResult.Failure>(fixture.repositories.auth.login("fixture", "fixture")).error)
-                assertNull(fixture.sessions.session.value)
-                assertNull(fixture.storage.get(SessionStore.STORAGE_KEY))
-            } finally { fixture.close() }
-        }
-    }
-
     @Test
     fun successfulPasswordChangeLogsOutAndFailedChangeRetainsSession() = runTest {
         for (code in listOf(200, 400)) {
@@ -90,7 +58,13 @@ class AuthRepositoryTest {
         try {
             assertIs<ApiError.Validation>(assertIs<ApiResult.Failure>(fixture.repositories.auth.resetPassword("fixture-id", "weak")).error)
             assertEquals(0, calls)
-            assertIs<ApiError.Business>(assertIs<ApiResult.Failure>(fixture.repositories.auth.login("fixture", "sixold")).error)
+            // The login half now drives the real typed core LOGIN protocol: an old-policy password
+            // is never rejected locally, the school's refusal stays a finite BUSINESS issue, and
+            // exactly one HTTP request is made.
+            val attempt = fixture.api.captureLoginAttempt()
+            assertTrue(fixture.api.claimLoginAttempt(attempt))
+            val outcome = fixture.api.executeLogin(attempt, "fixture", "sixold")
+            assertEquals(ApiLoginIssue.BUSINESS, assertIs<ApiLoginOutcome.Rejected>(outcome).issue)
             assertEquals(1, calls)
         } finally { fixture.close() }
     }

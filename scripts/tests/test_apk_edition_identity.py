@@ -14,17 +14,20 @@ class ApkEditionIdentityTests(unittest.TestCase):
     def test_standard_identity(self):
         self.assertEqual(validate_apk_identity(badging("io.github.betterzslf"), {"versionName":"1.2.3","versionCode":42}, "standard"), "io.github.betterzslf")
 
-    def test_pro_identity(self):
-        self.assertEqual(validate_apk_identity(badging("io.github.betterzslf.pro","1.2.3-pro"), {"versionName":"1.2.3-pro","versionCode":42}, "pro"), "io.github.betterzslf.pro")
+    def test_public_verifier_rejects_private_product_selection(self):
+        with self.assertRaisesRegex(ValueError, "Edition must be standard"):
+            validate_apk_identity(badging("io.github.betterzslf.pro", "1.2.3-pro"),
+                                  {"versionName": "1.2.3-pro", "versionCode": 42}, "pro")
 
     def test_other_edition_and_lookalike_packages_are_rejected(self):
-        for edition, package in [("pro","io.github.betterzslf"),("standard","io.github.betterzslf.pro"),("pro","io.github.betterzslf.pro.extra")]:
+        for edition, package in [("standard", "io.github.betterzslf.pro"), ("standard", "io.github.betterzslf.pro.extra"), ("standard", "io.github.betterzslf.extra")]:
             with self.subTest(edition=edition,package=package),self.assertRaisesRegex(ValueError,"applicationId"):
                 validate_apk_identity(badging(package),{"versionName":"1.2.3","versionCode":42},edition)
 
-    def test_pro_suffix_is_required_by_validated_metadata(self):
-        with self.assertRaisesRegex(ValueError,"versionCode/versionName"):
-            validate_apk_identity(badging("io.github.betterzslf.pro"),{"versionName":"1.2.3-pro","versionCode":42},"pro")
+    def test_public_version_name_must_match_validated_metadata(self):
+        with self.assertRaisesRegex(ValueError, "versionCode/versionName"):
+            validate_apk_identity(badging("io.github.betterzslf", "1.2.3-pro"),
+                                  {"versionName": "1.2.3", "versionCode": 42}, "standard")
 
     def test_version_code_cannot_drift(self):
         with self.assertRaisesRegex(ValueError,"versionCode/versionName"):

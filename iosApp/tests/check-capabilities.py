@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Offline source/plist guards, NOT a Kotlin/Native or device test. No dependency or network access."""
+"""Offline public GPS/privacy/plist guards, NOT a Kotlin/Native or device test.
+
+Only public sources are read. Pro Bluetooth/picker guards belong to the private product.
+No dependency resolution, signing, sensor operation, or network access is performed.
+"""
 from pathlib import Path
 import plistlib
 import re
@@ -7,9 +11,10 @@ import re
 ROOT = Path(__file__).resolve().parents[2]
 IOS = ROOT / "shared/src/iosMain/kotlin/io/github/betterzslf/platform"
 files = {name: (IOS / name).read_text(encoding="utf-8") for name in (
-    "IosCapabilityRules.kt", "FilePicker.ios.kt", "LocationPermission.ios.kt",
-    "LocationTracker.ios.kt", "BluetoothAccess.ios.kt",
+    "IosCapabilityRules.kt", "LocationPermission.ios.kt", "LocationTracker.ios.kt",
+    "PlatformServices.ios.kt", "KeychainKeyValueStore.kt", "HtmlPanel.ios.kt", "ScheduleNative.ios.kt",
 )}
+files["UnsupportedNativeScheduleOwner.kt"] = (ROOT / "platform/schedule-native/src/commonMain/kotlin/io/github/betterzslf/platform/UnsupportedNativeScheduleOwner.kt").read_text(encoding="utf-8")
 passed = 0
 
 
@@ -21,34 +26,19 @@ def check(name, condition):
     print(f"PASS source guard: {name}")
 
 
-picker = files["FilePicker.ios.kt"]
 permission = files["LocationPermission.ios.kt"]
 tracker = files["LocationTracker.ios.kt"]
-bluetooth = files["BluetoothAccess.ios.kt"]
 rules = files["IosCapabilityRules.kt"]
+services = files["PlatformServices.ios.kt"]
+storage = files["KeychainKeyValueStore.kt"]
+article = files["HtmlPanel.ios.kt"]
 for filename, owner, capability in (
-    ("BluetoothAccess.ios.kt", "IosBluetoothAccess", "BluetoothAccess"),
-    ("FilePicker.ios.kt", "IosFilePicker", "UserRequestLauncher"),
     ("LocationPermission.ios.kt", "IosLocationPermissionLauncher", "UserRequestLauncher"),
     ("LocationTracker.ios.kt", "IosLocationTracker", "NativeLocationTracker"),
 ):
     header = files[filename].split(f"private class {owner}", 1)[1].split("{", 1)[0]
     check(f"{owner} separates native delegate and clears callbacks", capability in header and "NSObject" not in header and "DelegateProtocol" not in header and "nativeDelegate.clear()" in files[filename])
-check("all platform actuals present", all(signature in "\n".join(files.values()) for signature in (
-    "actual fun rememberFilePicker", "actual fun rememberLocationPermissionRequester",
-    "actual fun createLocationTracker", "actual fun rememberBluetoothAccess", "actual fun createWaterEpilogueContext",
-)))
-check("explicit document picker and single selection", "UIDocumentPickerViewController(" in picker and "allowsMultipleSelection = false" in picker)
-check("remember does not present native picker", "presentViewController" not in picker.split("private class IosFilePicker", 1)[0])
-check("cancel and interactive dismiss callbacks handled", "documentPickerWasCancelled" in picker and "presentationControllerDidDismiss" in picker)
-check("scoped access paired with finally", "startAccessingSecurityScopedResource()" in picker and "finally {\n        if (hasScope) url.stopAccessingSecurityScopedResource()" in picker)
-check("external documents coordinate reading", "coordinateReadingItemAtURL" in picker and "NSFileCoordinatorReadingWithoutChanges" in picker)
-check("metadata limit checked before stream creation", picker.index("knownSize > MAX_PICKED_FILE_BYTES") < picker.index("NSInputStream.inputStreamWithURL"))
-check("unknown sizes still use bounded streaming", "readBoundedPickedBytes(" in picker and "input.read(" in picker and "ByteArray(limit + 1)" in rules)
-check("no whole NSData or read-to-end API", not re.search(r"NSData|dataWithContentsOf|readDataToEndOfFile|readToEnd", picker))
-check("read jobs cancelled and native UI delegates released", "readJob?.cancel()" in picker and "current.delegate = null" in picker and "current.presentationController?.delegate = null" in picker)
-check("pending provider coordination explicitly cancelled", "coordinator?.cancel()" in picker and "coordinator = null" in picker)
-check("file result exposes basename only", "PickedFile(url.lastPathComponent" in picker and not re.search(r"\.path\b|absoluteString|localizedDescription", picker))
+check("public GPS actuals present", "actual fun rememberLocationPermissionRequester" in permission and "actual fun createLocationTracker" in tracker)
 check("permission requested only by explicit launcher", permission.count("requestWhenInUseAuthorization()") == 1 and "requestWhenInUseAuthorization" not in permission.split("private class IosLocationPermissionLauncher", 1)[0])
 check("precise-only permission", "CLAccuracyAuthorizationFullAccuracy" in permission and "hasPreciseLocationPermission" in tracker)
 check("tracker does not request or upgrade permission", not re.search(r"requestWhenInUseAuthorization|requestAlwaysAuthorization|requestTemporaryFullAccuracyAuthorization", tracker))
@@ -60,16 +50,16 @@ check("native 100m and 10..60s gate", "accuracyMeters !in 0.0..100.0" in rules a
 check("cached callbacks guarded by manager and session generation", "manager != this.manager" in tracker and "currentGeneration != generation" in tracker and "timestampMillis < startedAtMillis" in rules)
 check("stop cancels emissions and native manager", "emissionJob?.cancel()" in tracker and "it.stopUpdatingLocation()" in tracker and "it.delegate = null" in tracker and "manager = null" in tracker)
 check("terminal close cancels scope", "scope.cancel()" in tracker and "closed = true" in tracker)
-check("Bluetooth remember does not instantiate central", "CBCentralManager(" not in bluetooth.split("private class IosBluetoothAccess", 1)[0])
-request = bluetooth.split("override fun requestPermissions()", 1)[1].split("override fun requestEnable()", 1)[0]
-check("central creation only in permission action", bluetooth.count("CBCentralManager(") == 1 and "CBCentralManager(" in request)
-check("Bluetooth manager never scans or connects", not re.search(r"\.scanForPeripherals|\.connectPeripheral|\.retrievePeripheral", bluetooth))
-check("Bluetooth native delegate is cleaned up", "manager?.delegate = null" in bluetooth and "manager = null" in bluetooth)
-check("epilogue Gregorian Shanghai and seed range", "NSCalendarIdentifierGregorian" in bluetooth and 'timeZoneWithName("Asia/Shanghai")' in bluetooth and "Random.nextInt(1, 10_000)" in bluetooth and "currentCalendar" not in bluetooth)
+check("public iOS sources have no Bluetooth or file-picker actual", all(not (IOS / name).exists() for name in ("BluetoothAccess.ios.kt", "FilePicker.ios.kt")) and not re.search(r"rememberBluetoothAccess|rememberFilePicker|CoreBluetooth|readBoundedPickedBytes", "\n".join(files.values())))
+check("Keychain service stays bundle isolated", "NSBundle.mainBundle.bundleIdentifier" in services and "kSecAttrService to retainedService" in storage and "kSecAttrSynchronizable to kCFBooleanFalse" in storage and "kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly" in storage)
+check("HTTP shared cookies credentials and cache disabled", all(value in services for value in ("HTTPShouldSetCookies = false", "HTTPCookieStorage = null", "URLCredentialStorage = null", "URLCache = null", "NSURLRequestReloadIgnoringLocalCacheData")))
+check("article renderer stays nonpersistent and script free", "WKWebsiteDataStore.nonPersistentDataStore()" in article and "allowsContentJavaScript = false" in article and "preferences.javaScriptEnabled = false" in article)
+check("schedule bridge stays public and explicitly unsupported on iOS", "actual fun createScheduleNativeBridge(): ScheduleNativeBridge = newUnsupportedScheduleNativeBridge()" in files["ScheduleNative.ios.kt"] and "fun newUnsupportedScheduleNativeBridge(): ScheduleNativeBridge = UnsupportedScheduleNativeBridge()" in files["UnsupportedNativeScheduleOwner.kt"] and "internal class UnsupportedScheduleNativeBridge" in files["UnsupportedNativeScheduleOwner.kt"] and "override val supported: Boolean = false" in files["UnsupportedNativeScheduleOwner.kt"] and "MutableStateFlow<ScheduleNativeOpenRequest?>(null)" in files["UnsupportedNativeScheduleOwner.kt"])
 check("native errors and PII are not logged", not re.search(r"println\(|NSLog\(|localizedDescription|allHTTPHeaderFields", "\n".join(files.values())))
 info = plistlib.loads((ROOT / "iosApp/Info.plist").read_bytes())
-check("background location mode declared", info.get("UIBackgroundModes") == ["location"])
-check("precise foreground purpose declared", bool(info.get("NSLocationWhenInUseUsageDescription")) and info.get("NSLocationDefaultAccuracyReduced") is False)
-check("Bluetooth usage purpose declared", bool(info.get("NSBluetoothAlwaysUsageDescription")))
+check("background location mode declared without Bluetooth background mode", info.get("UIBackgroundModes") == ["location"])
+check("precise foreground purpose preserved", info.get("NSLocationWhenInUseUsageDescription") == "仅在你明确开始校园跑后记录精确路线，后台连续记录会显示系统定位指示；暂停或结束即停止。" and info.get("NSLocationDefaultAccuracyReduced") is False)
+check("Standard has no Bluetooth purpose declaration", not any(key.startswith("NSBluetooth") for key in info))
+check("public bundle and numeric Apple version bridges retained", info.get("CFBundleIdentifier") == "$(PRODUCT_BUNDLE_IDENTIFIER)" and info.get("CFBundleShortVersionString") == "$(MARKETING_VERSION)" and info.get("BetterZslfDisplayVersion") == "$(BETTER_ZSLF_DISPLAY_VERSION)")
 check("source line endings and whitespace", all(text.endswith("\n") and all(line == line.rstrip() for line in text.splitlines()) for text in files.values()))
-print(f"All {passed} source/plist guards passed; UIKit/Core Location/Core Bluetooth runtime behavior remains untested.")
+print(f"All {passed} public source/plist guards passed; UIKit/Core Location runtime behavior remains untested.")

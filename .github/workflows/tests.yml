@@ -1,0 +1,253 @@
+name: Public module and Standard product tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Optional full lowercase public source commit SHA; empty uses this event's SHA
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      source_ref:
+        description: Optional fixed public source SHA from the calling workflow
+        type: string
+        default: ''
+
+# Public tests need neither a private checkout nor signing/App credentials.
+permissions:
+  contents: read
+
+concurrency:
+  group: public-tests-${{ github.workflow }}-${{ github.ref }}-${{ inputs.source_ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  resolve:
+    name: Validate the fixed public source identity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      source_sha: ${{ steps.request.outputs.source_sha }}
+    steps:
+      - name: Validate bounded source input without executing a checkout
+        id: request
+        env:
+          REQUESTED_SOURCE_SHA: ${{ inputs.source_ref }}
+          EVENT_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          python3 -B - <<'PY'
+          import os
+          import re
+          sha = os.environ['REQUESTED_SOURCE_SHA'] or os.environ['EVENT_SOURCE_SHA']
+          if not re.fullmatch(r'[0-9a-f]{40}', sha):
+              raise SystemExit('source_ref must be an exact lowercase 40-character commit SHA')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write(f'source_sha={sha}\n')
+          PY
+
+  android:
+    name: Public JVM tests and Standard Android checks
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ORG_GRADLE_PROJECT_betterZslfEdition: standard
+      BETTER_ZSLF_EDITION: standard
+      PYTHONDONTWRITEBYTECODE: '1'
+      SCHEDULE_LIVE_PROBE: ''
+      SCHEDULE_TEST_ACCOUNT: ''
+      SCHEDULE_TEST_PASSWORD: ''
+      ZSLF_LIVE_TEST: ''
+      ZSLF_USERNAME: ''
+      ZSLF_PASSWORD: ''
+    steps:
+      - name: Checkout the fixed public source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify pinned Gradle wrapper
+        run: python3 -B scripts/verify-wrapper.py
+      - uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
+        with:
+          cache-read-only: true
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          cmdline-tools-version: '15859902'
+          log-accepted-android-sdk-licenses: false
+          packages: 'platform-tools platforms;android-37.2 build-tools;36.0.0'
+      - name: Test offline release, source, tool and diagnostics contracts
+        run: python3 -B -m unittest discover -s scripts/tests -v
+      - name: Validate Standard version metadata
+        run: python3 -B scripts/release_metadata.py --edition standard
+      - name: Run public modules and Android checks
+        run: bash scripts/ci-android.sh
+      - name: Upload public test and lint reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: public-android-reports-${{ github.run_id }}
+          path: |
+            core/*/build/reports/tests/
+            core/*/build/test-results/
+            design-system/build/reports/tests/
+            design-system/build/test-results/
+            feature/*/*/build/reports/tests/
+            feature/*/*/build/test-results/
+            platform/updates/build/test-results/
+            platform/schedule-native/build/test-results/
+            platform/storage/build/test-results/
+            platform-ui/*/build/reports/tests/
+            platform-ui/*/build/test-results/
+            platform/updates/build/reports/tests/
+            platform/schedule-native/build/reports/tests/
+            platform/storage/build/reports/tests/
+            platform/android-host/build/reports/
+            platform/android-host/build/test-results/
+            shared/build/reports/tests/
+            shared/build/test-results/
+            androidApp/build/reports/
+            androidApp/build/test-results/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload Standard debug APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: better-zslf-standard-debug-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}
+          path: androidApp/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    name: Public Native tests and Standard Simulator smoke
+    needs: resolve
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      # Kotlin 2.4.21's supported Xcode line must not silently fall back.
+      DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
+      BETTER_ZSLF_CI_SIGNING_METHOD: xcode-simulator
+      ORG_GRADLE_PROJECT_betterZslfEdition: standard
+      BETTER_ZSLF_EDITION: standard
+      PYTHONDONTWRITEBYTECODE: '1'
+      SCHEDULE_LIVE_PROBE: ''
+      SCHEDULE_TEST_ACCOUNT: ''
+      SCHEDULE_TEST_PASSWORD: ''
+      ZSLF_LIVE_TEST: ''
+      ZSLF_USERNAME: ''
+      ZSLF_PASSWORD: ''
+    steps:
+      - name: Checkout the fixed public source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify pinned Gradle wrapper
+        run: python3 -B scripts/verify-wrapper.py
+      - uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
+        with:
+          cache-read-only: true
+      - name: Configure Android compile SDK for KMP configuration
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          # setup-android v3 requires the immutable mac-{id} archive family.
+          cmdline-tools-version: '15641748'
+          log-accepted-android-sdk-licenses: false
+          packages: 'platform-tools platforms;android-37.2 build-tools;36.0.0'
+      - name: Test offline source and Simulator diagnostics contracts
+        run: python3 -B -m unittest discover -s scripts/tests -v
+      - name: Run public Kotlin Native tests and compile device framework
+        run: |
+          bash ./gradlew --no-daemon --stacktrace \
+            verifyModuleCoordinates \
+            :core:text:iosSimulatorArm64Test \
+            :core:run-model:iosSimulatorArm64Test \
+            :core:logging:iosSimulatorArm64Test \
+            :core:network-session:iosSimulatorArm64Test \
+            :core:storage:iosSimulatorArm64Test \
+            :platform:storage:iosSimulatorArm64Test \
+            :design-system:iosSimulatorArm64Test \
+            :feature:run:api:iosSimulatorArm64Test \
+            :feature:run:domain:iosSimulatorArm64Test \
+            :feature:run:data:iosSimulatorArm64Test \
+            :feature:run:presentation:iosSimulatorArm64Test \
+            :feature:run:ui:iosSimulatorArm64Test \
+            :feature:run:runtime:iosSimulatorArm64Test \
+            :feature:services:presentation:iosSimulatorArm64Test \
+            :feature:services:ui:iosSimulatorArm64Test \
+            :platform-ui:readonly-map:iosSimulatorArm64Test \
+            :feature:schedule:api:iosSimulatorArm64Test \
+            :feature:schedule:domain:iosSimulatorArm64Test \
+            :feature:schedule:data:iosSimulatorArm64Test \
+            :feature:schedule:runtime:iosSimulatorArm64Test \
+            :feature:schedule:ui:iosSimulatorArm64Test \
+            :platform:schedule-native:iosSimulatorArm64Test \
+            :feature:home:presentation:iosSimulatorArm64Test \
+            :feature:home:ui:iosSimulatorArm64Test \
+            :feature:update:domain:iosSimulatorArm64Test \
+            :feature:update:data:iosSimulatorArm64Test \
+            :feature:update:presentation:iosSimulatorArm64Test \
+            :feature:update:ui:iosSimulatorArm64Test \
+            :feature:accountrecovery:domain:iosSimulatorArm64Test \
+            :feature:accountrecovery:data:iosSimulatorArm64Test \
+            :feature:accountrecovery:presentation:iosSimulatorArm64Test \
+            :feature:accountrecovery:ui:iosSimulatorArm64Test \
+            :feature:campusnet:domain:iosSimulatorArm64Test \
+            :feature:campusnet:data:iosSimulatorArm64Test \
+            :feature:campusnet:presentation:iosSimulatorArm64Test \
+            :feature:campusnet:ui:iosSimulatorArm64Test \
+            :feature:auth:domain:iosSimulatorArm64Test \
+            :feature:auth:data:iosSimulatorArm64Test \
+            :feature:auth:presentation:iosSimulatorArm64Test \
+            :feature:auth:ui:iosSimulatorArm64Test \
+            :feature:profile:domain:iosSimulatorArm64Test \
+            :feature:profile:data:iosSimulatorArm64Test \
+            :feature:profile:presentation:iosSimulatorArm64Test \
+            :feature:content:domain:iosSimulatorArm64Test \
+            :feature:content:data:iosSimulatorArm64Test \
+            :feature:content:presentation:iosSimulatorArm64Test \
+            :platform:updates:iosSimulatorArm64Test \
+            :platform:location:iosSimulatorArm64Test \
+            :shared:iosSimulatorArm64Test \
+            :shared:linkDebugFrameworkIosArm64
+      - name: Install XcodeGen
+        run: command -v xcodegen >/dev/null || brew install xcodegen
+      - name: Build iOS on macOS
+        run: bash scripts/ci-ios.sh
+      - name: Smoke launch on an owned iOS Simulator
+        env:
+          BETTER_ZSLF_CI_DIAGNOSTIC_MODE: signed-positive
+          BETTER_ZSLF_CI_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-4
+        timeout-minutes: 12
+        run: bash scripts/ci-ios-smoke.sh
+      - name: Upload Simulator app and bounded build diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: better-zslf-standard-ios-simulator-${{ needs.resolve.outputs.source_sha }}-${{ github.run_id }}
+          include-hidden-files: true # Only explicitly named .local/ios-ci outputs.
+          path: |
+            core/*/build/test-results/
+            design-system/build/test-results/
+            feature/*/*/build/test-results/
+            platform/updates/build/test-results/
+            platform/schedule-native/build/test-results/
+            platform/storage/build/test-results/
+            platform-ui/*/build/test-results/
+            shared/build/test-results/
+            shared/build/bin/iosArm64/debugFramework/
+            shared/build/bin/iosSimulatorArm64/debugFramework/
+            .local/ios-ci/Build/Products/Debug-iphonesimulator/*.app
+            .local/ios-ci/Logs/
+            .local/ios-ci/build.xcresult
+          if-no-files-found: warn
+          retention-days: 7

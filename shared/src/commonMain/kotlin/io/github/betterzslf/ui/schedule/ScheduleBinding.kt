@@ -7,32 +7,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.unit.dp
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.core.text.AppText
 import io.github.betterzslf.feature.schedule.runtime.ScheduleRuntime
 import io.github.betterzslf.ui.*
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 
 /** App owns prompt frequency. Merely displaying or skipping this prompt does not authenticate. */
 @Composable
 fun ScheduleBindingPrompt(graph: AppGraph, onBind: () -> Unit) {
     val runtime = graph.schedule
     val state by runtime.state.collectAsState()
-    OverlayDialog(show = state.showBindingPrompt && state.owner != null && state.boundAccount == null,
-        title = AppText.Schedule.INTRO_TITLE, summary = AppText.Schedule.INTRO_BODY,
-        onDismissRequest = runtime::dismissBindingPrompt) {
-        Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
-            InfoBanner(AppText.Schedule.SECURITY_HINT, tone = UiTone.Neutral)
-            PrimaryAction(AppText.Schedule.BIND, onClick = {
-                runtime.dismissBindingPrompt()
-                onBind()
-            })
-            TextButton(AppText.Schedule.SKIP, onClick = runtime::dismissBindingPrompt, modifier = Modifier.fillMaxWidth())
-        }
-    }
+    val visible = state.showBindingPrompt && state.owner != null && state.boundAccount == null
+    val prompt = remember(runtime, visible) { ScheduleBindingPromptSession.open(runtime, visible) }
+    DisposableEffect(prompt) { onDispose { prompt.close() } }
+    ScheduleBindingPromptContent(visible, onEvent = { event -> prompt.dispatch(event, onBind) })
 }
 
 /**
@@ -46,107 +36,37 @@ fun ScheduleBindingPage(
     onBack: () -> Unit,
     onBound: (() -> Unit)? = null,
 ) {
+    // Observe runtime state for recomposition, but never export it or use a restored revision as authority.
     val state by runtime.state.collectAsState()
     val scope = rememberCoroutineScope()
-    var draft by remember(runtime, state.owner) {
-        mutableStateOf(ScheduleBindingDraft(account = if (updatingPassword) state.boundAccount.orEmpty() else ""))
-    }
-    var showPassword by remember(runtime, state.owner) { mutableStateOf(false) }
-    var saving by remember(runtime, state.owner) { mutableStateOf(false) }
-    var testing by remember(runtime, state.owner) { mutableStateOf(false) }
-    var notice by remember(runtime, state.owner) { mutableStateOf<String?>(null) }
-    // The runtime is pointed at its slot once per process, so a page that opens later may be
-    // looking at an empty in-memory record even though the binding is on disk. Re-read before
-    // drawing the form so an already-confirmed account is never presented as a blank form.
-    LaunchedEffect(runtime, state.owner) {
-        runtime.reloadFromStorage()
-    }
-    DisposableEffect(runtime, state.owner) { onDispose { runtime.cancelVerification() } }
-    val back = { runtime.cancelVerification(); onBack() }
-    val canConfirm = draft.canConfirm(state.verifiedAccount, state.busy || state.verifying || testing || saving) && !state.storageFailure
-    Screen(if (updatingPassword) AppText.Schedule.UPDATE_CREDENTIALS else AppText.Schedule.BIND_TITLE, back) { padding ->
-        PageList(padding) {
-            item("binding-explanation") { InfoBanner(AppText.Schedule.READ_ONLY_HINT, tone = UiTone.Neutral) }
-            item("binding-security") { InfoBanner(AppText.Schedule.SECURITY_HINT, tone = UiTone.Neutral) }
-            if (state.owner == null) item("binding-owner") { InfoBanner(AppText.Schedule.OWNER_REQUIRED, tone = UiTone.Warning) }
-            if (state.storageFailure) item("binding-storage") { InfoBanner(AppText.Schedule.STORAGE_FAILURE, tone = UiTone.Warning) }
-            item("binding-inputs") {
-                SchedulePanel {
-                    TextField(draft.account, { value ->
-                        runtime.cancelVerification()
-                        draft = draft.accountChanged(value)
-                        notice = AppText.Schedule.INPUT_CHANGED
-                    }, label = AppText.Schedule.ACCOUNT_FIELD, singleLine = true, enabled = !saving,
-                        modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.FieldRadius)
-                    TextField(draft.password, { value ->
-                        runtime.cancelVerification()
-                        draft = draft.passwordChanged(value)
-                        notice = AppText.Schedule.INPUT_CHANGED
-                    }, label = AppText.Schedule.PASSWORD_FIELD, singleLine = true, enabled = !saving,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                        // S01: reveal control in the field's own trailing slot, not a separate row.
-                        trailingIcon = {
-                            PasswordVisibilityIcon(showPassword, { showPassword = !showPassword })
-                        },
-                        modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.FieldRadius)
-                }
+    val page = remember(runtime, updatingPassword) { ScheduleBindingSession.open(runtime, updatingPassword) }
+    DisposableEffect(page) { onDispose { page.close() } }
+    val generation = page.inputGeneration
+    val display = page.display(state)
+    val controls = page.controls(state)
+    ScheduleBindingPageContent(display, controls,
+        onEvent = { event -> when (event) {
+            ScheduleBindingUiEvent.BACK -> page.back(generation, onBack)
+            ScheduleBindingUiEvent.VERIFY -> page.beginVerification(generation)?.let { request ->
+                scope.launch { page.verify(request) }
             }
-            item("binding-verification") {
-                when {
-                    testing || state.verifying -> ScheduleProgress(AppText.Schedule.TESTING)
-                    canConfirm -> InfoBanner(AppText.Schedule.VERIFY_PASSED,
-                        title = AppText.Schedule.accountLabel(maskedAcademicAccount(draft.account.trim())), tone = UiTone.Positive)
-                    else -> InfoBanner(notice ?: AppText.Schedule.NOT_VERIFIED, tone = UiTone.Neutral)
-                }
+            ScheduleBindingUiEvent.CONFIRM -> page.beginConfirmation(generation)?.let { request ->
+                scope.launch { page.confirm(request) { (onBound ?: onBack)() } }
             }
-            state.message?.takeIf(String::isNotBlank)?.let { message ->
-                item("binding-runtime-message") { InfoBanner(message, tone = UiTone.Warning) }
-            }
-            item("binding-test") {
-                Button(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.ButtonRadius,
-                    minHeight = AppUiTokens.ButtonHeight,
-                    enabled = state.owner != null && draft.account.isNotBlank() && draft.password.isNotEmpty() &&
-                        !state.busy && !state.verifying && !testing && !saving && !state.storageFailure,
-                    onClick = {
-                        if (!testing && !saving) {
-                            testing = true
-                            val captured = draft
-                            draft = draft.invalidate()
-                            scope.launch {
-                                try {
-                                    val passed = runtime.verifyBinding(captured.account.trim(), captured.password)
-                                    if (draft.revision == captured.revision) {
-                                        draft = if (passed) draft.acceptVerification(captured.revision, runtime.state.value.verifiedAccount) else draft.invalidate()
-                                        notice = if (passed && draft.verifiedRevision == draft.revision) null else AppText.Schedule.VERIFY_FAILED
-                                    }
-                                } finally { testing = false }
-                            }
-                        }
-                    }) { Text(AppText.Schedule.TEST_CONNECTION) }
-            }
-            item("binding-confirm") {
-                PrimaryAction(AppText.Schedule.CONFIRM_BINDING, enabled = canConfirm, onClick = {
-                    if (!saving && draft.canConfirm(runtime.state.value.verifiedAccount, runtime.state.value.busy || runtime.state.value.verifying)) {
-                        saving = true
-                        scope.launch {
-                            try {
-                                if (runtime.confirmBinding()) {
-                                    draft = ScheduleBindingDraft()
-                                    // Callers that host this form outside the timetable (the login
-                                    // screen) need to leave the login surface on success; inside the
-                                    // timetable the form simply pops back.
-                                    val leave = onBound
-                                    if (leave != null) leave() else onBack()
-                                } else {
-                                    notice = AppText.Common.LOCAL_DATA_SAVE_FAILED
-                                }
-                            } finally { saving = false }
-                        }
-                    }
-                })
-            }
-            if (saving) item("binding-saving") { ScheduleProgress(AppText.Common.SUBMITTING) }
-        }
-    }
+            else -> Unit
+        } },
+        accountField = {
+            TextField(page.draft.account, { value -> page.accountChanged(generation, value) },
+                label = AppText.Schedule.ACCOUNT_FIELD, singleLine = true, enabled = page.inputsEnabled,
+                modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.FieldRadius)
+        },
+        passwordField = {
+            TextField(page.draft.password, { value -> page.passwordChanged(generation, value) },
+                label = AppText.Schedule.PASSWORD_FIELD, singleLine = true, enabled = page.inputsEnabled,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                visualTransformation = if (page.showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                // S01: reveal control in the field's own trailing slot, not a separate row.
+                trailingIcon = { PasswordVisibilityIcon(page.showPassword, { page.togglePassword(generation) }) },
+                modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.FieldRadius)
+        })
 }

@@ -86,6 +86,16 @@ fun passwordValidation(password: String, confirmation: String): String? = when {
 
 @Composable
 fun PasswordScreen(graph: AppGraph, back: () -> Unit) {
+    val epoch by graph.sessions.revision.collectAsState()
+    key(graph, epoch) { PasswordBody(graph, epoch, back) }
+}
+
+@Composable
+private fun PasswordBody(graph: AppGraph, epoch: Long, back: () -> Unit) {
+    val bound = remember(graph, epoch) { graph.repositories.auth.boundToCurrentSession() }
+    val fence = remember(graph, epoch, bound) { SessionEpochReadFence(epoch, { graph.sessions.revision.value },
+        { bound?.isBoundToCurrentSession == true }) }
+    DisposableEffect(fence) { onDispose { fence.close() } }
     var old by remember { mutableStateOf("") }
     var new by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf("") }
@@ -120,12 +130,18 @@ fun PasswordScreen(graph: AppGraph, back: () -> Unit) {
                 }) }
         }
         ConfirmDialog(confirming, AppText.Auth.CHANGE_SCHOOL_PASSWORD_CONFIRM_TITLE, AppText.Auth.PASSWORD_CHANGE_IMMEDIATE_EFFECT_HINT, { confirming = false }) {
-            if (!submitting) {
+            if (!submitting && fence.isCurrent() && bound != null) {
                 confirming = false
                 submitting = true
+                val previousPassword = old
+                val nextPassword = new
                 scope.launch {
                     try {
-                        when (val result = graph.repositories.auth.modifyPassword(old, new)) {
+                        // Capture the original bound repository; never retarget a new login at launch.
+                        if (!fence.isCurrent()) return@launch
+                        val result = bound.modifyPassword(previousPassword, nextPassword)
+                        if (!fence.isCurrent()) return@launch
+                        when (result) {
                             is ApiResult.Failure -> message = result.error.message
                             is ApiResult.Success -> { old = ""; new = ""; confirmation = "" }
                         }

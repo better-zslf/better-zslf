@@ -12,12 +12,12 @@ SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z"
 RELEASE_CANDIDATE = re.compile(r"rc[1-9][0-9]{0,5}\Z")
 
 
-APPLICATION_IDS = {"standard": "io.github.betterzslf", "pro": "io.github.betterzslf.pro"}
+APPLICATION_IDS = {"standard": "io.github.betterzslf"}
 
 
-def load_version(path: Path, tag: str | None = None, edition: str = "pro") -> dict:
+def load_version(path: Path, tag: str | None = None, edition: str = "standard") -> dict:
     if edition not in APPLICATION_IDS:
-        raise ValueError("Edition must be standard or pro")
+        raise ValueError("Edition must be standard in the public product; Pro metadata belongs to its private product root")
     values = {}
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -41,8 +41,6 @@ def load_version(path: Path, tag: str | None = None, edition: str = "pro") -> di
         if not RELEASE_CANDIDATE.fullmatch(prerelease):
             raise ValueError("VERSION_PRERELEASE must use rc followed by 1..6 digits without leading zero")
         name += "-" + prerelease
-    if edition == "pro":
-        name += "-pro"
     expected_tag = f"v{name}"
     if tag is not None and tag != expected_tag:
         raise ValueError("Tag must exactly match the selected edition and version.properties")
@@ -53,7 +51,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--properties", type=Path, default=ROOT / "version.properties")
     parser.add_argument("--tag")
-    parser.add_argument("--edition", choices=tuple(APPLICATION_IDS), default="pro")
+    parser.add_argument("--edition", choices=tuple(APPLICATION_IDS), default="standard")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--github-output", action="store_true")
     args = parser.parse_args()

@@ -1,0 +1,86 @@
+package io.github.betterzslf.feature.campusnet
+
+import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.timeout
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.HttpHeaders
+import kotlinx.coroutines.CancellationException
+
+/** Exactly the reference client's UA. A real app UA changes portal behaviour. */
+const val PORTAL_PROBE_USER_AGENT: String = "Mozilla/5.0 (Android)"
+
+/** 5 s connect and 5 s read, matching the reference plugin: a dead portal fails fast. */
+private const val PROBE_TIMEOUT_MILLIS: Long = 5_000
+
+/**
+ * Minimal single-hop redirect probe, equivalent to the reference app's `zjfRedirect` native plugin.
+ *
+ * Deliberate choices, all taken from the original implementation:
+ * - redirects are **not** followed, so the first `Location` is readable;
+ * - a browser-ish User-Agent is sent, because portals may not redirect otherwise;
+ * - a non-3xx answer returns the input unchanged rather than an error.
+ *
+ * The client is derived from the caller's engine so no campus token, cookie jar or logging plugin
+ * is inherited: this request carries no credentials, and it is the only request in the app that is
+ * allowed to speak cleartext (see `network_security_config.xml`). Close it with the owner scope.
+ */
+class KtorPortalProbe(ownerClient: HttpClient) {
+    private val client = HttpClient(ownerClient.engine) {
+        expectSuccess = false
+        // The single 302 is the answer; following it would discard the Location we need.
+        followRedirects = false
+        install(HttpTimeout) {
+            requestTimeoutMillis = PROBE_TIMEOUT_MILLIS
+            connectTimeoutMillis = PROBE_TIMEOUT_MILLIS
+            socketTimeoutMillis = PROBE_TIMEOUT_MILLIS
+        }
+    }
+    private var closed = false
+
+    suspend fun probe(portalUrl: String): PortalProbeResult {
+        if (closed) return PortalProbeResult.Unreachable
+        if (!campusPortalAddressAllowed(portalUrl)) return PortalProbeResult.Blocked
+        return try {
+            val response = client.get(portalUrl) {
+                timeout {
+                    requestTimeoutMillis = PROBE_TIMEOUT_MILLIS
+                    connectTimeoutMillis = PROBE_TIMEOUT_MILLIS
+                    socketTimeoutMillis = PROBE_TIMEOUT_MILLIS
+                }
+                header(HttpHeaders.UserAgent, PORTAL_PROBE_USER_AGENT)
+            }
+            val status = response.status.value
+            val location = response.headers[HttpHeaders.Location]
+            // Header names are case-insensitive on the wire; Ktor's map already folds them.
+            val schoolId = response.headers["schoolid"].orEmpty()
+            val domain = response.headers["domain"].orEmpty()
+            val area = response.headers["area"].orEmpty()
+            // The body is never read: this is a redirect probe, not a page fetch.
+            response.bodyAsChannel().cancel(null)
+            when {
+                status in 300..399 -> {
+                    val target = location?.takeIf { it.isNotBlank() }
+                    if (target == null) PortalProbeResult.MissingLocation
+                    else PortalProbeResult.Answered(target, redirected = true, schoolId, domain, area)
+                }
+                else -> PortalProbeResult.Answered(portalUrl, redirected = false, schoolId, domain, area)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Ktor exception messages embed the URL; nothing from them is surfaced or logged.
+            PortalProbeResult.Unreachable
+        }
+    }
+
+    fun close() {
+        if (closed) return
+        closed = true
+        client.close()
+    }
+
+    override fun toString(): String = "KtorPortalProbe(closed=$closed)"
+}

@@ -7,36 +7,33 @@ plugins {
 val appVersion = Properties().apply {
     rootProject.file("version.properties").inputStream().use { load(it) }
 }
-val edition = providers.gradleProperty("betterZslfEdition").getOrElse("pro")
-require(edition in setOf("standard", "pro")) { "betterZslfEdition must be standard or pro" }
-val isProEdition = edition == "pro"
+require(providers.gradleProperty("betterZslfEdition").orNull.let { it == null || it == "standard" }) {
+    "The public Android product is Standard-only. Remove betterZslfEdition; build the private product from its own root."
+}
 val baseName = requireNotNull(appVersion.getProperty("VERSION_NAME")) { "VERSION_NAME is required" }
-require(Regex("(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)").matches(baseName)) { "VERSION_NAME must be numeric x.y.z" }
+require(Regex("""(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)""").matches(baseName)) { "VERSION_NAME must be numeric x.y.z" }
 val prerelease = appVersion.getProperty("VERSION_PRERELEASE")
 require(prerelease == null || Regex("rc[1-9][0-9]{0,5}").matches(prerelease)) { "VERSION_PRERELEASE must be rc followed by 1..6 digits without leading zero" }
-val expectedName = baseName + (prerelease?.let { "-$it" } ?: "") + if (isProEdition) "-pro" else ""
+val expectedName = baseName + (prerelease?.let { "-$it" } ?: "")
 val resolvedName = providers.gradleProperty("versionName").getOrElse(expectedName)
-require(resolvedName == expectedName) { "versionName must match version.properties and the selected edition" }
-val resolvedCode = providers.gradleProperty("versionCode").getOrElse(appVersion.getProperty("VERSION_CODE")).toInt()
-require(resolvedCode in 1..2_100_000_000) { "versionCode is out of range" }
+require(resolvedName == expectedName) { "versionName must match the Standard version.properties" }
+val expectedCode = requireNotNull(appVersion.getProperty("VERSION_CODE")) { "VERSION_CODE is required" }
+require(Regex("[1-9][0-9]{0,9}").matches(expectedCode) && expectedCode.toLong() <= 2_100_000_000L) { "VERSION_CODE must be a canonical positive Android version code" }
+val resolvedCode = providers.gradleProperty("versionCode").getOrElse(expectedCode)
+require(resolvedCode == expectedCode) { "versionCode must match the Standard version.properties" }
 
 android {
     namespace = "io.github.betterzslf"
     compileSdk { version = release(37) { minorApiLevel = 2 } }
     defaultConfig {
-        applicationId = "io.github.betterzslf" + if (isProEdition) ".pro" else ""
-        manifestPlaceholders["appLabel"] = if (isProEdition) "Oh My ZSC Pro" else "Oh My ZSC"
+        applicationId = "io.github.betterzslf"
         minSdk = 33
         targetSdk = 36
-        versionCode = resolvedCode
+        versionCode = resolvedCode.toInt()
         versionName = resolvedName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "APP_VERSION", "\"$resolvedName\"")
-        buildConfigField("String", "APP_EDITION", "\"$edition\"")
-        buildConfigField("boolean", "IS_PRO", isProEdition.toString())
     }
-    // The Pro permission overlay is not even a standard-edition manifest input.
-    if (isProEdition) sourceSets.getByName("main").manifest.srcFile("src/pro/AndroidManifest.xml")
     val signingPath = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
     if (signingPath != null) {
         signingConfigs {
@@ -72,7 +69,7 @@ android {
 }
 
 dependencies {
-    implementation(project(":shared"))
+    implementation(project(":platform:android-host"))
     implementation(libs.activity.compose)
     testImplementation(kotlin("test"))
     debugImplementation(libs.compose.ui)

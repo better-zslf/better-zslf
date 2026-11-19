@@ -25,16 +25,17 @@ expect_failure() {
   fi
 }
 reset_version() { printf 'VERSION_NAME=0.1.0\nVERSION_CODE=1\n' > "$fixture/version.properties"; }
-# Do not inherit CI overrides while testing defaults.
+# Do not inherit CI or Xcode overrides while testing defaults.
 unset ORG_GRADLE_PROJECT_versionName ORG_GRADLE_PROJECT_versionCode ORG_GRADLE_PROJECT_betterZslfEdition \
-  BETTER_ZSLF_EDITION BETTER_ZSLF_BUNDLE_ID PRODUCT_BUNDLE_IDENTIFIER OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED
+  BETTER_ZSLF_EDITION BETTER_ZSLF_BUNDLE_ID PRODUCT_BUNDLE_IDENTIFIER OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED \
+  BETTER_ZSLF_VERSION_NAME BETTER_ZSLF_VERSION_CODE BETTER_ZSLF_VERSION_PRERELEASE BETTER_ZSLF_DISPLAY_VERSION
 
 reset_version
 /bin/bash "$prepare" >/dev/null
 contains_line "$config" 'BETTER_ZSLF_VERSION_NAME = 0.1.0' 'root versionName'
 contains_line "$config" 'BETTER_ZSLF_VERSION_CODE = 1' 'root versionCode'
-contains_line "$config" 'BETTER_ZSLF_EDITION = pro' 'default edition'
-contains_line "$config" 'BETTER_ZSLF_BUNDLE_ID = io.github.betterzslf.pro' 'default bundle'
+contains_line "$config" 'BETTER_ZSLF_EDITION = standard' 'default edition'
+contains_line "$config" 'BETTER_ZSLF_BUNDLE_ID = io.github.betterzslf' 'default bundle'
 pass 'root version source and paths containing spaces'
 
 /bin/bash "$prepare" -PversionName=2.3.4 -PversionCode=42 >/dev/null
@@ -61,10 +62,9 @@ pass 'Standard bundle and numeric marketing version'
 ORG_GRADLE_PROJECT_betterZslfEdition=pro /bin/bash "$prepare" -PbetterZslfEdition=standard >/dev/null
 contains_line "$config" 'BETTER_ZSLF_EDITION = standard' 'CLI edition precedence'
 contains_line "$config" 'BETTER_ZSLF_BUNDLE_ID = io.github.betterzslf' 'CLI standard bundle precedence'
-/bin/bash "$prepare" -PbetterZslfEdition=pro >/dev/null
-contains_line "$config" 'BETTER_ZSLF_BUNDLE_ID = io.github.betterzslf.pro' 'CLI Pro bundle'
-pass 'CLI edition overrides environment'
-for invalid in '' Pro enterprise 'pro;echo injected'; do
+expect_failure /bin/bash "$prepare" -PbetterZslfEdition=pro
+pass 'CLI Standard edition overrides environment and public Pro is rejected'
+for invalid in '' pro Pro enterprise 'pro;echo injected'; do
   expect_failure /bin/bash "$prepare" "-PbetterZslfEdition=$invalid"
   expect_failure env ORG_GRADLE_PROJECT_betterZslfEdition="$invalid" /bin/bash "$prepare"
 done
@@ -110,11 +110,8 @@ contains_line "$config" 'BETTER_ZSLF_VERSION_NAME = 6.7.8' 'generation version p
 contains_line "$XCODEGEN_CAPTURE" "$fixture/iosApp/project.yml" 'XcodeGen spec path'
 contains_line "$XCODEGEN_CAPTURE" "$fixture/iosApp" 'XcodeGen output path'
 pass 'project generation prepares version before invoking XcodeGen (stub)'
-PATH="$work/bin:$PATH" /bin/bash "$generate" -PversionName=6.7.8 -PversionCode=46 -PbetterZslfEdition=pro >/dev/null
-contains_line "$config" 'BETTER_ZSLF_EDITION = pro' 'generation Pro edition propagation'
-contains_line "$config" 'BETTER_ZSLF_BUNDLE_ID = io.github.betterzslf.pro' 'generation Pro bundle propagation'
-contains_line "$config" 'BETTER_ZSLF_VERSION_NAME = 6.7.8' 'generation numeric Pro version'
-pass 'project generation forwards Pro edition without a marketing suffix (stub)'
+expect_failure env PATH="$work/bin:$PATH" /bin/bash "$generate" -PbetterZslfEdition=pro
+pass 'project generation rejects Pro before invoking XcodeGen (stub)'
 
 cat > "$fixture/gradlew" <<'STUB'
 #!/usr/bin/env bash
@@ -124,27 +121,30 @@ export GRADLE_CAPTURE="$work/gradle-arguments.txt"
 PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=6.7.8 \
   CURRENT_PROJECT_VERSION=46 /bin/bash "$embed"
 contains_line "$GRADLE_CAPTURE" ':shared:embedAndSignAppleFrameworkForXcode' 'Gradle task'
-contains_line "$GRADLE_CAPTURE" '-PversionName=6.7.8-pro' 'Gradle versionName propagation'
+contains_line "$GRADLE_CAPTURE" '-PversionName=6.7.8' 'Gradle versionName propagation'
 contains_line "$GRADLE_CAPTURE" '-PversionCode=46' 'Gradle versionCode propagation'
-contains_line "$GRADLE_CAPTURE" '-PbetterZslfEdition=pro' 'default Xcode edition propagation'
+contains_line "$GRADLE_CAPTURE" '-PbetterZslfEdition=standard' 'default Xcode edition propagation'
 pass 'Xcode resolved versions forward unchanged to Gradle (stub)'
 
 PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=6.7.8 \
-  CURRENT_PROJECT_VERSION=46 ORG_GRADLE_PROJECT_betterZslfEdition=standard BETTER_ZSLF_EDITION=pro \
-  BETTER_ZSLF_BUNDLE_ID=io.github.betterzslf.pro PRODUCT_BUNDLE_IDENTIFIER=io.github.betterzslf.pro \
+  CURRENT_PROJECT_VERSION=46 ORG_GRADLE_PROJECT_betterZslfEdition=pro BETTER_ZSLF_EDITION=standard \
+  BETTER_ZSLF_BUNDLE_ID=io.github.betterzslf PRODUCT_BUNDLE_IDENTIFIER=io.github.betterzslf \
   /bin/bash "$embed"
-contains_line "$GRADLE_CAPTURE" '-PbetterZslfEdition=pro' 'resolved Pro Xcode edition wins environment'
-contains_line "$GRADLE_CAPTURE" '-PversionName=6.7.8-pro' 'Pro Gradle version uses the edition suffix while Apple marketing stays numeric'
-pass 'Xcode Pro identity and Gradle edition version agree (stub)'
+contains_line "$GRADLE_CAPTURE" '-PbetterZslfEdition=standard' 'resolved Standard Xcode edition wins environment'
+contains_line "$GRADLE_CAPTURE" '-PversionName=6.7.8' 'Standard Gradle version stays numeric'
+pass 'Xcode Standard identity overrides an ambient Pro Gradle edition (stub)'
 PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=6.7.8 \
-  CURRENT_PROJECT_VERSION=46 ORG_GRADLE_PROJECT_versionName=9.9.9-pro BETTER_ZSLF_EDITION=pro \
-  PRODUCT_BUNDLE_IDENTIFIER=io.github.betterzslf.pro /bin/bash "$embed"
-contains_line "$GRADLE_CAPTURE" '-PversionName=6.7.8-pro' 'resolved marketing version overrides ambient Gradle version'
+  CURRENT_PROJECT_VERSION=46 ORG_GRADLE_PROJECT_versionName=9.9.9 BETTER_ZSLF_EDITION=standard \
+  PRODUCT_BUNDLE_IDENTIFIER=io.github.betterzslf /bin/bash "$embed"
+contains_line "$GRADLE_CAPTURE" '-PversionName=6.7.8' 'resolved marketing version overrides ambient Gradle version'
 expect_failure env PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=6.7.8-pro \
-  CURRENT_PROJECT_VERSION=46 BETTER_ZSLF_EDITION=pro /bin/bash "$embed"
-pass 'Pro suffix is added only for Gradle and never accepted as Apple marketing version'
+  CURRENT_PROJECT_VERSION=46 BETTER_ZSLF_EDITION=standard /bin/bash "$embed"
 expect_failure env PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=6.7.8 \
-  CURRENT_PROJECT_VERSION=46 BETTER_ZSLF_EDITION=pro PRODUCT_BUNDLE_IDENTIFIER=io.github.betterzslf /bin/bash "$embed"
+  CURRENT_PROJECT_VERSION=46 BETTER_ZSLF_EDITION=pro /bin/bash "$embed"
+expect_failure env OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES BETTER_ZSLF_EDITION=pro /bin/bash "$embed"
+pass 'public Pro edition is rejected including the IDE short circuit'
+expect_failure env PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=6.7.8 \
+  CURRENT_PROJECT_VERSION=46 BETTER_ZSLF_EDITION=standard PRODUCT_BUNDLE_IDENTIFIER=io.github.betterzslf.pro /bin/bash "$embed"
 expect_failure env PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=6.7.8 \
   CURRENT_PROJECT_VERSION=46 BETTER_ZSLF_EDITION=other /bin/bash "$embed"
 pass 'mismatched bundle or invalid Xcode edition fails before Gradle'
@@ -177,9 +177,9 @@ for invalid in 1.0.0 1.0.0-rc2 1.0.0-rc01 1.0.0-rc1-pro 1.0.0-beta1; do
 done
 pass 'RC rejects overrides that drop change or mistype the prerelease'
 /bin/bash "$prepare" >/dev/null
-contains_line "$config" 'BETTER_ZSLF_DISPLAY_VERSION = 1.0.0-rc1-pro' 'default RC display version'
-contains_line "$config" 'BETTER_ZSLF_VERSION_NAME = 1.0.0' 'Pro RC marketing version stays numeric'
-pass 'Pro RC separates marketing version from the edition display label'
+contains_line "$config" 'BETTER_ZSLF_DISPLAY_VERSION = 1.0.0-rc1' 'default Standard RC display version'
+contains_line "$config" 'BETTER_ZSLF_VERSION_NAME = 1.0.0' 'Standard RC marketing version stays numeric'
+pass 'default Standard RC separates numeric marketing from the display label'
 for suffix in rc0 rc01 rc1000000 RC1 rc.1; do
   printf 'VERSION_NAME=1.0.0\nVERSION_CODE=2\nVERSION_PRERELEASE=%s\n' "$suffix" > "$fixture/version.properties"
   expect_failure /bin/bash "$prepare"
@@ -191,24 +191,18 @@ expect_failure /bin/bash "$prepare"
 pass 'invalid empty or unknown prerelease metadata fails'
 printf 'VERSION_NAME=1.0.0\nVERSION_CODE=2\nVERSION_PRERELEASE=rc1\n' > "$fixture/version.properties"
 PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=1.0.0 \
-  CURRENT_PROJECT_VERSION=2 BETTER_ZSLF_EDITION=pro BETTER_ZSLF_BUNDLE_ID=io.github.betterzslf.pro \
-  PRODUCT_BUNDLE_IDENTIFIER=io.github.betterzslf.pro BETTER_ZSLF_VERSION_NAME=1.0.0 BETTER_ZSLF_VERSION_CODE=2 \
-  BETTER_ZSLF_VERSION_PRERELEASE=rc1 BETTER_ZSLF_DISPLAY_VERSION=1.0.0-rc1-pro /bin/bash "$embed"
-contains_line "$GRADLE_CAPTURE" '-PversionName=1.0.0-rc1-pro' 'RC display version forwards to Gradle'
+  CURRENT_PROJECT_VERSION=2 BETTER_ZSLF_EDITION=standard BETTER_ZSLF_BUNDLE_ID=io.github.betterzslf \
+  PRODUCT_BUNDLE_IDENTIFIER=io.github.betterzslf BETTER_ZSLF_VERSION_NAME=1.0.0 BETTER_ZSLF_VERSION_CODE=2 \
+  BETTER_ZSLF_VERSION_PRERELEASE=rc1 BETTER_ZSLF_DISPLAY_VERSION=1.0.0-rc1 /bin/bash "$embed"
+contains_line "$GRADLE_CAPTURE" '-PversionName=1.0.0-rc1' 'RC display version forwards to Gradle'
 contains_line "$GRADLE_CAPTURE" '-PversionCode=2' 'RC build number forwards to Gradle'
-pass 'RC forwards only the full display version to Gradle (stub)'
+contains_line "$GRADLE_CAPTURE" '-PbetterZslfEdition=standard' 'RC Standard Gradle edition'
+pass 'RC forwards only the full Standard display version to Gradle (stub)'
 expect_failure env PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=1.0.0 \
-  CURRENT_PROJECT_VERSION=2 BETTER_ZSLF_EDITION=pro /bin/bash "$embed"
+  CURRENT_PROJECT_VERSION=2 BETTER_ZSLF_EDITION=standard /bin/bash "$embed"
 expect_failure env PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=1.0.0 \
-  CURRENT_PROJECT_VERSION=2 BETTER_ZSLF_EDITION=pro BETTER_ZSLF_VERSION_PRERELEASE=rc1 BETTER_ZSLF_DISPLAY_VERSION=1.0.0 /bin/bash "$embed"
+  CURRENT_PROJECT_VERSION=2 BETTER_ZSLF_EDITION=standard BETTER_ZSLF_VERSION_PRERELEASE=rc1 BETTER_ZSLF_DISPLAY_VERSION=1.0.0 /bin/bash "$embed"
 expect_failure env PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=1.0.0-rc1 \
-  CURRENT_PROJECT_VERSION=2 BETTER_ZSLF_EDITION=pro BETTER_ZSLF_VERSION_PRERELEASE=rc1 BETTER_ZSLF_DISPLAY_VERSION=1.0.0-rc1 /bin/bash "$embed"
-pass 'regenerated or stale Xcode RC settings fail before Gradle'
-PLATFORM_NAME=iphonesimulator CONFIGURATION=Debug ARCHS=arm64 MARKETING_VERSION=1.0.0 \
-  CURRENT_PROJECT_VERSION=2 BETTER_ZSLF_EDITION=pro BETTER_ZSLF_BUNDLE_ID=io.github.betterzslf.pro \
-  PRODUCT_BUNDLE_IDENTIFIER=io.github.betterzslf.pro BETTER_ZSLF_VERSION_NAME=1.0.0 \
-  BETTER_ZSLF_VERSION_PRERELEASE=rc1 BETTER_ZSLF_DISPLAY_VERSION=1.0.0-rc1-pro /bin/bash "$embed"
-contains_line "$GRADLE_CAPTURE" '-PversionName=1.0.0-rc1-pro' 'Pro RC Gradle version'
-contains_line "$GRADLE_CAPTURE" '-PbetterZslfEdition=pro' 'Pro RC Gradle edition'
-pass 'Pro RC matches the Android edition display version (stub)'
+  CURRENT_PROJECT_VERSION=2 BETTER_ZSLF_EDITION=standard BETTER_ZSLF_VERSION_PRERELEASE=rc1 BETTER_ZSLF_DISPLAY_VERSION=1.0.0-rc1 /bin/bash "$embed"
+pass 'missing or stale Xcode RC settings fail before Gradle'
 printf 'All %s offline iOS script tests passed; no native compilation was performed.\n' "$count"

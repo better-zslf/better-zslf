@@ -49,7 +49,6 @@ class RunMapFeedbackTest {
             var state = ready().onEvent(identity, document, RunMapEvent.Failed(reason))
             state = state.forDocument(identity, document, data().copy(paths = listOf("other" to listOf(b))))
             state = state.onEvent(identity, document, RunMapEvent.CheckpointSelected("second"))
-            state = state.onEvent(identity, document, RunMapEvent.DrawPoint(a, RunMapCoordinateSystem.WGS84))
             assertEquals(RunMapDocumentFeedback.Failed(reason), state.status)
             assertEquals(AppText.Run.mapFallback(reason.toString()), state.text())
         }
@@ -153,16 +152,31 @@ class RunMapFeedbackTest {
         }
     }
 
-    @Test fun duplicateReadyIsIdempotentAndDrawNoticeIsNeverARealPositionOrReady() {
+    @Test fun duplicateReadyIsIdempotentAndCheckpointSelectionNeverCreatesReady() {
         val ready = ready()
         assertSame(ready, ready.onEvent(identity, document, RunMapEvent.Ready))
         val selected = ready.onEvent(identity, document, RunMapEvent.CheckpointSelected("first"))
         assertSame(selected, selected.onEvent(identity, document, RunMapEvent.Ready))
-        val draw = initial().onEvent(identity, document, RunMapEvent.DrawPoint(a, RunMapCoordinateSystem.WGS84))
-        assertEquals(RunMapDocumentFeedback.Pending, draw.status)
-        assertEquals(AppText.Run.MAP_PREVIEW_EVENTS_NOT_REAL_LOCATION_HINT, draw.text())
-        val changed = draw.forDocument(identity, document, data().copy(paths = listOf("new" to listOf(b))))
+        val pendingSelection = initial().onEvent(identity, document, RunMapEvent.CheckpointSelected("first"))
+        assertEquals(RunMapDocumentFeedback.Pending, pendingSelection.status)
+        assertEquals(AppText.Run.selectedCheckpointNotice("1"), pendingSelection.text())
+        val changed = pendingSelection.forDocument(identity, document, data().copy(paths = listOf("new" to listOf(b))))
         assertNull(changed.transient); assertNull(changed.text())
+    }
+
+    @Test fun drawingPayloadCannotEnterReadonlyFeedbackOrMutateDisplayedData() {
+        val before = initial()
+        val display = data()
+        val input = RunMapModel(provider = RunMapProvider.AMAP, apiKey = "public_fixture_key",
+            importedPath = RunMapPath(listOf(a, b), RunMapCoordinateSystem.WGS84),
+            checkpoints = display.checkpoints.map { RunMapCheckpoint(it.id, it.point, coordinateSystem = RunMapCoordinateSystem.WGS84) })
+        val id = "readonly_feedback_document"
+        val payload = """{"documentId":"$id","type":"draw","longitude":104.07,"latitude":30.67,"frame":"GCJ02"}"""
+        assertNull(RunMapWeb.parseEvent(payload, input, id))
+        assertEquals(RunMapDocumentFeedback.Pending, before.status)
+        assertNull(before.transient); assertNull(before.text())
+        assertEquals(listOf(a, b), display.paths.single().second)
+        assertEquals(listOf(RunCheckpoint("first", a), RunCheckpoint("second", b)), display.checkpoints)
     }
 
     @Test fun sameDataDoesNotResetFeedbackAndDiagnosticsExposeNoKeyCoordinatesOrNotice() {

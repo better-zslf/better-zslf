@@ -123,6 +123,94 @@ class AccountRecoveryRepositoryTest {
         } finally { release.complete(Unit); fixture.close() }
     }
 
+    @Test fun sameValueEpochChangesMakeEveryOldBoundRecoveryStageLocal() = runTest {
+        for (mutation in 0..2) {
+            var calls = 0
+            val fixture = ApiTestFixture(MockEngine { calls++; error("Retired epoch must remain local") })
+            try {
+                val bound = assertNotNull(fixture.repositories.auth.boundToCurrentSession())
+                val original = assertNotNull(fixture.sessions.session.value)
+                when (mutation) {
+                    0 -> fixture.sessions.save(original.copy())
+                    1 -> { fixture.sessions.clear(); fixture.sessions.save(original) }
+                    else -> fixture.sessions.save(original.copy(mapToken = "changed-fixture-map", mapWebType = "2"))
+                }
+                val current = fixture.sessions.session.value
+                val epoch = fixture.sessions.revision.value
+                val persisted = fixture.storage.get(SessionStore.STORAGE_KEY)
+                assertFalse(bound.isBoundToCurrentSession)
+                assertIs<ApiError.Authentication>(assertIs<ApiResult.Failure>(bound.sendResetCode("13800000000")).error)
+                assertIs<ApiError.Authentication>(assertIs<ApiResult.Failure>(bound.checkPhone("13800000000", "000000")).error)
+                assertIs<ApiError.Authentication>(assertIs<PasswordResetReceipt.Failed>(bound.resetPasswordWithReceipt("fixture-target", "Fixture#1")).error)
+                bound.logout()
+                assertSame(current, fixture.sessions.session.value)
+                assertEquals(epoch, fixture.sessions.revision.value)
+                assertEquals(persisted, fixture.storage.get(SessionStore.STORAGE_KEY))
+                assertEquals(0, calls)
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test fun lateAcceptedReceiptPreservesSameValueReplacementEpochForBoundAndUnboundCallers() = runTest {
+        for (boundCall in listOf(false, true)) for (mutation in 0..2) {
+            val started = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            var calls = 0
+            val fixture = ApiTestFixture(MockEngine {
+                calls++; started.complete(Unit); release.await()
+                respond("""{"code":200,"data":{}}""")
+            })
+            try {
+                val repository = if (boundCall) assertNotNull(fixture.repositories.auth.boundToCurrentSession()) else fixture.repositories.auth
+                val changing = async { repository.resetPasswordWithReceipt("fixture-target", "Fixture#1") }
+                started.await()
+                val original = assertNotNull(fixture.sessions.session.value)
+                when (mutation) {
+                    0 -> fixture.sessions.save(original.copy())
+                    1 -> { fixture.sessions.clear(); fixture.sessions.save(original) }
+                    else -> fixture.sessions.save(original.copy(mapToken = "changed-fixture-map", mapWebType = "2"))
+                }
+                val current = fixture.sessions.session.value
+                val epoch = fixture.sessions.revision.value
+                val persisted = fixture.storage.get(SessionStore.STORAGE_KEY)
+                release.complete(Unit)
+                val receipt = assertIs<PasswordResetReceipt.Accepted>(changing.await())
+                assertEquals(PasswordResetLogout.NEW_SESSION_PRESERVED, receipt.logout)
+                assertSame(current, fixture.sessions.session.value)
+                assertEquals(epoch, fixture.sessions.revision.value)
+                assertEquals(persisted, fixture.storage.get(SessionStore.STORAGE_KEY))
+                assertEquals(1, calls)
+            } finally { release.complete(Unit); fixture.close() }
+        }
+    }
+
+    @Test fun failedSessionSaveDoesNotRetireAValidRecoveryReceiptCleanup() = runTest {
+        val memory = MemoryKeyValueStore()
+        var rejectWrite = false
+        val storage = object : KeyValueStore by memory {
+            override fun put(key: String, value: String) {
+                if (rejectWrite) error("fixture write failure")
+                memory.put(key, value)
+            }
+        }
+        val sessions = SessionStore(storage).apply { save(fixtureSession()) }
+        val http = HttpClient(MockEngine { respond("""{"code":200,"data":{}}""") })
+        val api = ApiClient(http, sessions, ApiConfig(appBaseUrl = "https://app.fixture.invalid/app"))
+        try {
+            val bound = assertNotNull(AuthRepository(api, sessions).boundToCurrentSession())
+            val epoch = sessions.revision.value
+            rejectWrite = true
+            assertFailsWith<IllegalStateException> { sessions.save(fixtureSession("rejected-fixture-token")) }
+            assertEquals(epoch, sessions.revision.value)
+            assertTrue(bound.isBoundToCurrentSession)
+            val receipt = assertIs<PasswordResetReceipt.Accepted>(bound.resetPasswordWithReceipt("fixture-target", "Fixture#1"))
+            assertEquals(PasswordResetLogout.CLEARED, receipt.logout)
+            assertNull(sessions.session.value)
+            assertNull(storage.get(SessionStore.STORAGE_KEY))
+            assertEquals(epoch + 1, sessions.revision.value)
+        } finally { api.close(); http.close() }
+    }
+
     @Test fun localDeletionFailureRetainsTheServerAcknowledgementAndClearsMemory() = runTest {
         val memory = MemoryKeyValueStore()
         val storage = object : KeyValueStore {
@@ -137,9 +225,12 @@ class AccountRecoveryRepositoryTest {
         val api = ApiClient(http, sessions, ApiConfig(appBaseUrl = "https://app.fixture.invalid/app"))
         try {
             val bound = assertNotNull(AuthRepository(api, sessions).boundToCurrentSession())
+            val epoch = sessions.revision.value
             val receipt = assertIs<PasswordResetReceipt.Accepted>(bound.resetPasswordWithReceipt("verified-target", "Fixture#1"))
             assertEquals(PasswordResetLogout.CLEAR_FAILED, receipt.logout)
             assertNull(sessions.session.value)
+            assertEquals(epoch + 1, sessions.revision.value)
+            assertFalse(bound.isBoundToCurrentSession)
             assertNotNull(storage.get(SessionStore.STORAGE_KEY))
             assertFalse(storage.get(SessionStore.STORAGE_KEY).orEmpty().contains("Fixture#1"))
             assertEquals(1, calls)

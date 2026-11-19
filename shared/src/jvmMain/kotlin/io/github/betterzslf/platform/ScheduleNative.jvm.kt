@@ -1,3 +1,3 @@
 package io.github.betterzslf.platform
 
-actual fun createScheduleNativeBridge(): ScheduleNativeBridge = UnsupportedScheduleNativeBridge()
+actual fun createScheduleNativeBridge(): ScheduleNativeBridge = newUnsupportedScheduleNativeBridge()

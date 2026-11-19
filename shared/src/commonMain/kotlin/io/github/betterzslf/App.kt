@@ -19,11 +19,14 @@ import io.github.betterzslf.feature.schedule.createAcademicSource
 import io.github.betterzslf.feature.schedule.runtime.ScheduleRuntime
 import io.github.betterzslf.ui.schedule.ScheduleBindingPrompt
 import io.github.betterzslf.ui.schedule.ScheduleRootPage
+import io.github.betterzslf.ui.schedule.scheduleNativeOpenTarget
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import io.github.betterzslf.feature.runui.RunRuntime
 import io.github.betterzslf.feature.update.GithubReleaseRepository
 import io.github.betterzslf.platform.NativeAppUpdater
+import io.github.betterzslf.platform.ScheduleNativeBridge
+import io.github.betterzslf.platform.createScheduleNativeBridge
 import io.github.betterzslf.platform.createNativeAppUpdater
 import io.github.betterzslf.platform.createLocationTracker
 import io.github.betterzslf.ui.run.RunTaskList
@@ -31,9 +34,22 @@ import io.github.betterzslf.ui.campusnet.CampusNetworkFeaturePage
 import kotlin.time.Clock
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
-import io.github.betterzslf.edition.EditionAccess
-import io.github.betterzslf.edition.EditionFeatures
-import io.github.betterzslf.edition.createEditionFeatures
+import io.github.betterzslf.composition.*
+import io.github.betterzslf.navigation.ProductNavigation
+import io.github.betterzslf.navigation.StandardNavigation
+import io.github.betterzslf.navigation.rememberProductBackStack
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -60,14 +76,22 @@ import top.yukonga.miuix.kmp.theme.*
  */
 internal const val ScheduleSlotKey: String = "local-timetable"
 
-class AppGraph(val platform: PlatformServices) {
+class AppGraph(
+    val platform: PlatformServices,
+    private val productComposition: ProductComposition = StandardComposition,
+    scheduleNativeFactory: () -> ScheduleNativeBridge = ::createScheduleNativeBridge,
+) {
     val sessions = SessionStore(platform.storage)
     val settings = SettingsStore(platform.storage)
     private val http = platform.httpClient()
     val api = ApiClient(http, sessions)
     val repositories = AppRepositories(api, sessions)
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    val schedule = ScheduleRuntime(applicationScope, platform.storage, { createAcademicSource(platform.httpClient()) })
+    val runPreviewSource: io.github.betterzslf.feature.run.api.RunPreviewSource by lazy {
+        io.github.betterzslf.composition.PublicRunPreviewSource(api, sessions, applicationScope)
+    }
+    val schedule = ScheduleRuntime(applicationScope, platform.storage, { createAcademicSource(platform.httpClient()) },
+        native = scheduleNativeFactory())
     // The portal probe is the one request allowed to speak cleartext, and only to the gateway the
     // school hands us. It gets its own derived client: no campus token, no cookies, no logging.
     private var portalProbeInstance: io.github.betterzslf.feature.campusnet.KtorPortalProbe? = null
@@ -111,21 +135,60 @@ class AppGraph(val platform: PlatformServices) {
     fun onForeground() {
         applicationScope.launch { schedule.onForeground() }
     }
-    // The selected facade contains no Pro implementation in standard compiler inputs.
-    val editionFeatures: EditionFeatures by lazy { createEditionFeatures(applicationScope) }
+    val productIdentity = productComposition.identity
+    private fun publicRunPreferences() = publicRunPreferences(settings.settings.value, sessions.session.value)
+    private fun publicRunPreferences(settings: io.github.betterzslf.feature.settings.AppSettings,
+                                     session: io.github.betterzslf.core.model.Session?) = PublicRunPreferences(
+        settings.metricUnits, settings.samplingSeconds,
+        when (settings.theme) { "Light" -> PublicThemePreference.LIGHT; "Dark" -> PublicThemePreference.DARK; else -> PublicThemePreference.SYSTEM },
+        io.github.betterzslf.platform.runMapProviderFor(session?.mapWebType), session?.mapToken, settings.skipImportWarning)
+    private val runPreferences by lazy {
+        combine(settings.settings, sessions.session) { settings, session -> publicRunPreferences(settings, session) }
+            .stateIn(applicationScope, SharingStarted.Eagerly, publicRunPreferences())
+    }
+    private var contributionInstance: ApplicationContributions? by mutableStateOf(null)
+    private val contributionShutdown = Mutex()
+    private var closing = false
+    var contributionRetirementFailed by mutableStateOf(false)
+        private set
+    // One explicit product owner per generation. No extension receives this graph.
+    val contributions: ApplicationContributions
+        get() {
+            check(!closing && !contributionRetirementFailed) { "Application contributions are unavailable" }
+            return contributionInstance ?: productComposition.create(applicationScope,
+                PublicFeatureDependencies(runPreviewSource, runPreferences)).also { contribution ->
+                require(contribution.services.all { contribution.navigation.accepts(it.target) }) { "Unregistered service target" }
+                require(contribution.offlineEntry?.let { contribution.navigation.accepts(it.target) && contribution.navigation.isOffline(it.target) } != false) { "Invalid offline entry" }
+                contributionInstance = contribution
+            }
+        }
+    val navigation get() = contributions.navigation
+    private suspend fun shutdownContributions() = contributionShutdown.withLock {
+        contributionInstance?.shutdown()
+    }
     private var runRuntimeInstance: RunRuntime? = null
     val runRuntime: RunRuntime
-        get() = runRuntimeInstance ?: RunRuntime(applicationScope, platform.storage, repositories.run,
-            createLocationTracker(), { Clock.System.now().toEpochMilliseconds() }, sessions.session,
-            transportFactory = null // Both editions retain explicit local real-GPS recording only.
-        ).also { runRuntimeInstance = it }
+        get() {
+            check(!closing && !clearingLocalData) { "Application runtime is unavailable" }
+            return runRuntimeInstance ?: RunRuntime(applicationScope, platform.storage, repositories.run,
+                createLocationTracker(), { Clock.System.now().toEpochMilliseconds() }, sessions.session,
+                transportFactory = null, // Products retain explicit local real-GPS recording only.
+                sessionRevision = sessions.revision,
+            ).also { runRuntimeInstance = it }
+        }
     // Public release traffic has its own client and never borrows school authentication.
     private var githubUpdatesInstance: GithubReleaseRepository? = null
     val githubUpdates: GithubReleaseRepository
-        get() = githubUpdatesInstance ?: GithubReleaseRepository(platform.httpClient()).also { githubUpdatesInstance = it }
+        get() {
+            check(!closing && !clearingLocalData) { "Application updater is unavailable" }
+            return githubUpdatesInstance ?: GithubReleaseRepository(platform.httpClient(), productIdentity.updatePolicy).also { githubUpdatesInstance = it }
+        }
     private var appUpdaterInstance: NativeAppUpdater? = null
     val appUpdater: NativeAppUpdater
-        get() = appUpdaterInstance ?: createNativeAppUpdater().also { appUpdaterInstance = it }
+        get() {
+            check(!closing && !clearingLocalData) { "Application updater is unavailable" }
+            return appUpdaterInstance ?: createNativeAppUpdater(productIdentity.updatePolicy).also { appUpdaterInstance = it }
+        }
     private fun closeUpdateOwners(): Boolean {
         val nativeOk = runCatching { appUpdaterInstance?.close() }.isSuccess
         if (nativeOk) appUpdaterInstance = null
@@ -147,13 +210,26 @@ class AppGraph(val platform: PlatformServices) {
         }
     }
     fun clearLocalData() {
-        if (clearingLocalData) return
+        if (clearingLocalData || closing) return
         clearingLocalData = true
         applicationScope.launch {
+            var retiredProduct = false
             try {
-                // Await native capture and any ambiguous in-flight upload cleanup BEFORE erasing storage.
-                // A fresh runtime is created only after the old one has become quiescent.
-                val stopped = runCatching { runRuntimeInstance?.close() }.isSuccess
+                // Await all product owners BEFORE erasing storage. An unused contribution stays uninitialized.
+                val productStopped = try { shutdownContributions(); true }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { false }
+                if (!productStopped) {
+                    contributionRetirementFailed = true
+                    storageNotice = AppText.App.LOCAL_DATA_CLEAR_BLOCKED_BY_ACTIVITY_HINT
+                    return@launch
+                }
+                retiredProduct = true
+                contributionRetirementFailed = false
+                // Native capture and ambiguous upload cleanup must also become quiescent.
+                val stopped = try { runRuntimeInstance?.close(); true }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { false }
                 if (!stopped) {
                     storageNotice = AppText.App.LOCAL_DATA_CLEAR_BLOCKED_BY_ACTIVITY_HINT
                     return@launch
@@ -162,20 +238,63 @@ class AppGraph(val platform: PlatformServices) {
                     storageNotice = AppText.App.LOCAL_DATA_CLEAR_BLOCKED_BY_UPDATE_HINT
                     return@launch
                 }
+                currentCoroutineContext().ensureActive()
+                check(!closing) { "Application is closing" }
                 val scheduleOk = schedule.clearForLogout()
+                currentCoroutineContext().ensureActive()
+                check(!closing) { "Application is closing" }
                 val sessionOk = runCatching { sessions.clear() }.isSuccess
                 val storageOk = runCatching { platform.storage.clear() }.isSuccess
                 val settingsOk = settings.reset()
                 runRuntimeInstance = null
+                contributionInstance = null
                 // Storage is empty now; re-arm the timetable slot so the academic entry still opens.
                 schedule.setOwner(ScheduleSlotKey, force = true)
                 storageNotice = if (scheduleOk && sessionOk && storageOk && settingsOk) null else AppText.App.PARTIAL_LOCAL_DATA_CLEAR_FAILED
-            } finally {
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { storageNotice = AppText.App.PARTIAL_LOCAL_DATA_CLEAR_FAILED }
+            finally {
+                if (retiredProduct) contributionInstance = null
                 clearingLocalData = false
             }
         }
     }
-    fun close() { schedule.close(); closeUpdateOwners(); applicationScope.cancel(); api.close(); http.close() }
+    private val closeMutex = Mutex()
+    private val shutdownResult = CompletableDeferred<Unit>()
+    /** Native/UI disposal requests cleanup; tests/product hosts may await shutdown explicitly. */
+    fun close() {
+        if (closing) return
+        closing = true
+        applicationScope.cancel() // synchronously invalidates preview leases before asynchronous cleanup
+        val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        cleanupScope.launch {
+            try { shutdown() }
+            catch (_: Exception) { storageNotice = AppText.App.LOCAL_DATA_CLEAR_BLOCKED_BY_ACTIVITY_HINT }
+            finally { cleanupScope.cancel() }
+        }
+    }
+    suspend fun shutdown(): Unit = withContext(NonCancellable) {
+        closeMutex.withLock {
+            if (!shutdownResult.isCompleted) {
+                closing = true
+                applicationScope.cancel()
+                val results = listOf(
+                    runCatching { shutdownContributions() },
+                    runCatching { runRuntimeInstance?.close() },
+                    runCatching { schedule.close() },
+                    runCatching { check(closeUpdateOwners()) },
+                    runCatching { portalProbeInstance?.close() },
+                    runCatching { dormHandshakeInstance?.close() },
+                    runCatching { dormTransportInstance?.close() },
+                    runCatching { api.close() },
+                    runCatching { http.close() },
+                )
+                val failure = results.firstNotNullOfOrNull { it.exceptionOrNull() }
+                if (failure == null) shutdownResult.complete(Unit) else shutdownResult.completeExceptionally(failure)
+            }
+        }
+        shutdownResult.await()
+    }
 }
 
 @Serializable
@@ -187,8 +306,8 @@ sealed interface Route : NavKey {
 }
 
 /** A route can be on a stack once; repeated taps never create duplicate keys. */
-fun MutableList<NavKey>.pushUnique(route: Route) {
-    if (route is Route.Page && !EditionAccess.allowsPage(route.kind)) return
+fun MutableList<NavKey>.pushUnique(route: NavKey, navigation: ProductNavigation = StandardNavigation) {
+    if (!navigation.accepts(route)) return
     val existing = indexOf(route)
     if (existing >= 0) {
         while (lastIndex > existing) removeAt(lastIndex)
@@ -196,10 +315,10 @@ fun MutableList<NavKey>.pushUnique(route: Route) {
 }
 
 /** Preserve an explicit offline page across Activity recreation while keeping login underneath it. */
-fun MutableList<NavKey>.reconcileLoggedOutRoute() {
-    removeAll { it is Route.Page && !EditionAccess.allowsPage(it.kind) }
-    val top = lastOrNull() as? Route.Page
-    if (top != null && EditionAccess.allowsOfflinePage(top.kind)) {
+fun MutableList<NavKey>.reconcileLoggedOutRoute(navigation: ProductNavigation = StandardNavigation) {
+    removeAll { !navigation.accepts(it) }
+    val top = lastOrNull()
+    if (top != null && navigation.isOffline(top)) {
         if (none { it == Route.Login }) add(lastIndex.coerceAtLeast(0), Route.Login)
     } else {
         pushUnique(Route.Login)
@@ -207,11 +326,26 @@ fun MutableList<NavKey>.reconcileLoggedOutRoute() {
 }
 
 
+/** Independent academic binding admits the shell without lending campus request authority. */
+fun MutableList<NavKey>.reconcileShellAccess(
+    hasCampusSession: Boolean,
+    hasAcademicBinding: Boolean,
+    navigation: ProductNavigation = StandardNavigation,
+) {
+    if (!hasCampusSession && !hasAcademicBinding) reconcileLoggedOutRoute(navigation)
+    else {
+        removeAll { !navigation.accepts(it) || it == Route.Login }
+        if (isEmpty()) add(Route.Main)
+    }
+}
 
 @Composable
-fun App(platform: PlatformServices = remember { createPlatformServices() }, graphProvider: (() -> AppGraph)? = null) {
+fun App(platform: PlatformServices = remember { createPlatformServices() }, graphProvider: (() -> AppGraph)? = null,
+        productComposition: ProductComposition = StandardComposition) {
     var startupAttempt by remember { mutableIntStateOf(0) }
-    val initialized = remember(platform, graphProvider, startupAttempt) { runCatching { graphProvider?.invoke() ?: AppGraph(platform) } }
+    val initialized = remember(platform, graphProvider, productComposition, startupAttempt) {
+        runCatching { graphProvider?.invoke() ?: AppGraph(platform, productComposition) }
+    }
     val graph = initialized.getOrNull()
     if (graph == null) {
         // §10.2: the startup-failure surface must use the same shared text styles as the normal
@@ -228,7 +362,26 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
         return
     }
     DisposableEffect(graph, graphProvider) { onDispose { if (graphProvider == null) graph.close() } }
+    if (graph.clearingLocalData) {
+        MiuixTheme(controller = remember { ThemeController(ColorSchemeMode.System, lightColors = ardotLightColors(), darkColors = ardotDarkColors()) },
+            textStyles = remember { ardotTextStyles() }) {
+            Screen(AppText.Settings.CLEARING_LOCAL_DATA) { padding ->
+                PageList(padding) { item { CircularProgressIndicator() } }
+            }
+        }
+        return
+    }
+    if (graph.contributionRetirementFailed) {
+        MiuixTheme(controller = remember { ThemeController(ColorSchemeMode.System, lightColors = ardotLightColors(), darkColors = ardotDarkColors()) },
+            textStyles = remember { ardotTextStyles() }) {
+            Screen(AppText.App.LOCAL_DATA_NOTICE) { padding -> PageList(padding) {
+                item { SectionCard(AppText.App.LOCAL_DATA_NOTICE, graph.storageNotice.orEmpty(), onClick = graph::clearLocalData) }
+            } }
+        }
+        return
+    }
     val session by graph.sessions.session.collectAsState()
+    val sessionEpoch by graph.sessions.revision.collectAsState()
     // A confirmed academic binding is an independent way into the app: it has its own credentials
     // and must not require a campus login just to reach the timetable.
     val scheduleState by graph.schedule.state.collectAsState()
@@ -243,33 +396,37 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { graph.onForeground() }
     // Ardot 24:22 / P00 / P46: five tabs 首页/课表/校园网/服务/我的. v4 invalidates old
     // four-tab saved indices once, then retains all five stacks on recreation.
+    val navigation = graph.navigation
     key(NavigationLayoutPolicy.SAVED_STATE_SCHEMA) {
-    val root = rememberNavBackStack<Route>(Route.Main)
+    val root = rememberProductBackStack(navigation, Route.Main)
+    val openRoot: (NavKey) -> Unit = { root.pushUnique(it, navigation) }
     // Keep tab navigation outside the login-gated subtree, including across a 401.
     var selected by rememberSaveable { mutableIntStateOf(0) }
     // Tab order: 0 首页 (landing), 1 课表, 2 校园网, 3 服务, 4 我的.
-    val home = rememberNavBackStack<Route>(Route.TabRoot(0))
-    val timetable = rememberNavBackStack<Route>(Route.TabRoot(1))
-    val campusNetwork = rememberNavBackStack<Route>(Route.TabRoot(2))
-    val services = rememberNavBackStack<Route>(Route.TabRoot(3))
-    val profile = rememberNavBackStack<Route>(Route.TabRoot(4))
+    val home = rememberProductBackStack(navigation, Route.TabRoot(0))
+    val timetable = rememberProductBackStack(navigation, Route.TabRoot(1))
+    val campusNetwork = rememberProductBackStack(navigation, Route.TabRoot(2))
+    val services = rememberProductBackStack(navigation, Route.TabRoot(3))
+    val profile = rememberProductBackStack(navigation, Route.TabRoot(4))
     val tabStacks = listOf(home, timetable, campusNetwork, services, profile)
     val nativeOpenRequest by graph.schedule.native.openRequests.collectAsState()
-    LaunchedEffect(nativeOpenRequest, session?.userId) {
+    LaunchedEffect(nativeOpenRequest, scheduleState) {
         val request = nativeOpenRequest ?: return@LaunchedEffect
-        if (session == null) return@LaunchedEffect // Keep the request while the campus login is visible.
+        // Only the mounted app consumes the native intent. Campus authentication is unrelated.
+        val target = scheduleNativeOpenTarget(graph.schedule.state.value, graph.schedule.ownerRevision,
+            request, ScheduleSlotKey, Clock.System.now().toEpochMilliseconds())
         graph.schedule.native.consumeOpenRequest()
-        if (request.ownerRevision != null && request.ownerRevision != graph.schedule.ownerRevision) return@LaunchedEffect
-        if (graph.schedule.state.value.owner != session?.userId) return@LaunchedEffect
-        val courseId = request.occurrenceId?.let(graph.schedule::courseIdForOccurrence)
-        graph.schedule.state.value.sourceTermId?.let { graph.schedule.selectTerm(it) }
-        // A native timetable open request belongs to the 课表 tab (index 1), not 首页.
+        if (target == null) return@LaunchedEffect
+        target.detail?.let { graph.schedule.selectTerm(it.termId) }
+        // The encoded selection retains its source term/week, not a guessed current-week course id.
         selected = 1
         root.removeAll { it != Route.Main }
         if (root.isEmpty()) root.add(Route.Main)
         timetable.clear()
         timetable.add(Route.TabRoot(1))
-        if (courseId != null) timetable.pushUnique(Route.Page("scheduledetail", courseId, AppText.Schedule.DETAILS_TITLE))
+        target.detail?.let { detail ->
+            timetable.pushUnique(Route.Page("scheduledetail", detail.encode(), AppText.Schedule.DETAILS_TITLE))
+        }
     }
     // The root stack owns a single route while a tab is open, so the platform back gesture must
     // first pop the active tab's stack and then let the system background the task.
@@ -277,7 +434,7 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
         AppBackDispatcher.register {
             val top = root.lastOrNull()
             when {
-                top is Route.Page -> {
+                top != null && top != Route.Main && top != Route.Login -> {
                     root.removeLastOrNull()
                     true
                 }
@@ -294,10 +451,8 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
         onDispose { AppBackDispatcher.register(null) }
     }
     var previousOwner by rememberSaveable { mutableStateOf(session?.userId) }
-    LaunchedEffect(session?.token) {
-        if (session == null) {
-            root.reconcileLoggedOutRoute()
-        } else {
+    LaunchedEffect(sessionEpoch, hasAcademicBinding) {
+        if (session != null) {
             val owner = session?.userId
             if (previousOwner != null && previousOwner != owner) {
                 tabStacks.forEachIndexed { index, stack -> stack.clear(); stack.add(Route.TabRoot(index)) }
@@ -305,12 +460,12 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
                 root.removeAll { it != Route.Main && it != Route.Login }
             }
             previousOwner = owner
-            root.removeAll { it == Route.Login }
-            if (root.isEmpty()) root.add(Route.Main)
         }
+        root.reconcileShellAccess(session != null, hasAcademicBinding, navigation)
     }
     MiuixTheme(controller = theme, textStyles = remember { ardotTextStyles() }) {
         PlatformAppearance(when (settings.theme) { "Dark" -> true; "Light" -> false; else -> null })
+        // Only campus-bound page owners re-key by epoch; independent dorm and accepted receipts survive.
         NavDisplay(backStack = root, modifier = Modifier.fillMaxSize().clipToBounds(),
             onBack = { if (root.size > 1 && root.last() != Route.Login) root.removeLastOrNull() },
             transition = NavTransitions.MiuixDefault, effects = NavDisplayEffects(cornerClipRadius = 0.dp)) {
@@ -329,12 +484,14 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
                         root.clear()
                         root.add(Route.Main)
                     },
-                    onWater = if (EditionAccess.waterEnabled) ({ root.pushUnique(Route.Page("water")) }) else null,
+                    extraEntry = graph.contributions.offlineEntry,
+                    onExtraEntry = openRoot,
                     onResetPassword = { root.pushUnique(Route.Page("resetpassword", title = AppText.Recovery.RECOVER_PASSWORD_TITLE)) })
             }
-            entry<Route.Page>(swipeDismiss = if ((root.lastOrNull() as? Route.Page)?.kind in setOf("water", "runtracker", "resetpassword")) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) {
-                FeaturePage(graph, it, onOpen = root::pushUnique, onBack = { root.removeLastOrNull() })
+            entry<Route.Page>(swipeDismiss = if (root.lastOrNull()?.let(navigation::swipeDismiss) == false) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) {
+                FeaturePage(graph, it, onOpen = openRoot, onBack = { root.removeLastOrNull() })
             }
+            navigation.registerEntries(this, openRoot, { root.removeLastOrNull() })
         }
         if (session != null && root.lastOrNull() == Route.Main) {
             ScheduleBindingPrompt(graph) {
@@ -350,8 +507,9 @@ fun App(platform: PlatformServices = remember { createPlatformServices() }, grap
 private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, stacks: List<NavBackStack>, onAccountRecovery: () -> Unit) {
     val stack = NavigationLayoutPolicy.stackFor(stacks, selected)
     val activeTab = NavigationLayoutPolicy.tabIndex(selected)
-    val open: (Route) -> Unit = { route ->
-        if (route is Route.Page && route.kind == "resetpassword") onAccountRecovery() else stack.pushUnique(route)
+    val navigation = graph.navigation
+    val open: (NavKey) -> Unit = { route ->
+        if (route is Route.Page && route.kind == "resetpassword") onAccountRecovery() else stack.pushUnique(route, navigation)
     }
     // Ardot 24:22: five tabs 首页/课表/校园网/服务/我的. 校园跑 moves into the 服务 directory
     // (P46) but its pages stay reachable through the third tab's stack.
@@ -416,13 +574,18 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
                                 1 -> ScheduleRootPage(graph, open)
                                 2 -> CampusNetworkFeaturePage(graph, onBack = null,
                                     onOpenDormSignIn = { open(Route.Page("dormnetwork", title = io.github.betterzslf.core.text.AppText.Auth.ENTRY_DORM_LINK)) })
-                                3 -> ServicesPage(graph, open)
+                                3 -> {
+                                    val contribution = graph.contributions
+                                    val directory = remember(contribution) { ServiceDirectory(contribution) }
+                                    ServicesPage(directory.state) { event -> directory.routeFor(event)?.let(open) }
+                                }
                                 4 -> ProfileScreen(graph, open)
                             }
                         }
-                        entry<Route.Page>(swipeDismiss = if ((stack.lastOrNull() as? Route.Page)?.kind in setOf("water", "runtracker", "resetpassword")) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) { route ->
+                        entry<Route.Page>(swipeDismiss = if (stack.lastOrNull()?.let(navigation::swipeDismiss) == false) NavSwipeDirection.None else NavSwipeDirection.LeftToRight) { route ->
                             FeaturePage(graph, route, open) { stack.removeLastOrNull() }
                         }
+                        navigation.registerEntries(this, open, { stack.removeLastOrNull() })
                     }
                 }
             }

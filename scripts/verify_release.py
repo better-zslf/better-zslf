@@ -30,7 +30,7 @@ def only_file(pattern: str) -> Path:
 
 def validate_apk_identity(badging: str, metadata: dict, edition: str) -> str:
     if edition not in APPLICATION_IDS:
-        raise ValueError("Edition must be standard or pro")
+        raise ValueError("Edition must be standard in this public verifier; Pro verification belongs to its private product root")
     package = re.search(r"^package: name='([^']+)' versionCode='([^']+)' versionName='([^']*)'", badging, re.M)
     if not package or package[1] != APPLICATION_IDS[edition]:
         raise ValueError("APK applicationId differs from the selected edition")
@@ -49,7 +49,7 @@ def build_tool(tools: Path, name: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--edition", choices=tuple(APPLICATION_IDS), default="pro")
+    parser.add_argument("--edition", choices=tuple(APPLICATION_IDS), default="standard")
     parser.add_argument("--metadata", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

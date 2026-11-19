@@ -2,7 +2,6 @@
 
 package io.github.betterzslf.platform
 
-import io.github.betterzslf.edition.BuildEdition
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.darwin.Darwin
 import platform.Foundation.NSBundle
@@ -27,7 +26,7 @@ private object IosPlatformServices : PlatformServices {
         get() = (NSBundle.mainBundle.objectForInfoDictionaryKey("BetterZslfDisplayVersion") as? String)
             ?.takeIf { it.isNotEmpty() }
             ?: (NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String)
-                ?.let { it + BuildEdition.versionNameSuffix } ?: "unknown"
+                ?.takeIf { it.isNotEmpty() } ?: "unknown"
 
     // Deliberately omit the user-assigned device name, identifiers, and other fingerprinting data.
     override val description: String

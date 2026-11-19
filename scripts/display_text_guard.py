@@ -8,10 +8,18 @@ Public generator API (Kotlin entry point remains unchanged):
     make_exception(path, source, token, reason, owner, *, category='protocol')
 
 Scope: commonMain package ui/core/feature/data/platform/edition/**/*.kt, App.kt and
-optional AppGraph.kt; shared/src/{androidMain,iosMain,jvmMain,standardMain,proMain}/kotlin/**/*.kt,
-androidApp/src/main/kotlin/**/*.kt and iosApp/Sources/**/*.swift. Only the exact
-commonMain core/text/AppText.kt is catalog-excluded. Every scope directory is
-required; resources, tests and other source sets are not included.
+optional AppGraph.kt; shared/src/{androidMain,iosMain,jvmMain}/kotlin/**/*.kt,
+androidApp/src/main/kotlin/**/*.kt and iosApp/Sources/**/*.swift. The V2 modules
+core/text, core/run-model, core/logging, core/network-session, design-system, feature/run/api,
+feature/services/{presentation,ui}, platform-ui/readonly-map and the extracted
+schedule/{api,domain,data}, home/{presentation,ui}, update/{domain,data,presentation,ui}
+require commonMain/kotlin and also scan any
+additional src/*Main/kotlin production roots. Legacy shared common roots stay;
+retired standardMain/proMain are no longer required but are scanned if present
+(architecture guard rejects production source reintroduction). Only the exact
+core/text module AppText.kt is
+catalog-excluded; a copy at the old path is scanned. Resources and tests are not
+included, and every explicitly required scope directory must exist.
 Offsets are Python string offsets, end-exclusive; line/column are one-based.
 Token.source includes delimiters. Literal parts have one segment per template
 boundary (including empty segments); template expressions are never evaluated.
@@ -51,10 +59,27 @@ KOTLIN_BASE = "shared/src/commonMain/kotlin/io/github/betterzslf/"
 UI_PREFIX = KOTLIN_BASE + "ui/"
 APP_PATH = KOTLIN_BASE + "App.kt"
 APP_GRAPH_PATH = KOTLIN_BASE + "AppGraph.kt"
-CATALOG_PATH = KOTLIN_BASE + "core/text/AppText.kt"
-SCOPE_PREFIXES = tuple(KOTLIN_BASE + name + "/" for name in ("ui", "core", "feature", "data", "platform", "edition"))
-C_KOTLIN_PREFIXES = tuple("shared/src/" + name + "/kotlin/" for name in ("androidMain", "iosMain", "jvmMain", "standardMain", "proMain")) + (
+MODULE_ROOTS = ("core/text", "core/run-model", "core/logging", "core/network-session", "core/storage", "platform/storage", "design-system", "feature/run/api", "feature/run/domain", "feature/run/data", "feature/run/presentation", "feature/run/ui",
+                "feature/services/presentation", "feature/services/ui", "platform-ui/readonly-map",
+                "feature/schedule/api", "feature/schedule/domain", "feature/schedule/data", "feature/schedule/ui",
+                "feature/home/presentation", "feature/home/ui", "feature/update/domain",
+                "feature/update/data", "feature/update/presentation", "feature/update/ui",
+                "feature/accountrecovery/domain", "feature/accountrecovery/data", "feature/accountrecovery/presentation", "feature/accountrecovery/ui",
+                "feature/campusnet/domain", "feature/campusnet/data", "feature/campusnet/presentation", "feature/campusnet/ui", "platform/updates",
+                "platform/schedule-native", "feature/schedule/runtime",
+                "feature/auth/domain", "feature/auth/data", "feature/auth/presentation", "feature/auth/ui",
+                "feature/run/runtime", "platform/location",
+                "feature/profile/domain", "feature/profile/data", "feature/profile/presentation",
+                "feature/content/domain", "feature/content/data", "feature/content/presentation")
+MODULE_KOTLIN_PREFIXES = tuple(module + ("/src/androidMain/kotlin/" if module == "platform/storage" else "/src/commonMain/kotlin/") for module in MODULE_ROOTS)
+CATALOG_PATH = "core/text/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt"
+SCOPE_PREFIXES = tuple(KOTLIN_BASE + name + "/" for name in ("ui", "core", "feature", "data", "platform"))
+C_KOTLIN_PREFIXES = tuple("shared/src/" + name + "/kotlin/" for name in ("androidMain", "iosMain", "jvmMain")) + (
     "androidApp/src/main/kotlin/",
+)
+RETIRED_KOTLIN_PREFIXES = tuple("shared/src/" + name + "/kotlin/" for name in ("standardMain", "proMain"))
+OPTIONAL_KOTLIN_PREFIXES = RETIRED_KOTLIN_PREFIXES + (
+    KOTLIN_BASE + "edition/", "platform/android-host/src/main/kotlin/",
 )
 SWIFT_PREFIX = "iosApp/Sources/"
 TOKEN_KINDS = frozenset(("string", "raw_string", "char"))
@@ -589,6 +614,17 @@ def has_han(token: Token) -> bool:
                for part in token.literal_parts for char in part for low, high in _HAN_RANGES)
 
 
+def _module_production_path(value: str) -> bool:
+    parts = PurePosixPath(value).parts
+    for module in MODULE_ROOTS:
+        base = PurePosixPath(module).parts
+        if (parts[:len(base)] == base and len(parts) > len(base) + 3
+                and parts[len(base)] == "src" and parts[len(base) + 1].endswith("Main")
+                and parts[len(base) + 2] == "kotlin" and value.endswith(".kt")):
+            return True
+    return False
+
+
 def _normal_path(path) -> str:
     value = str(path).replace("\\", "/")
     pure = PurePosixPath(value)
@@ -597,7 +633,8 @@ def _normal_path(path) -> str:
         raise ValueError("Expected canonical repository-relative path")
     if value == CATALOG_PATH or not (
         value in (APP_PATH, APP_GRAPH_PATH)
-        or (value.endswith(".kt") and any(value.startswith(prefix) for prefix in (*SCOPE_PREFIXES, *C_KOTLIN_PREFIXES)))
+        or (value.endswith(".kt") and any(value.startswith(prefix) for prefix in (*SCOPE_PREFIXES, *C_KOTLIN_PREFIXES, *OPTIONAL_KOTLIN_PREFIXES)))
+        or _module_production_path(value)
         or (value.endswith(".swift") and value.startswith(SWIFT_PREFIX))
     ):
         raise ValueError("Exception path is outside Phase C Kotlin/Swift scope")
@@ -746,7 +783,7 @@ class GuardResult:
 
 
 def run_guard(root, allowlist=None) -> GuardResult:
-    """Scan required common/platform Kotlin and Swift roots; exclude only AppText.kt."""
+    """Scan legacy and extracted production roots; exclude only the moved catalog."""
     root = Path(root).resolve()
     allowlist_path = Path(allowlist) if allowlist is not None else Path("scripts/display-text-exceptions.json")
     if not allowlist_path.is_absolute():
@@ -758,7 +795,17 @@ def run_guard(root, allowlist=None) -> GuardResult:
         entries = []
         errors.append({"code": "allowlist_error", "message": str(exc)})
     targets = []
-    scopes = tuple((prefix, "*.kt") for prefix in (*SCOPE_PREFIXES, *C_KOTLIN_PREFIXES)) + ((SWIFT_PREFIX, "*.swift"),)
+    scopes = tuple((prefix, "*.kt") for prefix in (*SCOPE_PREFIXES, *C_KOTLIN_PREFIXES, *MODULE_KOTLIN_PREFIXES)) + ((SWIFT_PREFIX, "*.swift"),)
+    for prefix in OPTIONAL_KOTLIN_PREFIXES:
+        if (root / prefix).exists():
+            scopes += ((prefix, "*.kt"),)
+    # Common roots are mandatory; platform Main roots are scanned when present.
+    # No recursive module-wide glob can accidentally include tests/resources.
+    for module in MODULE_ROOTS:
+        for directory in sorted((root / module / "src").glob("*Main/kotlin")):
+            prefix = directory.relative_to(root).as_posix() + "/"
+            if prefix not in MODULE_KOTLIN_PREFIXES:
+                scopes += ((prefix, "*.kt"),)
     for prefix, pattern in scopes:
         directory = root / prefix
         if not directory.is_dir():

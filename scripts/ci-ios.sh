@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-[[ "$(uname -s)" == Darwin ]] || { echo 'iOS build requires macOS.' >&2; exit 1; }
-method="${BETTER_ZSLF_CI_SIGNING_METHOD:-manual-ad-hoc}"
-case "$method" in manual-ad-hoc|xcode-simulator) ;; *) echo 'Unknown Simulator signing method.' >&2; exit 2 ;; esac
-edition="${ORG_GRADLE_PROJECT_betterZslfEdition-pro}"
+edition="${ORG_GRADLE_PROJECT_betterZslfEdition-standard}"
 for argument in "$@"; do
   case "$argument" in
     -PbetterZslfEdition=*) edition="${argument#-PbetterZslfEdition=}" ;;
@@ -12,17 +9,18 @@ for argument in "$@"; do
     *) echo 'Expected Gradle version or betterZslfEdition overrides.' >&2; exit 2 ;;
   esac
 done
-case "$edition" in
-  standard) bundle=io.github.betterzslf ;;
-  pro) bundle=io.github.betterzslf.pro ;;
-  *) echo 'betterZslfEdition must be standard or pro.' >&2; exit 2 ;;
-esac
+[[ "$edition" == standard ]] || { echo 'The public iOS CI supports Standard only; use the private Pro product.' >&2; exit 2; }
+bundle=io.github.betterzslf
 export ORG_GRADLE_PROJECT_betterZslfEdition="$edition"
+[[ "$(uname -s)" == Darwin ]] || { echo 'iOS build requires macOS.' >&2; exit 1; }
+method="${BETTER_ZSLF_CI_SIGNING_METHOD:-manual-ad-hoc}"
+case "$method" in manual-ad-hoc|xcode-simulator) ;; *) echo 'Unknown Simulator signing method.' >&2; exit 2 ;; esac
 : "${DEVELOPER_DIR:=/Applications/Xcode_26.4.1.app/Contents/Developer}"
 export DEVELOPER_DIR
 [[ -d "$DEVELOPER_DIR" ]] || { echo 'Pinned Xcode 26.4.1 is missing.' >&2; exit 1; }
 xcodebuild -version
 python3 scripts/verify-wrapper.py
+python3 -B -m unittest discover -s iosApp/tests -p 'test_version_settings.py' -v
 bash iosApp/tests/version-scripts-test.sh
 python3 iosApp/tests/check-capabilities.py
 python3 iosApp/tests/check-map.py

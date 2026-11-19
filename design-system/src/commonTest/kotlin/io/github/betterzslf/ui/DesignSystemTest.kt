@@ -1,0 +1,138 @@
+package io.github.betterzslf.ui
+
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotSame
+import kotlin.test.assertTrue
+
+class DesignSystemTest {
+    @Test fun finalArdotPaletteHasIndependentLightAndDarkSurfaces() {
+        val light = ardotLightColors()
+        val dark = ardotDarkColors()
+        assertEquals(Color(0xFFF2F2F5), light.surface)
+        assertEquals(Color.White, light.surfaceContainer)
+        assertEquals(Color.White, light.secondaryContainer)
+        assertEquals(Color(0xFF3382FF), light.primary)
+        assertEquals(Color(0xFF757578), light.onSurfaceVariantSummary)
+        assertEquals(Color(0xFF0D0F12), dark.surface)
+        // Dark cards are deliberately one step lighter than the page (#0D0F12 -> card is
+        // #22262D, was #1A1C21). Reusing the background token made card and page identical in
+        // luminance terms (1.13:1 measured on device), so cards read as holes, not surfaces.
+        assertEquals(Color(0xFF22262D), dark.surfaceContainer)
+        assertEquals(Color(0xFF22262D), dark.secondaryContainer)
+        assertEquals(Color(0xFF5C94FF), dark.primary)
+        assertEquals(Color(0xFF99A1A8), dark.onSurfaceVariantSummary)
+        assertEquals(Color(0xFFE5E5EB), light.outline)
+        assertEquals(Color(0xFF292E36), dark.outline)
+        assertTrue(contrast(light.onSurface, light.surface) >= 7f)
+        assertTrue(contrast(dark.onSurface, dark.surface) >= 7f)
+        // A dark card must stay distinguishable from the page it sits on. Merging the two tokens
+        // back together silently makes every card invisible in dark mode.
+        assertNotEquals(dark.surface, dark.surfaceContainer)
+        assertTrue(dark.surfaceContainer.red > dark.surface.red, "dark card must be lighter than the page")
+        assertTrue(contrast(dark.onSurface, dark.surfaceContainer) >= 7f)
+        val other = ardotLightColors()
+        val customized = light.copy(primary = Color.Magenta)
+        assertNotSame(light, other)
+        assertNotSame(light, customized)
+        assertEquals(Color.Magenta, customized.primary)
+        assertEquals(Color(0xFF3382FF), light.primary)
+        assertEquals(Color(0xFF3382FF), other.primary)
+    }
+
+    @Test fun refreshCompletionDoesNotInventAQuerySuccess() {
+        assertEquals(listOf("下拉刷新", "松开刷新", "正在刷新…", ""), appRefreshTexts())
+    }
+
+    @Test fun primaryActionPairingClearsTheSmallTextContrastFloor() {
+        // §3.3: the stock brand primary with white text is below 4.5:1 for the 16sp action
+        // label. The project action pairing is defined once and must actually pass on both
+        // fixed-brand surfaces. Monet/dynamic schemes keep their own semantic onPrimary pair.
+        val lightPair = contrast(AppUiTokens.OnPrimaryActionLight, AppUiTokens.PrimaryActionLight)
+        val darkPair = contrast(AppUiTokens.OnPrimaryActionDark, AppUiTokens.PrimaryActionDark)
+        assertTrue(lightPair >= 4.5f, "light action pair was $lightPair")
+        assertTrue(darkPair >= 4.5f, "dark action pair was $darkPair")
+        // The old stock combination is the thing being fixed, recorded as a regression guard.
+        assertTrue(contrast(Color.White, AppUiTokens.Primary) < 4.5f)
+        assertTrue(contrast(Color.White, AppUiTokens.PrimaryDark) < 4.5f)
+        assertEquals(Color(0xFF266BF2), AppUiTokens.PrimaryActionLight)
+        assertEquals(Color(0xFF0D0F12), AppUiTokens.OnPrimaryActionDark)
+    }
+
+    @Test fun dimensionsAndTypographyMatchTheFinalNativeLayouts() {
+        assertEquals(20.dp, AppUiTokens.PagePadding)
+        assertEquals(24.dp, AppUiTokens.FormPadding)
+        assertEquals(16.dp, AppUiTokens.CardRadius)
+        assertEquals(14.dp, AppUiTokens.FieldRadius)
+        assertEquals(52.dp, AppUiTokens.ButtonHeight)
+        assertEquals(26.dp, AppUiTokens.ButtonRadius)
+        val styles = ardotTextStyles()
+        assertEquals(28.sp, styles.title1.fontSize)
+        assertEquals(18.sp, styles.title3.fontSize)
+        assertEquals(17.sp, styles.title4.fontSize)
+        assertEquals(FontWeight.Bold, styles.title1.fontWeight)
+    }
+
+    @Test fun scrollPaddingPreservesPhysicalCutoutsInBothDirections() {
+        val native = PaddingValues.Absolute(left = 30.dp, top = 80.dp, right = 7.dp, bottom = 10.dp)
+        for (direction in listOf(LayoutDirection.Ltr, LayoutDirection.Rtl)) {
+            val result = pageContentPadding(native, 96.dp, direction)
+            assertEquals(50.dp, result.calculateLeftPadding(direction))
+            assertEquals(27.dp, result.calculateRightPadding(direction))
+            assertEquals(92.dp, result.calculateTopPadding())
+            // The floating bar is an overlay: its measured height wins over the scaffold inset, so
+            // the tail row is not covered. Section gap keeps a little breathing room below it.
+            assertEquals(116.dp, result.calculateBottomPadding())
+        }
+        val rtl = pageContentPadding(native, 0.dp, LayoutDirection.Rtl)
+        assertEquals(27.dp, rtl.calculateStartPadding(LayoutDirection.Rtl))
+        assertEquals(50.dp, rtl.calculateEndPadding(LayoutDirection.Rtl))
+    }
+
+    @Test fun overlayUsesTheWholeScaffoldMeasurementAndClearsForSubpagesAndRail() {
+        // 64dp pill + 12dp outside gap + 24dp system navigation area.
+        val measured = PaddingValues(bottom = 100.dp)
+        assertEquals(100.dp, navigationOverlayInset(measured, barVisible = true))
+        assertEquals(0.dp, navigationOverlayInset(measured, barVisible = false))
+        assertEquals(0.dp, navigationOverlayInset(PaddingValues(0.dp), barVisible = true))
+        kotlin.test.assertFailsWith<IllegalArgumentException> { PaddingValues(bottom = (-1).dp) }
+        val list = pageContentPadding(PaddingValues(bottom = 24.dp), navigationOverlayInset(measured, true), LayoutDirection.Ltr)
+        assertEquals(120.dp, list.calculateBottomPadding())
+        val detail = pageContentPadding(PaddingValues(bottom = 24.dp), navigationOverlayInset(measured, false), LayoutDirection.Ltr)
+        assertEquals(44.dp, detail.calculateBottomPadding())
+    }
+
+    @Test fun customHorizontalPaddingKeepsNativeInsetsAndTheLargerBottomReserve() {
+        val native = PaddingValues.Absolute(left = 9.dp, top = 4.dp, right = 13.dp, bottom = 80.dp)
+        for (direction in listOf(LayoutDirection.Ltr, LayoutDirection.Rtl)) {
+            val result = pageContentPadding(native, 32.dp, direction, horizontal = AppUiTokens.FormPadding)
+            assertEquals(33.dp, result.calculateLeftPadding(direction))
+            assertEquals(37.dp, result.calculateRightPadding(direction))
+            assertEquals(16.dp, result.calculateTopPadding())
+            assertEquals(100.dp, result.calculateBottomPadding())
+        }
+    }
+
+    @Test fun backGlyphRetainsMirroredStandardDimensions() {
+        assertTrue(BackChevron.autoMirror)
+        assertEquals(24.dp, BackChevron.defaultWidth)
+        assertEquals(24.dp, BackChevron.defaultHeight)
+        assertTrue(AppUiTokens.ButtonHeight >= 48.dp)
+    }
+
+    private fun contrast(a: Color, b: Color): Float {
+        val first = a.luminance()
+        val second = b.luminance()
+        return (maxOf(first, second) + 0.05f) / (minOf(first, second) + 0.05f)
+    }
+}

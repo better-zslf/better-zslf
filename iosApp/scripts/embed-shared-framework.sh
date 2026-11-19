@@ -2,6 +2,18 @@
 # Invoked before Compile Sources by Xcode. Shared.framework is static; do not add a Copy Frameworks phase.
 set -euo pipefail
 
+# This host owns Standard only. Reject a Pro identity even when an IDE supplies the binary.
+edition="${BETTER_ZSLF_EDITION-${ORG_GRADLE_PROJECT_betterZslfEdition-standard}}"
+if [[ "$edition" != standard ]]; then
+  printf '%s\n' 'The public iOS host supports Standard only; use the private Pro host.' >&2
+  exit 2
+fi
+bundle=io.github.betterzslf
+if [[ "${PRODUCT_BUNDLE_IDENTIFIER-$bundle}" != "$bundle" ]] ||
+   [[ "${BETTER_ZSLF_BUNDLE_ID-$bundle}" != "$bundle" ]]; then
+  printf '%s\n' 'Xcode edition and bundle identifier disagree; regenerate the project.' >&2
+  exit 2
+fi
 if [[ "${OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED:-NO}" == YES ]]; then
   printf '%s\n' 'Kotlin framework build is supplied by the IDE.'
   exit 0
@@ -27,23 +39,10 @@ if [[ ! "$MARKETING_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
   exit 2
 fi
 
-# Xcode's resolved edition wins over the ambient Gradle environment, like version settings.
-edition="${BETTER_ZSLF_EDITION-${ORG_GRADLE_PROJECT_betterZslfEdition-pro}}"
-case "$edition" in
-  standard) bundle=io.github.betterzslf ;;
-  pro) bundle=io.github.betterzslf.pro ;;
-  *) printf '%s\n' 'betterZslfEdition must be standard or pro.' >&2; exit 2 ;;
-esac
-if [[ "${PRODUCT_BUNDLE_IDENTIFIER-$bundle}" != "$bundle" ]] ||
-   [[ "${BETTER_ZSLF_BUNDLE_ID-$bundle}" != "$bundle" ]]; then
-  printf '%s\n' 'Xcode edition and bundle identifier disagree; regenerate the project.' >&2
-  exit 2
-fi
-
 cd "$repo_root"
 # The Xcode project settings must agree with the root version source, including an optional rcN
 # prerelease that stays out of Apple's numeric CFBundleShortVersionString. Gradle configures Android
-# too, so the full display version (base + rcN + edition suffix) is what it validates and records.
+# too, so the full Standard display version (base + optional rcN) is validated and recorded.
 bridge="$(python3 "$repo_root/iosApp/scripts/version_settings.py" xcode)" || exit 2
 IFS=$'\t' read -r gradle_version_name resolved_code resolved_edition <<< "$bridge"
 if [[ "$resolved_code" != "$CURRENT_PROJECT_VERSION" || "$resolved_edition" != "$edition" ]]; then

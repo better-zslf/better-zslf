@@ -1,7 +1,7 @@
 package io.github.betterzslf.data
 
 import io.github.betterzslf.core.text.AppText
-import io.github.betterzslf.core.model.Session
+import io.github.betterzslf.feature.accountrecovery.isValidRecoveryNewPassword
 import io.github.betterzslf.core.net.ApiClient
 import io.github.betterzslf.core.net.ApiEndpoint
 import io.github.betterzslf.core.net.ApiSessionBinding
@@ -12,8 +12,6 @@ import io.github.betterzslf.core.storage.SessionStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 
 enum class PasswordResetLogout { CLEARED, CLEAR_FAILED, NEW_SESSION_PRESERVED }
 
@@ -38,38 +36,11 @@ class AuthRepository private constructor(
         return api.captureSessionBinding()?.let { AuthRepository(api, sessions, it) }
     }
 
-    /** Credentials are used only in this request; no password is retained or logged. */
-    suspend fun login(username: String, password: String): ApiResult<Session> {
-        return when (val result = api.execute(ApiEndpoint.LOGIN, queryParameters("username" to username, "password" to password))) {
-            is ApiResult.Failure -> result
-            is ApiResult.Success -> {
-                val data = result.data as? JsonObject
-                val token = (data?.get("accessToken") as? JsonPrimitive)?.contentOrNull
-                val userInfo = data?.get("userInfo") as? JsonObject
-                val deptInfo = data?.get("deptInfo") as? JsonObject
-                if (token.isNullOrBlank() || userInfo == null || deptInfo == null) {
-                    ApiResult.Failure(ApiError.Decode(AppText.Auth.LOGIN_RESPONSE_SESSION_INFORMATION_MISSING))
-                } else {
-                    val session = Session(
-                        token = token,
-                        userInfo = userInfo,
-                        deptInfo = deptInfo,
-                        mapToken = (data["mapToken"] as? JsonPrimitive)?.contentOrNull,
-                        mapWebType = (data["mapWebType"] as? JsonPrimitive)?.contentOrNull,
-                    )
-                    try {
-                        sessions.save(session)
-                        ApiResult.Success(session, result.message)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (_: Exception) {
-                        ApiResult.Failure(ApiError.Storage())
-                    }
-                }
-            }
-        }
-    }
-
+    /**
+     * The LOGIN decode moved into the core typed LOGIN protocol (ApiClient.executeLogin); this
+     * repository no longer owns any login path. Production callers use the typed campus login
+     * flow instead, and shared tests drive the core protocol directly.
+     */
     fun logout() { if (binding == null || api.isBindingCurrent(binding)) sessions.clear() }
 
     /** Observed reset-page upstream: phone-only SMS request, not verification or proof of delivery. */
@@ -112,16 +83,15 @@ class AuthRepository private constructor(
 
     private suspend fun requestPasswordChange(endpoint: ApiEndpoint, parameters: JsonObject): ChangeResult {
         val expected = binding ?: api.captureSessionBinding()
-        val snapshot = sessions.session.value
         val response = api.execute(endpoint, parameters, expectedSession = expected)
         if (response is ApiResult.Failure) return ChangeResult(response)
-        if (snapshot == null || (expected != null && !api.isBindingCurrent(expected)) ||
-            sessions.session.value?.userId != snapshot.userId || sessions.session.value?.token != snapshot.token) {
-            return ChangeResult(response, PasswordResetLogout.NEW_SESSION_PRESERVED)
-        }
+        if (expected == null) return ChangeResult(response, PasswordResetLogout.NEW_SESSION_PRESERVED)
         return try {
-            sessions.clearIfTokenMatches(snapshot.token)
-            ChangeResult(response, PasswordResetLogout.CLEARED)
+            // The client checks authority + epoch + owner + token and clears in one non-suspending
+            // state-dispatcher operation. A successful late receipt never clears a replacement login.
+            val logout = if (api.clearCurrentBinding(expected)) PasswordResetLogout.CLEARED
+                else PasswordResetLogout.NEW_SESSION_PRESERVED
+            ChangeResult(response, logout)
         } catch (cancelled: CancellationException) {
             // SessionStore clears its in-memory value in finally, even if backing storage fails.
             ChangeResult(response, PasswordResetLogout.CLEAR_FAILED)
@@ -139,10 +109,6 @@ class AuthRepository private constructor(
         ))
 
     companion object {
-        fun isValidNewPassword(value: String): Boolean = value.length >= 8 &&
-            value.any { it in 'a'..'z' || it in 'A'..'Z' } &&
-            value.any { it in '0'..'9' } &&
-            value.any { !it.isLetterOrDigit() && !it.isWhitespace() } &&
-            value.none { it.isWhitespace() }
+        fun isValidNewPassword(value: String): Boolean = isValidRecoveryNewPassword(value)
     }
 }

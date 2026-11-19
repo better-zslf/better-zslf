@@ -11,8 +11,11 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "shared/src/iosMain/kotlin/io/github/betterzslf/platform/RunMapPanel.ios.kt"
+MAP_ROOT = ROOT / "platform-ui/readonly-map/src"
+SOURCE = MAP_ROOT / "iosMain/kotlin/io/github/betterzslf/platform/RunMapPanel.ios.kt"
 text = SOURCE.read_text(encoding="utf-8")
+contract = (MAP_ROOT / "commonMain/kotlin/io/github/betterzslf/platform/RunMapPanel.kt").read_text(encoding="utf-8")
+web = (MAP_ROOT / "commonMain/kotlin/io/github/betterzslf/platform/RunMapWeb.kt").read_text(encoding="utf-8")
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--node", help="Existing Node executable; no packages are downloaded.")
 args = parser.parse_args()
@@ -58,7 +61,10 @@ check("about blank and owned-base fragments accepted", 'url.substringBefore(\'#\
 check("stale configuration messages rejected", "if (!sameConfiguration(model)) return" in message)
 check("bounded string message only", "message.body as? String ?: return" in message and "payload.length > MAX_MAP_MESSAGE_CHARS" in message)
 check("common parser receives latest model and exact ID", "RunMapWeb.parseEvent(payload, model, id)" in message)
-check("ready gates edit/selection events", "else -> if (ready) onEvent?.invoke(event)" in message)
+check("ready gates checkpoint selection events", "else -> if (ready) onEvent?.invoke(event)" in message)
+check("public contract stays read only", not re.search(r"editMode|DrawPoint|MapEditor|RunMapEditing", contract + web + text))
+check("public display paths and checkpoints preserved", all(value in contract for value in ("actualPath", "recommendedPath", "importedPath", "currentLocation", "CheckpointSelected")))
+check("no private module dependency or old shared renderer path", not re.search(r"io\.github\.betterzslf\.pro\.|pro-ci|pro/map-editor", contract + web + text) and not (ROOT / "shared/src/iosMain/kotlin/io/github/betterzslf/platform/RunMapPanel.ios.kt").exists())
 check("only initial owned main-frame navigation", "!allowingInitialNavigation" in text and "action.targetFrame?.mainFrame == true" in text and "action.sourceFrame.mainFrame" in text and "action.navigationType == WKNavigationTypeOther" in text)
 check("navigation always decides allow or cancel", "decisionHandler(if (allow) WKNavigationActionPolicy.WKNavigationActionPolicyAllow else WKNavigationActionPolicy.WKNavigationActionPolicyCancel)" in text)
 check("popups return no webview", "windowFeatures: WKWindowFeatures): WKWebView? = null" in text and "javaScriptCanOpenWindowsAutomatically = false" in text)

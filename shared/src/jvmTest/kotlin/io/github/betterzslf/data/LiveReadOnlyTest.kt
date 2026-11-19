@@ -3,10 +3,15 @@ package io.github.betterzslf.data
 import io.github.betterzslf.core.net.ApiClient
 import io.github.betterzslf.core.net.ApiConfig
 import io.github.betterzslf.core.net.ApiEndpoint
+import io.github.betterzslf.core.net.ApiLoginOutcome
 import io.github.betterzslf.core.result.ApiError
 import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.core.storage.MemoryKeyValueStore
 import io.github.betterzslf.core.storage.SessionStore
+import io.github.betterzslf.feature.campusnet.CampusOutcome
+import io.github.betterzslf.feature.campusnet.RepositoryCampusNetworkSource
+import io.github.betterzslf.feature.runui.ApiRunReadSource
+import io.github.betterzslf.feature.runui.RunReadOutcome
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.runBlocking
@@ -17,6 +22,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlin.test.Test
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -39,14 +45,23 @@ class LiveReadOnlyTest {
         val api = ApiClient(http, sessions, ApiConfig(platform = "android", appVersion = "host-live-readonly"))
         val repos = AppRepositories(api, sessions)
         try {
-            val login = repos.auth.login(username, password)
-            if (login is ApiResult.Failure) {
-                val code = errorCode(login.error)
-                println("${ApiEndpoint.LOGIN.path} code=$code count=0")
-                assertTrue(false, "${ApiEndpoint.LOGIN.path} code=$code")
-                return@runBlocking
+            // Login is the sole credential-bearing call; it now drives the typed core LOGIN
+            // protocol directly (AuthRepository no longer owns a login path). Test-only seam.
+            val attempt = api.captureLoginAttempt()
+            assertTrue(api.claimLoginAttempt(attempt))
+            when (val login = api.executeLogin(attempt, username, password)) {
+                is ApiLoginOutcome.Accepted -> println("${ApiEndpoint.LOGIN.path} code=200 count=1")
+                is ApiLoginOutcome.Rejected -> {
+                    println("${ApiEndpoint.LOGIN.path} code=${login.issue} count=0")
+                    assertTrue(false, "${ApiEndpoint.LOGIN.path} code=${login.issue}")
+                    return@runBlocking
+                }
+                is ApiLoginOutcome.Unknown -> {
+                    println("${ApiEndpoint.LOGIN.path} code=${login.issue} count=0")
+                    assertTrue(false, "${ApiEndpoint.LOGIN.path} code=${login.issue}")
+                    return@runBlocking
+                }
             }
-            println("${ApiEndpoint.LOGIN.path} code=200 count=1")
             val userId = sessions.session.value?.userId
             assertTrue(!userId.isNullOrBlank(), "${ApiEndpoint.LOGIN.path} code=MISSING_USER_ID")
 
@@ -54,9 +69,22 @@ class LiveReadOnlyTest {
             report(ApiEndpoint.USER_PHOTO, repos.profile.photo())
             report(ApiEndpoint.USER_STATISTICS, repos.profile.statistics())
 
-            report(ApiEndpoint.RUN_TASKS, repos.run.tasks(userId, offset = 0, limit = 5, isFinish = "0"))
+            when (val tasks = assertNotNull(ApiRunReadSource.capture(api)).tasks(userId, offset = 0, limit = 5, isFinish = "0")) {
+                is RunReadOutcome.Success -> println("${ApiEndpoint.RUN_TASKS.path} code=200 count=${tasks.data.rawSize}")
+                is RunReadOutcome.Failure -> {
+                    println("${ApiEndpoint.RUN_TASKS.path} code=${tasks.issue} count=0")
+                    assertTrue(false, "${ApiEndpoint.RUN_TASKS.path} code=${tasks.issue}")
+                }
+            }
 
-            report(ApiEndpoint.CAMPUS_ACCOUNTS, repos.campusNetwork.accounts())
+            // Typed factory keeps the raw campus wire methods private to their data module.
+            when (val accounts = assertNotNull(RepositoryCampusNetworkSource.capture(repos.campusNetwork)).accounts()) {
+                is CampusOutcome.Success -> println("${ApiEndpoint.CAMPUS_ACCOUNTS.path} code=200 count=${accounts.data.size}")
+                is CampusOutcome.Failure -> {
+                    println("${ApiEndpoint.CAMPUS_ACCOUNTS.path} code=${accounts.issue} count=0")
+                    assertTrue(false, "${ApiEndpoint.CAMPUS_ACCOUNTS.path} code=${accounts.issue}")
+                }
+            }
             report(ApiEndpoint.CHECK_VERSION, repos.updates.check())
         } finally {
             sessions.clear()

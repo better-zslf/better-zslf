@@ -10,7 +10,9 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM = "kotlin/io/github/betterzslf/platform/"
-ANDROID = (ROOT / "shared/src/androidMain" / PLATFORM / "AppUpdater.android.kt").read_text(encoding="utf-8")
+ANDROID_FACTORY = (ROOT / "shared/src/androidMain" / PLATFORM / "AppUpdater.android.kt").read_text(encoding="utf-8")
+ANDROID = (ROOT / "platform/updates/src/androidMain" / PLATFORM / "AndroidNativeUpdateOwner.kt").read_text(encoding="utf-8")
+UNAVAILABLE = (ROOT / "platform/updates/src/commonMain" / PLATFORM / "UnavailableNativeUpdateOwner.kt").read_text(encoding="utf-8")
 COMMON = (ROOT / "shared/src/commonMain" / PLATFORM / "AppUpdater.kt").read_text(encoding="utf-8")
 IOS = (ROOT / "shared/src/iosMain" / PLATFORM / "AppUpdater.ios.kt").read_text(encoding="utf-8")
 JVM = (ROOT / "shared/src/jvmMain" / PLATFORM / "AppUpdater.jvm.kt").read_text(encoding="utf-8")
@@ -21,8 +23,12 @@ def section(start, end):
     return ANDROID.split(start, 1)[1].split(end, 1)[0]
 
 
-POLICY = (ROOT / "shared/src/commonMain/kotlin/io/github/betterzslf/feature/update/GithubReleaseModels.kt").read_text(encoding="utf-8")
-EDITION_SOURCES = {edition: (ROOT / f"shared/src/{edition}Main/kotlin/io/github/betterzslf/edition/BuildEdition.kt").read_text(encoding="utf-8") for edition in ("standard", "pro")}
+UPDATE_DOMAIN = ROOT / "feature/update/domain/src/commonMain/kotlin/io/github/betterzslf/feature/update"
+STABLE_VERSION = (UPDATE_DOMAIN / "StableVersion.kt").read_text(encoding="utf-8")
+INSTALL_POLICY = (UPDATE_DOMAIN / "GithubReleasePolicy.kt").read_text(encoding="utf-8")
+POLICY = STABLE_VERSION + "\n" + INSTALL_POLICY
+PRODUCT_POLICY = (UPDATE_DOMAIN / "ProductUpdatePolicy.kt").read_text(encoding="utf-8")
+UPDATER_CONTRACT = (ROOT / "feature/update/domain/src/commonMain/kotlin/io/github/betterzslf/platform/NativeAppUpdater.kt").read_text(encoding="utf-8")
 
 
 def kotlin_regex(name):
@@ -30,28 +36,68 @@ def kotlin_regex(name):
     return re.compile(json.loads('"' + raw + '"'))
 
 
-def edition_constant(edition, name):
-    return re.search(r'const val ' + name + r'(?:: String)? = "([^"\n]*)"', EDITION_SOURCES[edition]).group(1)
+def standard_policy():
+    declaration = PRODUCT_POLICY.split("val Standard: ProductUpdatePolicy = ProductUpdatePolicy(", 1)[1].split("\n        )", 1)[0]
+    return {name: re.search(r'\b' + name + r' = "([^"\n]*)"', declaration).group(1)
+            for name in ("repository", "apkAssetPrefix", "androidApplicationId", "versionNameSuffix")}
 
 
 VERSION = kotlin_regex("pattern")
 SHA = kotlin_regex("shaPattern")
-ASSET_TEMPLATE = re.search(r'const val ASSET_PREFIX = "([^"\n]+)"', POLICY).group(1)
-URL_TEMPLATE = ASSET_TEMPLATE.replace("${BuildEdition.updateRepository}", edition_constant("standard", "updateRepository")) + "v${spec.versionName}/better-zslf-${spec.versionName}.apk"
+STANDARD = standard_policy()
+# Synthetic product-root configuration, not a claim about any private release repository.
+OTHER = dict(repository="fixture-owner/private-product", apkAssetPrefix="fixture-product-",
+             androidApplicationId="fixture.example.pro", versionNameSuffix="-pro")
 
 
-def extracted_policy(version="1.2.3", size=1, sha="a" * 64, url=None, edition="standard"):
-    """Actual common regex/template plus actual selected edition constants; not Kotlin runtime proof."""
-    prefix = ASSET_TEMPLATE.replace("${BuildEdition.updateRepository}", edition_constant(edition, "updateRepository"))
-    expected = prefix + f"v{version}/better-zslf-{version}.apk"
-    suffix = edition_constant(edition, "versionNameSuffix")
+def policy_asset_url(policy, version):
+    return f'https://github.com/{policy["repository"]}/releases/download/v{version}/{policy["apkAssetPrefix"]}{version}.apk'
+
+
+def extracted_policy(version="1.2.3", size=1, sha="a" * 64, url=None, policy=None):
+    """Reviewed pure projection using live regex/default config; not compiled Kotlin proof."""
+    policy = STANDARD if policy is None else policy
+    suffix = policy["versionNameSuffix"]
+    expected = policy_asset_url(policy, version)
     numeric = version.removesuffix(suffix) if suffix else version
-    return 1 <= len(version) <= 128 and VERSION.fullmatch(numeric) is not None and 1 <= size <= 250 * 1024 * 1024 and SHA.fullmatch(sha) is not None and (expected if url is None else url) == expected
+    return (1 <= len(version) <= 128 and version.endswith(suffix) and VERSION.fullmatch(numeric) is not None
+            and 1 <= size <= 250 * 1024 * 1024 and SHA.fullmatch(sha) is not None
+            and (expected if url is None else url) == expected)
 
 
 class NativeUpdaterSourceTests(unittest.TestCase):
+    def test_phase_two_owned_implementation_manifest_and_host_tests_are_extracted(self):
+        self.assertNotIn("DownloadManager", ANDROID_FACTORY)
+        self.assertNotIn("Context", ANDROID_FACTORY)
+        self.assertLess(len(ANDROID_FACTORY.splitlines()), 12)
+        self.assertFalse((ROOT / "shared/src/androidMain/AndroidManifest.xml").exists())
+        self.assertFalse((ROOT / "shared/src/androidMain/res/xml/better_zslf_update_paths.xml").exists())
+        for name in ("AndroidProductUpdatePolicyTest.kt", "AndroidUpdateOwnerTest.kt"):
+            self.assertTrue((ROOT / "platform/updates/src/androidHostTest" / PLATFORM / name).is_file())
+            self.assertFalse((ROOT / "shared/src/androidHostTest" / PLATFORM / name).exists())
+        supplier_test = (ROOT / "platform/updates/src/androidHostTest" / PLATFORM / "AndroidUpdateOwnerTest.kt").read_text(encoding="utf-8")
+        self.assertEqual(supplier_test.count("assertEquals(0, contextReads)"), 4)
+        self.assertIn("constructionIdleInstallCancelAndCloseDoNotObtainContext", supplier_test)
+        self.assertIn("invalidSpecificationFailsBeforeInvokingContextSupplier", supplier_test)
+        self.assertIn("factoryReturnsFreshOwnersAndFlowsWithoutAnInstalledGlobalContext", supplier_test)
+        self.assertIn("assertNotSame(first.state, second.state)", supplier_test)
+        inert_test = ROOT / "platform/updates/src/commonTest" / PLATFORM / "UnavailableNativeUpdateOwnerTest.kt"
+        self.assertTrue(inert_test.is_file())
+
+    def test_phase_one_physical_owner_is_domain_and_factory_only_stays_in_shared(self):
+        self.assertIn("interface NativeAppUpdater", UPDATER_CONTRACT)
+        self.assertNotIn("interface NativeAppUpdater", COMMON)
+        self.assertNotIn("data class ApkUpdateSpec", COMMON)
+        for name in ("ProductUpdatePolicy.kt", "GithubReleaseModels.kt", "GithubReleaseRepository.kt", "AppUpdateController.kt"):
+            self.assertFalse((ROOT / "shared/src/commonMain/kotlin/io/github/betterzslf/feature/update" / name).exists(), name)
+        self.assertIn("private val pattern = Regex", STABLE_VERSION)
+        self.assertIn("object GithubReleasePolicy", INSTALL_POLICY)
+
     def test_policy_extracted_from_actual_source_keeps_all_bounds(self):
-        self.assertIn("fun valid(spec: ApkUpdateSpec): Boolean = GithubReleasePolicy.isInstallSpec(spec)", ANDROID)
+        self.assertIn("fun valid(spec: ApkUpdateSpec, policy: ProductUpdatePolicy = ProductUpdatePolicy.Standard): Boolean = GithubReleasePolicy.isInstallSpec(spec, policy)", ANDROID)
+        for text in ("!normalized.endsWith(policy.versionNameSuffix)", "StableVersion.parse(spec.versionName, policy)",
+                     "policy.apkAssetName(spec.versionName)", "isAssetUrl(spec.downloadUrl, \"v${spec.versionName}\", name, policy)"):
+            self.assertIn(text, POLICY)
         for text in ("normalized.length > 128", "version.versionName != spec.versionName", "shaPattern.matches(spec.sha256)", "spec.sizeBytes !in 1..MAX_APK_BYTES", "250L * 1024 * 1024"):
             self.assertIn(text, POLICY)
         self.assertTrue(extracted_policy())
@@ -67,7 +113,7 @@ class NativeUpdaterSourceTests(unittest.TestCase):
         self.assertTrue(extracted_policy(version="9" * 100 + ".0.0"))
 
     def test_exact_github_url_rejects_credentials_ports_redirect_params_and_traversal(self):
-        valid = URL_TEMPLATE.replace("${spec.versionName}", "1.2.3")
+        valid = policy_asset_url(STANDARD, "1.2.3")
         for url in (valid.replace("https:", "http:"), valid.replace("github.com", "evil.example"), valid.replace("github.com", "user:pass@github.com"),
                     valid.replace("github.com", "github.com:443"), valid + "?token=x", valid + "#fragment", valid + "\n",
                     valid.replace("better-zslf-1.2.3.apk", "other.apk"), valid.replace("/v1.2.3/", "/v1.2.4/"),
@@ -75,19 +121,30 @@ class NativeUpdaterSourceTests(unittest.TestCase):
             self.assertFalse(extracted_policy(url=url))
 
     def test_factory_and_unsupported_platforms_are_fresh_and_inert(self):
-        self.assertIn("createNativeAppUpdater(): NativeAppUpdater = AndroidAppUpdater()", ANDROID)
+        self.assertIn("expect fun createNativeAppUpdater(policy: ProductUpdatePolicy = ProductUpdatePolicy.Standard)", COMMON)
+        self.assertIn("newAndroidAppUpdater(policy) { AndroidPlatform.context }", ANDROID_FACTORY)
+        self.assertIn("fun newAndroidAppUpdater(policy: ProductUpdatePolicy, context: () -> Context): NativeAppUpdater =", ANDROID)
+        self.assertIn("AndroidAppUpdater(policy, context)", ANDROID)
+        self.assertIn("private class AndroidAppUpdater(", ANDROID)
+        self.assertIn("private val policy: ProductUpdatePolicy,", ANDROID)
+        self.assertIn("private val appContext: () -> Context,", ANDROID)
+        self.assertIn("private val context: Context get() = appContext()", ANDROID)
+        self.assertNotIn("AndroidPlatform", ANDROID)
         initial = ANDROID.split("override fun download", 1)[0]
         self.assertNotIn("manager.enqueue", initial)
         self.assertNotIn("startActivity(", initial)
         self.assertIn("private val context: Context get()", initial)
         for source in (IOS, JVM):
-            self.assertIn("createNativeAppUpdater(): NativeAppUpdater = object", source)
-            self.assertIn("supportsApkInstall: Boolean = false", source)
-            self.assertIn("AppUpdatePhase.UNAVAILABLE", source)
-            for method in ("download(spec: ApkUpdateSpec)", "install()", "cancel()", "close()"):
-                self.assertIn("override fun " + method + " = Unit", source)
+            self.assertIn("createNativeAppUpdater(policy: ProductUpdatePolicy): NativeAppUpdater = newUnavailableAppUpdater()", source)
+            self.assertNotIn("MutableStateFlow", source)
             for action in ("HttpClient", "startActivity", "NSURL", "java.io", "DownloadManager"):
                 self.assertNotIn(action, source)
+                self.assertNotIn(action, UNAVAILABLE)
+        self.assertIn("fun newUnavailableAppUpdater(): NativeAppUpdater = UnavailableAppUpdater()", UNAVAILABLE)
+        self.assertIn("supportsApkInstall: Boolean = false", UNAVAILABLE)
+        self.assertIn("AppUpdatePhase.UNAVAILABLE", UNAVAILABLE)
+        for method in ("download(spec: ApkUpdateSpec)", "install()", "cancel()", "close()"):
+            self.assertIn("override fun " + method + " = Unit", UNAVAILABLE)
 
     def test_download_has_fixed_ua_and_never_auth_cookies_or_completion_notification(self):
         body = section("private suspend fun downloadOwned", "private suspend fun awaitDownload")
@@ -142,7 +199,7 @@ class NativeUpdaterSourceTests(unittest.TestCase):
                      'Uri.parse("package:${context.packageName}")', "FileProvider.getUriForFile", "FLAG_GRANT_READ_URI_PERMISSION", "clipData"):
             self.assertIn(text, body)
         self.assertIn("publish(transfer, AppUpdatePhase.INSTALLER_OPENED, AppText.Updates.SYSTEM_INSTALL_CONFIRMATION_REQUESTED_INSTALL_UNCONFIRMED, transfer.spec.sizeBytes)", body)
-        catalog = (ROOT / "shared/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt").read_text(encoding="utf-8")
+        catalog = (ROOT / "core/text/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt").read_text(encoding="utf-8")
         updates = catalog.split("    object Updates {", 1)[1].split("\n    }", 1)[0]
         self.assertIn('const val SYSTEM_INSTALL_CONFIRMATION_REQUESTED_INSTALL_UNCONFIRMED: String = "已向系统请求打开安装确认；尚未确认安装。"', updates)
         for text in ("PackageInstaller.Session", "EXTRA_NOT_UNKNOWN_SOURCE", "EXTRA_ALLOW_REPLACE", "FLAG_GRANT_WRITE_URI_PERMISSION", "su -c"):
@@ -162,7 +219,7 @@ class NativeUpdaterSourceTests(unittest.TestCase):
         self.assertNotIn("restore", COMMON.lower())
 
     def test_manifest_file_provider_is_narrow_and_keeps_main_permissions(self):
-        manifest = ET.parse(ROOT / "shared/src/androidMain/AndroidManifest.xml").getroot()
+        manifest = ET.parse(ROOT / "platform/updates/src/androidMain/AndroidManifest.xml").getroot()
         self.assertEqual([e.get(A + "name") for e in manifest.findall("uses-permission")], ["android.permission.REQUEST_INSTALL_PACKAGES"])
         app = manifest.find("application")
         self.assertEqual(app.attrib, {})
@@ -171,28 +228,52 @@ class NativeUpdaterSourceTests(unittest.TestCase):
         self.assertEqual(provider.get(A + "authorities"), "${applicationId}.updates")
         self.assertEqual(provider.get(A + "exported"), "false")
         self.assertEqual(provider.get(A + "grantUriPermissions"), "true")
-        paths = ET.parse(ROOT / "shared/src/androidMain/res/xml/better_zslf_update_paths.xml").getroot()
+        paths = ET.parse(ROOT / "platform/updates/src/androidMain/res/xml/better_zslf_update_paths.xml").getroot()
         self.assertEqual([(p.tag, p.get("path")) for p in paths], [("cache-path", "updates/")])
         main = ET.parse(ROOT / "androidApp/src/main/AndroidManifest.xml").getroot()
-        permissions = {e.get(A + "name") for e in main.findall("uses-permission")}
+        host = ET.parse(ROOT / "platform/android-host/src/main/AndroidManifest.xml").getroot()
+        permissions = {e.get(A + "name") for owner in (main, host) for e in owner.findall("uses-permission")}
         self.assertTrue({"android.permission.FOREGROUND_SERVICE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"} <= permissions)
         self.assertFalse(any("BLUETOOTH" in permission for permission in permissions))
-        pro = ET.parse(ROOT / "androidApp/src/pro/AndroidManifest.xml").getroot()
-        pro_permissions = {e.get(A + "name") for e in pro.findall("uses-permission")}
-        self.assertTrue(permissions <= pro_permissions)
-        self.assertTrue({"android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_SCAN"} <= pro_permissions)
+        location = host.find("application/service")
+        self.assertEqual(location.get(A + "name"), "io.github.betterzslf.platform.RunLocationService")
+        self.assertEqual(location.get(A + "foregroundServiceType"), "location")
+        self.assertEqual(location.get(A + "exported"), "false")
+        # Private product permissions are verified by its own product-root tests, not an
+        # obsolete public src/pro manifest or a required private checkout.
 
-    def test_pro_repository_suffix_and_package_are_isolated(self):
-        self.assertTrue(extracted_policy(version="1.2.3-pro", edition="pro"))
+    def test_injected_repository_suffix_and_package_are_isolated(self):
+        self.assertTrue(extracted_policy(version="1.2.3-pro", policy=OTHER))
         self.assertFalse(extracted_policy(version="1.2.3-pro"))
-        normal_url = URL_TEMPLATE.replace("${spec.versionName}", "1.2.3-pro")
-        self.assertFalse(extracted_policy(version="1.2.3-pro", edition="pro", url=normal_url))
-        self.assertEqual(edition_constant("standard", "androidApplicationId"), "io.github.betterzslf")
-        self.assertEqual(edition_constant("pro", "androidApplicationId"), "io.github.betterzslf.pro")
-        self.assertGreaterEqual(ANDROID.count("context.packageName != BuildEdition.androidApplicationId"), 2)
+        self.assertFalse(extracted_policy(version="1.2.3", policy=OTHER))
+        self.assertFalse(extracted_policy(version="1.2.3-pro", policy=OTHER,
+                                          url=policy_asset_url(STANDARD, "1.2.3-pro")))
+        self.assertFalse(extracted_policy(url=policy_asset_url(OTHER, "1.2.3")))
+        self.assertEqual(STANDARD, dict(repository="better-zslf/better-zslf", apkAssetPrefix="better-zslf-",
+                                        androidApplicationId="io.github.betterzslf", versionNameSuffix=""))
+        self.assertEqual(ANDROID.count("context.packageName != policy.androidApplicationId"), 2)
+        self.assertIn("!AndroidUpdatePolicy.valid(spec, policy)", ANDROID)
+        for source in (ANDROID, COMMON, IOS, JVM, POLICY, PRODUCT_POLICY):
+            self.assertNotIn("BuildEdition", source)
+
+    def test_policy_is_immutable_product_configuration_not_a_serialized_user_url(self):
+        self.assertIn("class ProductUpdatePolicy(", PRODUCT_POLICY)
+        for field in ("repository", "apkAssetPrefix", "androidApplicationId", "versionNameSuffix", "channel"):
+            self.assertRegex(PRODUCT_POLICY, r"val " + field + r":")
+        self.assertNotRegex(PRODUCT_POLICY, r"(?m)^\s*(?:data|open) class ProductUpdatePolicy")
+        self.assertNotIn("@Serializable", PRODUCT_POLICY)
+        self.assertNotRegex(PRODUCT_POLICY, r"\bvar\s")
+        self.assertIn("enum class ProductUpdateChannel { STABLE }", PRODUCT_POLICY)
+        for template in ('"https://github.com/$repository/releases"',
+                         '"https://api.github.com/repos/$repository/releases/latest"',
+                         '"https://github.com/$repository/releases/download/"'):
+            self.assertIn(template, PRODUCT_POLICY)
+        self.assertIn('name !in setOf(policy.apkAssetName(version.versionName), "SHA256SUMS")', POLICY)
+        self.assertIn('return url == "${policy.assetUrlPrefix}$tag/$name"', POLICY)
+        self.assertIn("StableVersion.parse(tag, policy)", POLICY)
 
     def test_errors_and_diagnostics_do_not_dump_paths_urls_or_exception_messages(self):
-        self.assertIn('toString(): String = "ApkUpdateSpec(redacted)"', COMMON)
+        self.assertIn('toString(): String = "ApkUpdateSpec(redacted)"', UPDATER_CONTRACT)
         for token in ("printStackTrace", "exception.message", "error.message", "Log.", "println("):
             self.assertNotIn(token, ANDROID)
         self.assertNotIn("transfer.spec.downloadUrl", ANDROID.split("private fun writeRecord", 1)[1])

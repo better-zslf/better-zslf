@@ -1,0 +1,34 @@
+plugins {
+    id 'org.jetbrains.kotlin.multiplatform'
+    id 'org.jetbrains.kotlin.plugin.serialization'
+    id 'com.android.kotlin.multiplatform.library'
+}
+
+// Every reusable library exposes the same target matrix; product umbrellas own frameworks.
+// Repeated leaf names (api/domain/data/presentation/ui) are NOT the same Gradle component.
+// Parent-qualified groups also give Kotlin metadata/Native klibs a distinct module identity.
+def ownerPath = project.path.substring(1).split(':').dropRight(1).join('.')
+group = 'io.github.betterzslf' + (ownerPath ? '.' + ownerPath.replace('-', '_') : '')
+version = '0.1.0-SNAPSHOT'
+
+kotlin {
+    jvmToolchain(21)
+    android {
+        namespace = 'io.github.betterzslf.' + project.path.substring(1).replace(':', '.').replace('-', '_')
+        compileSdk { version = release(37) { minorApiLevel = 2 } }
+        minSdk = 33
+        withHostTest {}
+    }
+    jvm()
+    iosArm64()
+    iosSimulatorArm64()
+    sourceSets {
+        commonTest.dependencies {
+            implementation kotlin('test')
+        }
+    }
+}
+
+tasks.withType(Test).configureEach {
+    maxHeapSize = '384m'
+}

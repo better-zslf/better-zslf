@@ -1,31 +1,26 @@
 package io.github.betterzslf.ui
 
 import io.github.betterzslf.core.text.AppText
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.*
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.betterzslf.AppGraph
-import io.github.betterzslf.edition.EditionAccess
-import io.github.betterzslf.core.result.ApiResult
+import io.github.betterzslf.composition.ContributedOfflineEntry
+import io.github.betterzslf.ui.auth.AuthChooserContent
+import io.github.betterzslf.ui.auth.AuthChooserDisplay
+import io.github.betterzslf.ui.auth.AuthLoginUiEvent
+import io.github.betterzslf.ui.auth.CampusLoginBinder
+import top.yukonga.miuix.kmp.nav.core.NavKey
 import io.github.betterzslf.feature.campusnet.CampusDiagnosisController
 import io.github.betterzslf.feature.campusnet.CampusDiagnosisControllerHolder
 import io.github.betterzslf.feature.campusnet.CampusDiagnosisHandshake
@@ -37,73 +32,67 @@ import io.github.betterzslf.feature.campusnet.DormXmlFields
 import io.github.betterzslf.feature.campusnet.campusAlgoStatusText
 import io.github.betterzslf.feature.campusnet.newDormClientId
 import io.github.betterzslf.feature.campusnet.recordDormSchoolIdentity
+import io.github.betterzslf.feature.campusnet.CampusOutcome
+import io.github.betterzslf.feature.campusnet.RepositoryCampusPortalSource
+import io.github.betterzslf.feature.campusnet.RepositoryCampusProvisionedPhoneSource
+import io.github.betterzslf.feature.campusnet.campusProvisionedPhonePrefix
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
-fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit, onWater: (() -> Unit)? = null,
+fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit,
+                extraEntry: ContributedOfflineEntry? = null, onExtraEntry: (NavKey) -> Unit = {},
                 onResetPassword: (() -> Unit)? = null, onEnter: () -> Unit = {}) {
     // The login surface is a two-step flow: first choose which account to sign in with, then the
     // form for that choice. Dormitory network is a secondary option, so it stays a small link
     // rather than a third card. Anything that signs in ends up in the same session gate.
+    //
+    // This root binder keeps only what never crosses into the feature content: the saveable
+    // stage, the raw credential drafts and the reveal flag (all mounted outside the stage
+    // switch, exactly as before), and the chooser's page routing. The campus form's controller,
+    // job and banner now live in CampusLoginBinder; the chooser and campus layouts are the
+    // feature content's, which reports typed intents back here.
+    val epoch by graph.sessions.revision.collectAsState()
     var stage by rememberSaveable { mutableStateOf(LoginStage.Chooser) }
-    var username by rememberSaveable { mutableStateOf("") }
-    // Password intentionally never participates in saved instance state or storage.
-    var password by remember { mutableStateOf("") }
-    var visible by remember { mutableStateOf(false) }
-    var loading by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
+    var username by rememberSaveable(graph, epoch) { mutableStateOf("") }
+    // Do not key the chooser/Dorm subtree: its independent carrier session must stay mounted.
+    var password by remember(graph, epoch) { mutableStateOf("") }
+    var visible by remember(graph, epoch) { mutableStateOf(false) }
     when (stage) {
-        LoginStage.Chooser -> LoginChooser(
-            showDormLink = true,
-            campusBound = graph.sessions.session.collectAsState().value != null,
-            academicBound = graph.schedule.state.collectAsState().value.boundAccount != null,
-            onCampus = { stage = LoginStage.Campus },
-            onAcademic = { stage = LoginStage.Academic },
-            onDorm = { stage = LoginStage.Dorm },
-            onEnter = onEnter,
-            onDocument = onDocument,
+        LoginStage.Chooser -> AuthChooserContent(
+            display = AuthChooserDisplay(
+                showDormLink = true,
+                campusBound = graph.sessions.session.collectAsState().value != null,
+                academicBound = graph.schedule.state.collectAsState().value.boundAccount != null,
+            ),
+            onEvent = chooser@{ event -> when (event) {
+                AuthLoginUiEvent.CHOOSE_CAMPUS -> stage = LoginStage.Campus
+                AuthLoginUiEvent.CHOOSE_ACADEMIC -> stage = LoginStage.Academic
+                AuthLoginUiEvent.CHOOSE_DORM -> stage = LoginStage.Dorm
+                AuthLoginUiEvent.ENTER_APP -> onEnter()
+                AuthLoginUiEvent.USER_AGREEMENT -> onDocument(AppText.Document.USER_AGREEMENT)
+                AuthLoginUiEvent.PRIVACY_POLICY -> onDocument(AppText.Document.PRIVACY_POLICY)
+                else -> {}
+            } },
         )
-        LoginStage.Campus -> LoginForm(
+        LoginStage.Campus -> CampusLoginBinder(
             graph = graph,
-            title = AppText.Auth.ENTRY_CAMPUS_TITLE,
-            tagline = AppText.Auth.LIGHTER_CAMPUS_LIFE_TAGLINE,
-            accountLabel = AppText.Auth.STUDENT_NUMBER_FIELD,
-            numericAccount = true,
+            mountEpoch = epoch,
             username = username,
             onUsername = { username = it },
             password = password,
             onPassword = { password = it },
             visible = visible,
             onVisible = { visible = it },
-            loading = loading,
-            notice = message.ifBlank { graph.storageNotice.orEmpty() },
-            noticeTitle = if (message.isNotBlank()) AppText.Auth.LOGIN_NOTICE_TITLE else AppText.App.LOCAL_DATA_NOTICE,
-            onBack = { message = ""; stage = LoginStage.Chooser },
+            extraEntry = extraEntry,
+            onExtraEntry = onExtraEntry,
             onResetPassword = onResetPassword,
-            onWater = onWater,
             onDocument = onDocument,
-            onSubmit = submit@{
-                if (loading || username.isBlank() || password.isEmpty()) return@submit
-                loading = true
-                message = ""
-                scope.launch {
-                    try {
-                        when (val result = graph.repositories.auth.login(username.trim(), password)) {
-                            is ApiResult.Success -> { password = ""; graph.clearStorageNotice() }
-                            is ApiResult.Failure -> message = result.error.message
-                        }
-                    } finally { loading = false }
-                }
-            },
-            submitEnabled = username.isNotBlank() && password.isNotEmpty(),
+            onBack = { stage = LoginStage.Chooser },
         )
         LoginStage.Academic -> io.github.betterzslf.ui.schedule.ScheduleBindingPage(
             runtime = graph.schedule,
@@ -122,160 +111,6 @@ fun LoginScreen(graph: AppGraph, onDocument: (String) -> Unit, onWater: (() -> U
 
 /** Which surface the login screen is showing. Kept saveable so a rotation does not lose the step. */
 private enum class LoginStage { Chooser, Campus, Academic, Dorm }
-
-@Composable
-private fun LoginChooser(
-    showDormLink: Boolean,
-    campusBound: Boolean,
-    academicBound: Boolean,
-    onCampus: () -> Unit,
-    onAcademic: () -> Unit,
-    onDorm: () -> Unit,
-    onEnter: () -> Unit,
-    onDocument: (String) -> Unit,
-) {
-    val canEnter = campusBound || academicBound
-    Scaffold(containerColor = MiuixTheme.colorScheme.surface) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
-            contentPadding = PaddingValues(start = 28.dp, end = 28.dp, top = 44.dp, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            item {
-                Column(Modifier.fillMaxWidth().padding(bottom = 20.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    AppBrandMark()
-                    Text(AppText.Auth.WELCOME_TITLE, fontSize = 28.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                    Text(AppText.Auth.ENTRY_ENTRY_HINT, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        textAlign = TextAlign.Center)
-                }
-            }
-            item {
-                LoginEntryCard(
-                    title = AppText.Auth.ENTRY_CAMPUS_TITLE,
-                    subtitle = AppText.Auth.ENTRY_CAMPUS_SUBTITLE,
-                    accent = AppUiTokens.Primary,
-                    icon = MiuixIcons.Contacts,
-                    testTag = "entryCampus",
-                    bound = campusBound,
-                    onClick = onCampus,
-                )
-            }
-            item {
-                LoginEntryCard(
-                    title = AppText.Auth.ENTRY_ACADEMIC_TITLE,
-                    subtitle = AppText.Auth.ENTRY_ACADEMIC_SUBTITLE,
-                    accent = AppUiTokens.Positive,
-                    icon = MiuixIcons.Notes,
-                    testTag = "entryAcademic",
-                    bound = academicBound,
-                    onClick = onAcademic,
-                )
-            }
-            if (showDormLink) item {
-                // Deliberately a plain text link, not a card: dorm network is optional and must
-                // read as secondary to the two account cards above it. Miuix's TextButton paints a
-                // filled container, which made this look like a third card, so the tap target is a
-                // bare clickable text instead.
-                Text(
-                    AppText.Auth.ENTRY_DORM_LINK,
-                    fontSize = 14.sp,
-                    color = MiuixTheme.colorScheme.primary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(AppUiTokens.FieldRadius))
-                        .clickable(onClick = onDorm)
-                        .padding(vertical = 12.dp)
-                        .testTag("entryDorm"),
-                )
-            }
-            if (canEnter) item {
-                // Only appears once something is actually usable, so the chooser never offers a way
-                // into an app that would have nothing to show.
-                PrimaryAction(
-                    text = AppText.Auth.ENTER_APP,
-                    modifier = Modifier.fillMaxWidth().padding(top = AppUiTokens.SectionGap).testTag("enterApp"),
-                    onClick = onEnter,
-                )
-            }
-            item {
-                Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.Center) {
-                    TextButton(AppText.App.USER_AGREEMENT_DISPLAY_LABEL, onClick = { onDocument(AppText.Document.USER_AGREEMENT) })
-                    TextButton(AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, onClick = { onDocument(AppText.Document.PRIVACY_POLICY) })
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LoginEntryCard(
-    title: String,
-    subtitle: String,
-    accent: Color,
-    icon: ImageVector,
-    testTag: String,
-    bound: Boolean,
-    onClick: () -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth().height(72.dp).testTag(testTag),
-        cornerRadius = AppUiTokens.CardRadius,
-        insideMargin = PaddingValues(AppUiTokens.CardPadding),
-        onClick = onClick,
-    ) {
-        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(accent), contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                Text(
-                    if (bound) subtitle + AppText.Auth.ENTRY_BOUND_SUFFIX else subtitle,
-                    fontSize = 13.sp,
-                    color = if (bound) AppUiTokens.Positive else MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-            }
-            if (bound) {
-                // A filled dot replaces the chevron so the bound state reads at a glance, not only
-                // through the subtitle text.
-                Box(Modifier.size(10.dp).clip(CircleShape).background(AppUiTokens.Positive))
-            } else {
-                Icon(BackChevron, contentDescription = null, tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.size(20.dp).rotate(180f))
-            }
-        }
-    }
-}
-
-/** A stage that is not wired to a backend yet keeps the user oriented instead of dead-ending. */
-@Composable
-private fun LoginUnavailable(title: String, onBack: () -> Unit, onDocument: (String) -> Unit) {
-    Scaffold(containerColor = MiuixTheme.colorScheme.surface) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
-            contentPadding = PaddingValues(start = 28.dp, end = 28.dp, top = 24.dp, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            item { BackToChooser(onBack) }
-            item { Text(title, fontSize = 24.sp, fontWeight = FontWeight.Bold) }
-            item { InfoBanner(AppText.Auth.STAGE_NOT_READY_HINT, tone = UiTone.Info) }
-        }
-    }
-}
-
-@Composable
-private fun BackToChooser(onBack: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onBack, modifier = Modifier.testTag("loginBack")) {
-            Icon(BackChevron, contentDescription = AppText.Auth.ENTRY_BACK_CONTENT_DESCRIPTION,
-                tint = MiuixTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp))
-        }
-    }
-}
 
 /**
  * N2, the optional dorm-network sign-in page (design task book §5.3).
@@ -300,19 +135,19 @@ private fun BackToChooser(onBack: () -> Unit) {
 @Composable
 internal fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
     val session by graph.sessions.session.collectAsState()
-    // Only a signed-in 掌上莲峰 can supply the broadband phone; nothing is fetched before that.
+    val epoch by graph.sessions.revision.collectAsState()
+    // Campus phone provenance changes with its epoch; carrier credentials/session do not.
     val campusBound = session != null
-    var manualPhone by remember(boundSessionKey(session)) { mutableStateOf("") }
-    // Never persisted and never pre-filled: the design forbids remembering this password.
-    var broadbandPassword by remember(boundSessionKey(session)) { mutableStateOf("") }
-    // Display-only toggle. It resets with the session so one owner's choice does not carry over.
-    var passwordVisible by remember(boundSessionKey(session)) { mutableStateOf(false) }
+    var manualPhone by remember(graph, epoch) { mutableStateOf("") }
+    // Independent dorm credentials never participate in campus login keys or saved state.
+    var broadbandPassword by remember(graph) { mutableStateOf("") }
+    var passwordVisible by remember(graph) { mutableStateOf(false) }
     val dormScope = rememberCoroutineScope()
     // The portal addresses and school identity are only obtainable on campus, and the diagnosis run
     // is what captures them. Sharing one state here means the sign-in button uses exactly what the
     // probe observed instead of asking the user to copy it.
-    val sharedPortal = remember { CampusDiagnosisControllerHolder() }
-    val dorm = remember(graph, boundSessionKey(session)) {
+    val sharedPortal = remember(graph) { CampusDiagnosisControllerHolder() }
+    val dorm = remember(graph) {
         DormSignInController(
             transport = graph.dormTransport,
             fields = {
@@ -354,37 +189,34 @@ internal fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
                 }
             }
     }
-    var taken by remember(boundSessionKey(session)) { mutableStateOf<String?>(null) }
-    var queryFailed by remember(boundSessionKey(session)) { mutableStateOf(false) }
+    var taken by remember(graph, epoch) { mutableStateOf<String?>(null) }
+    var queryFailed by remember(graph, epoch) { mutableStateOf(false) }
     val editable = taken == null
+    val campusRead = remember(graph, epoch) { SessionEpochReadFence(epoch, { graph.sessions.revision.value }) }
+    DisposableEffect(campusRead) { onDispose { campusRead.close() } }
 
-    // The only request this page makes, and only when 掌上莲峰 is signed in. It is a read: the
-    // account list endpoint takes no parameters and changes nothing.
-    LaunchedEffect(boundSessionKey(session), campusBound) {
+    // A campus read never owns the independent carrier controller or its heartbeat timer.
+    LaunchedEffect(graph, epoch, campusBound) {
         if (!campusBound) {
             taken = null
             queryFailed = false
             return@LaunchedEffect
         }
-        val bound = graph.repositories.campusNetwork.boundToCurrentSession()
+        val bound = RepositoryCampusProvisionedPhoneSource.capture(graph.repositories.campusNetwork)
         if (bound == null) {
             taken = null
             queryFailed = true
             return@LaunchedEffect
         }
-        when (val response = bound.accounts()) {
-            is ApiResult.Success -> {
-                val rows = (response.data as? kotlinx.serialization.json.JsonObject)
-                    ?.get("operatorAccount") as? kotlinx.serialization.json.JsonArray
-                taken = rows?.firstNotNullOfOrNull { row ->
-                    ((row as? kotlinx.serialization.json.JsonObject)
-                        ?.get("operatorAccount") as? kotlinx.serialization.json.JsonPrimitive)
-                        ?.let { if (it.isString || it.content.isNotEmpty()) it.content else null }
-                        ?.let(::dormPhonePrefixOf)
-                }
+        val response = campusRead.readCurrent { bound.readProvisionedPhone() }
+        if (!campusRead.isCurrent() || !bound.isCurrentSession()) return@LaunchedEffect
+        when (response) {
+            is CampusOutcome.Success -> {
+                // A successful empty projection keeps manual entry available; it is not a read failure.
+                taken = response.data
                 queryFailed = false
             }
-            is ApiResult.Failure -> {
+            is CampusOutcome.Failure -> {
                 taken = null
                 queryFailed = true
             }
@@ -478,10 +310,13 @@ internal fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
                     cornerRadius = AppUiTokens.ButtonRadius,
                     colors = primaryTextActionColors(),
                     onClick = {
+                        // A stale campus-derived phone is never admitted, but connected dorm logout
+                        // remains independent of the campus token.
+                        if (!connected && !campusRead.isCurrent()) return@TextButton
                         val phone = taken ?: manualPhone
                         dormScope.launch {
                             if (connected) dorm.signOut()
-                            else dorm.signIn(phone, broadbandPassword)
+                            else if (campusRead.isCurrent()) dorm.signIn(phone, broadbandPassword)
                         }
                     },
                 )
@@ -502,10 +337,6 @@ internal fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
     }
 }
 
-/** A session change must not carry a typed phone across owners. */
-private fun boundSessionKey(session: io.github.betterzslf.core.model.Session?): String =
-    session?.let { "${it.userId}:${it.token.hashCode()}" }.orEmpty()
-
 /**
  * On-campus diagnosis panel.
  *
@@ -520,21 +351,37 @@ private fun CampusDiagnosisPanel(
     shared: CampusDiagnosisControllerHolder,
     onOpenUrl: (String) -> Boolean,
 ) {
+    val epoch by graph.sessions.revision.collectAsState()
+    key(graph, epoch) { CampusDiagnosisBody(graph, epoch, shared, onOpenUrl) }
+}
+
+@Composable
+private fun CampusDiagnosisBody(
+    graph: AppGraph,
+    epoch: Long,
+    shared: CampusDiagnosisControllerHolder,
+    onOpenUrl: (String) -> Boolean,
+) {
     val scope = rememberCoroutineScope()
-    val session by graph.sessions.session.collectAsState()
-    val controller = remember(graph, session) {
+    val bound = remember(graph, epoch) { RepositoryCampusPortalSource.capture(graph.repositories.campusPortal) }
+    val fence = remember(graph, epoch, bound) { SessionEpochReadFence(epoch, { graph.sessions.revision.value },
+        { bound?.isCurrentSession() == true }) }
+    // The legacy diagnosis controller has no close method; retire its external capabilities and
+    // composition scope instead, without touching the independent dorm controller/holder.
+    DisposableEffect(fence) { onDispose { fence.close() } }
+    val controller = remember(graph, epoch, fence) {
         CampusDiagnosisController(
-            // The school hands us the address; asking again per run avoids a stale gateway.
             portalAddress = {
-                val bound = graph.repositories.campusPortal.boundToCurrentSession()
-                bound?.redirectTarget()?.let { it as? ApiResult.Success }
-                    ?.data?.let { (it as? kotlinx.serialization.json.JsonObject)
-                        ?.get("addr") as? kotlinx.serialization.json.JsonPrimitive }
-                    ?.content
+                if (bound == null) null else fence.readCurrent {
+                    when (val response = bound.redirectTarget()) {
+                        is CampusOutcome.Success -> response.data.address
+                        is CampusOutcome.Failure -> null
+                    }
+                }
             },
-            probe = CampusDiagnosisProbe { graph.portalProbe.probe(it) },
+            probe = CampusDiagnosisProbe { target -> fence.readCurrent { graph.portalProbe.probe(target) } },
             handshake = CampusDiagnosisHandshake { server, address, schoolId, domain, area ->
-                graph.dormHandshake.negotiate(server, address, schoolId, domain, area)
+                fence.readCurrent { graph.dormHandshake.negotiate(server, address, schoolId, domain, area) }
             },
         )
     }
@@ -546,7 +393,7 @@ private fun CampusDiagnosisPanel(
     // Publish what the probe observed so the sign-in button can use it without a second probe.
     LaunchedEffect(state.diagnosis.probedUrl, state.diagnosis.portalAddress) {
         val d = state.diagnosis
-        if (d.probedUrl.isNotBlank()) {
+        if (fence.isCurrent() && d.probedUrl.isNotBlank()) {
             shared.record(d.probedUrl, d.schoolId, d.domain, d.area)
             recordDormSchoolIdentity(d.schoolId, d.domain, d.area)
         }
@@ -565,7 +412,9 @@ private fun CampusDiagnosisPanel(
                 modifier = Modifier.fillMaxWidth().testTag("diagnosisRun"),
                 minHeight = AppUiTokens.ButtonHeight,
                 cornerRadius = AppUiTokens.ButtonRadius,
-                onClick = { copied = false; scope.launch { controller.run() } },
+                onClick = { if (fence.isCurrent()) { copied = false; scope.launch {
+                    if (fence.isCurrent()) controller.run()
+                } } },
             )
             val diagnosis = state.diagnosis
             if (state.hasResult) {
@@ -600,7 +449,9 @@ private fun CampusDiagnosisPanel(
                         else AppText.CampusNetwork.DIAGNOSIS_COPY,
                         modifier = Modifier.fillMaxWidth(),
                         minHeight = 40.dp, cornerRadius = AppUiTokens.ButtonRadius,
-                        onClick = { copyAttempted = true; copied = clipboard.copyToClipboard(diagnosis.reportLine()) },
+                        onClick = { if (fence.isCurrent()) {
+                            copyAttempted = true; copied = clipboard.copyToClipboard(diagnosis.reportLine())
+                        } },
                     )
                     // Only after an attempt, so it cannot appear before the user has tried.
                     if (copyAttempted && !copied) {
@@ -613,7 +464,7 @@ private fun CampusDiagnosisPanel(
             diagnosis.portalAddress.takeIf { it.isNotBlank() }?.let { address ->
                 TextButton(AppText.CampusNetwork.OPEN_PORTAL_ACTION, modifier = Modifier.fillMaxWidth(),
                     minHeight = 40.dp, cornerRadius = AppUiTokens.ButtonRadius,
-                    onClick = { onOpenUrl(address) })
+                    onClick = { if (fence.isCurrent()) onOpenUrl(address) })
             }
         }
     }
@@ -637,92 +488,9 @@ private fun DiagnosisRow(label: String, value: String) {
  * `@`. Anything that is not an 11-digit mobile number yields `null`, which sends the page to its
  * manual-entry state instead of dialling with a value we cannot trust.
  */
-internal fun dormPhonePrefixOf(account: String): String? {
-    val prefix = account.substringBefore('@').trim()
-    return prefix.takeIf { it.length == 11 && it.all { c -> c in '0'..'9' } }
-}
+internal fun dormPhonePrefixOf(account: String): String? = campusProvisionedPhonePrefix(account)
 
 /** `138****8000`, the same masking the rest of the app uses. Never shows the middle digits. */
 internal fun maskDormPhone(phone: String): String =
     if (phone.length == 11) phone.take(3) + "****" + phone.takeLast(4) else phone
 
-@Composable
-private fun LoginForm(
-    graph: AppGraph,
-    title: String,
-    tagline: String,
-    accountLabel: String,
-    numericAccount: Boolean,
-    username: String,
-    onUsername: (String) -> Unit,
-    password: String,
-    onPassword: (String) -> Unit,
-    visible: Boolean,
-    onVisible: (Boolean) -> Unit,
-    loading: Boolean,
-    notice: String,
-    noticeTitle: String,
-    onBack: () -> Unit,
-    onResetPassword: (() -> Unit)?,
-    onWater: (() -> Unit)?,
-    onDocument: (String) -> Unit,
-    onSubmit: () -> Unit,
-    submitEnabled: Boolean,
-) {
-    Scaffold(containerColor = MiuixTheme.colorScheme.surface) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding(),
-            contentPadding = PaddingValues(start = 28.dp, end = 28.dp, top = 24.dp, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            item { BackToChooser(onBack) }
-            item {
-                Column(Modifier.fillMaxWidth().padding(bottom = 20.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    AppBrandMark()
-                    Text(title, fontSize = 28.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                    Text(tagline, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        textAlign = TextAlign.Center)
-                }
-            }
-            item {
-                TextField(value = username, onValueChange = onUsername, label = accountLabel,
-                    singleLine = true, cornerRadius = AppUiTokens.FieldRadius, enabled = !loading,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = if (numericAccount) KeyboardType.Number else KeyboardType.Text,
-                        imeAction = ImeAction.Next),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = AppUiTokens.ButtonHeight).testTag("username"))
-            }
-            item {
-                // S01: the reveal control lives in the field's own trailing slot, not a whole
-                // SwitchPreference row. Same shared icon/target/description as every password form.
-                TextField(value = password, onValueChange = onPassword, label = AppText.Auth.PASSWORD_FIELD,
-                    singleLine = true, cornerRadius = AppUiTokens.FieldRadius, enabled = !loading,
-                    visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                    trailingIcon = { PasswordVisibilityIcon(visible, { onVisible(!visible) }) },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = AppUiTokens.ButtonHeight).testTag("password"))
-            }
-            if (notice.isNotBlank()) item { InfoBanner(notice, title = noticeTitle, tone = UiTone.Warning) }
-            item {
-                PrimaryAction(
-                    text = if (loading) AppText.Auth.LOGGING_IN else AppText.Auth.LOG_IN,
-                    modifier = Modifier.testTag("loginButton"),
-                    enabled = !loading && submitEnabled,
-                    onClick = onSubmit,
-                )
-            }
-            onResetPassword?.let { openReset -> item {
-                TextButton(AppText.Recovery.RECOVER_PASSWORD_TITLE, onClick = openReset, modifier = Modifier.fillMaxWidth())
-            } }
-            if (EditionAccess.waterEnabled) onWater?.let { openWater -> item { graph.editionFeatures.LoginEntry(openWater) } }
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    TextButton(AppText.App.USER_AGREEMENT_DISPLAY_LABEL, onClick = { onDocument(AppText.Document.USER_AGREEMENT) })
-                    TextButton(AppText.App.PRIVACY_POLICY_DISPLAY_LABEL, onClick = { onDocument(AppText.Document.PRIVACY_POLICY) })
-                }
-            }
-        }
-    }
-}

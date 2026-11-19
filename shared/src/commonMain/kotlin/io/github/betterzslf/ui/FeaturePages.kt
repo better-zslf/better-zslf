@@ -11,9 +11,9 @@ import androidx.compose.ui.unit.dp
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.Route
 import io.github.betterzslf.ui.content.ContentPage
-import io.github.betterzslf.edition.BuildEdition
-import io.github.betterzslf.edition.EditionAccess
-import io.github.betterzslf.edition.EditionUnavailablePage
+import io.github.betterzslf.composition.ContributedAction
+import io.github.betterzslf.feature.run.api.RunPreviewSelection
+import top.yukonga.miuix.kmp.nav.core.NavKey
 import io.github.betterzslf.ui.run.RunFeaturePage
 import io.github.betterzslf.ui.run.RunTaskList
 import io.github.betterzslf.ui.campusnet.CampusNetworkFeaturePage
@@ -24,37 +24,25 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 
-@Composable
-fun ConfirmDialog(show: Boolean, title: String, summary: String, dismiss: () -> Unit, confirm: () -> Unit) {
-    OverlayDialog(show = show, title = title, summary = summary, onDismissRequest = dismiss) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = dismiss, modifier = Modifier.weight(1f), minHeight = 48.dp, cornerRadius = AppUiTokens.ButtonRadius) { Text(AppText.Common.CANCEL) }
-            Button(onClick = confirm, modifier = Modifier.weight(1f), minHeight = 48.dp, cornerRadius = AppUiTokens.ButtonRadius,
-                colors = primaryActionColors()) { Text(AppText.Common.CONFIRM) }
-        }
-    }
-}
 
 @Composable
-fun FeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBack: () -> Unit) {
-    if (!EditionAccess.allowsPage(page.kind)) {
-        EditionUnavailablePage(onBack)
-        return
-    }
+fun FeaturePage(graph: AppGraph, page: Route.Page, onOpen: (NavKey) -> Unit, onBack: () -> Unit) {
+    if (!graph.navigation.accepts(page)) { UnknownPage(page, onBack); return }
     when (page.kind) {
         "schedule", "schedulebind", "scheduleterms", "scheduledetail", "schedulemanage", "schedulereminders", "schedulewidget", "scheduleperiods" -> io.github.betterzslf.ui.schedule.SchedulePage(graph, page, onOpen, onBack)
         "settings" -> SettingsScreen(graph, onOpen, onBack)
         "password" -> PasswordScreen(graph, onBack)
         "resetpassword" -> io.github.betterzslf.ui.accountrecovery.AccountRecoveryPage(graph, onBack)
         "document" -> ContentPage(graph, page, onOpen, onBack)
-        "runs", "rundetail", "runrecords", "runrecord", "runtracker", "runimport" -> RunFeaturePage(graph, page, onOpen, onBack, graph.runRuntime)
-        "water" -> graph.editionFeatures.Page(graph, page, onOpen, onBack)
+        "runs", "rundetail", "runrecords", "runrecord", "runtracker" -> RunFeaturePage(graph, page, onOpen, onBack, graph.runRuntime,
+            contributedActions = graph.contributions::runActions)
         "campusnet" -> CampusNetworkFeaturePage(graph, onBack)
         // The dorm sign-in page is reachable from the campus tab as well as from the login chooser,
         // because §5.4 puts a "去登录" action on the campus page.
         "dormnetwork" -> io.github.betterzslf.ui.campusnet.DormNetworkFeaturePage(graph) { onOpen(Route.TabRoot(2)) }
         "feedback" -> FeedbackScreen(graph, onBack)
-        "updates" -> AppUpdatePage(graph.platform.versionName, graph.githubUpdates, graph.appUpdater, graph.platform::openUrl, onBack)
+        "updates" -> AppUpdatePage(graph.platform.versionName, graph.githubUpdates, graph.appUpdater, graph.platform::openUrl, onBack,
+            policy = graph.productIdentity.updatePolicy)
         "about" -> AboutScreen(graph, onBack) { onOpen(Route.Page("updates", title = AppText.Updates.VERSION_UPDATE_TITLE)) }
         "devtools" -> DebugSettingsPage(graph, onBack)
         else -> UnknownPage(page, onBack)
@@ -92,7 +80,7 @@ private fun AboutScreen(graph: AppGraph, back: () -> Unit, openUpdates: () -> Un
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             AppBrandMark()
             Text(AppText.App.CAMPUS_LIFE_WELCOME_TITLE, style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title2)
-            Text("Oh My ZSC · ${if (BuildEdition.isPro) "Pro" else "Standard"}", color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            Text(graph.productIdentity.displayName, color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
             // Five taps on the version string toggle the local developer option; nothing is sent anywhere.
             Text(AppText.Content.aboutVersion(graph.platform.versionName),
                 color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.primary,
@@ -116,7 +104,7 @@ private fun AboutScreen(graph: AppGraph, back: () -> Unit, openUpdates: () -> Un
             if (tapNotice.isNotBlank()) Text(tapNotice, color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
         } }
         item { InfoBanner(AppText.App.INDEPENDENT_CLIENT_DESCRIPTION, tone = UiTone.Neutral) }
-        item { InfoBanner(if (BuildEdition.isPro) AppText.App.PRIVACY_AND_OFFLINE_WATER_PROTOCOL_HINT else AppText.Edition.STANDARD_PRIVACY_HINT,
+        item { InfoBanner(graph.productIdentity.privacySummary,
             title = AppText.App.DATA_USE_WHEN_NEEDED_TITLE) }
         item { Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
             ArrowPreference(AppText.Updates.PROJECT_RELEASES_AND_UPDATES_LABEL, summary = AppText.Updates.MANUAL_GITHUB_RELEASES_CHECK_SUMMARY, onClick = openUpdates)
@@ -129,4 +117,5 @@ private fun AboutScreen(graph: AppGraph, back: () -> Unit, openUpdates: () -> Un
 internal const val DEVELOPER_TAP_COUNT: Int = 5
 
 @Composable
-fun RunTasksScreen(graph: AppGraph, open: (Route) -> Unit, back: (() -> Unit)? = null) = RunTaskList(graph, open, back)
+fun RunTasksScreen(graph: AppGraph, open: (Route) -> Unit, back: (() -> Unit)? = null) =
+    RunTaskList(graph, { key -> if (key is Route) open(key) }, back)

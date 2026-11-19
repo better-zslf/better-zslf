@@ -13,45 +13,53 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.betterzslf.AppGraph
-import io.github.betterzslf.core.result.ApiError
-import io.github.betterzslf.core.result.ApiResult
-import io.github.betterzslf.data.RunRepository
 import io.github.betterzslf.feature.run.*
-import io.github.betterzslf.feature.runui.RunDisplay
+import io.github.betterzslf.feature.runui.*
 import io.github.betterzslf.platform.*
 import io.github.betterzslf.ui.*
 import kotlinx.coroutines.CancellationException
-import kotlinx.serialization.json.*
+import kotlinx.coroutines.isActive
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-internal data class RunPageQuery(val loading: Boolean = false, val data: JsonElement? = null, val error: String? = null, val message: String? = null)
+internal data class RunPageQuery<T>(val loading: Boolean = false, val data: T? = null, val error: String? = null)
 
-/** Each request captures an atomic repository binding; late results stay in the old composition key. */
+/** Each read action captures one typed fixed source; no old payload can bind to a newer login. */
 @Composable
-internal fun rememberRunQuery(graph: AppGraph, key: Any?, refresh: Int, load: suspend (RunRepository) -> ApiResult<JsonElement>): RunPageQuery {
+internal fun <T> rememberRunQuery(graph: AppGraph, key: Any?, refresh: Int, load: suspend (RunReadSource) -> RunReadOutcome<T>): RunPageQuery<T> {
     val loader by rememberUpdatedState(load)
-    val session by graph.sessions.session.collectAsState()
-    val result by produceState(RunPageQuery(loading = true), graph, session?.userId, session?.token, key, refresh) {
-        val previous = value.data
-        value = RunPageQuery(loading = true, data = previous)
-        val bound = graph.repositories.run.boundToCurrentSession()
-        if (bound == null) value = RunPageQuery(data = previous, error = AppText.Run.LOGIN_TO_VIEW_CURRENT_ACCOUNT_RUN_DATA_HINT)
-        else try {
-            value = when (val response = loader(bound)) {
-                is ApiResult.Success -> RunPageQuery(data = response.data, message = response.message.takeIf { it.isNotBlank() })
-                is ApiResult.Failure -> RunPageQuery(data = previous, error = response.error.message)
-            }
-        } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { value = RunPageQuery(data = previous, error = AppText.Run.READ_FAILURE_MANUAL_REFRESH_NO_WRITE_RETRY_HINT) }
+    val epoch by graph.sessions.revision.collectAsState()
+    return androidx.compose.runtime.key(graph, epoch) {
+        // Producer keys alone do not reset previously remembered data across an identity epoch.
+        val result by produceState(RunPageQuery<T>(loading = true), key, refresh) {
+            val previous = value.data
+            value = RunPageQuery(loading = true, data = previous)
+            val bound = ApiRunReadSource.capture(graph.api)
+            val fence = SessionEpochReadFence(epoch, { graph.sessions.revision.value },
+                { bound?.isCurrentSession() == true })
+            try {
+                if (bound == null) {
+                    if (graph.sessions.revision.value == epoch) value = RunPageQuery(error = AppText.Run.LOGIN_TO_VIEW_CURRENT_ACCOUNT_RUN_DATA_HINT)
+                } else {
+                    val response = fence.readCurrent { loader(bound) }
+                    if (fence.isCurrent()) value = when (response) {
+                        is RunReadOutcome.Success -> RunPageQuery(data = response.data)
+                        is RunReadOutcome.Failure -> RunPageQuery(data = previous, error = runReadFailureText(response.issue))
+                    }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (fence.isCurrent()) value = RunPageQuery(data = previous, error = AppText.Run.READ_FAILURE_MANUAL_REFRESH_NO_WRITE_RETRY_HINT)
+            } finally { fence.close() }
+        }
+        if (graph.sessions.revision.value == epoch) result else RunPageQuery(loading = true)
     }
-    return result
 }
 
-internal fun missingRunId() = ApiResult.Failure(ApiError.Validation(listOf("trid"), AppText.Run.RECORD_ID_MISSING_RESELECT_HINT))
-internal fun missingRunSelection() = ApiResult.Failure(ApiError.Validation(listOf("errandId", "errandScheduleId"), AppText.Run.INCOMPLETE_TASK_RESELECT_HINT))
+internal fun missingRunId(): RunReadOutcome.Failure = RunReadOutcome.Failure(RunReadIssue.VALIDATION)
+internal fun missingRunSelection(): RunReadOutcome.Failure = RunReadOutcome.Failure(RunReadIssue.VALIDATION)
 
-internal fun LazyListScope.runFeedback(query: RunPageQuery, retry: () -> Unit, keyPrefix: String = "read") {
+internal fun <T> LazyListScope.runFeedback(query: RunPageQuery<T>, retry: () -> Unit, keyPrefix: String = "read") {
     if (query.loading) item("$keyPrefix:loading") { Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() } }
     query.error?.let { error -> item("$keyPrefix:error") {
         RunCard {
@@ -59,15 +67,6 @@ internal fun LazyListScope.runFeedback(query: RunPageQuery, retry: () -> Unit, k
             TextButton(AppText.Common.REFRESH, onClick = retry)
         }
     } }
-    query.message?.let { text -> item("$keyPrefix:message") { InfoBanner(text, tone = UiTone.Neutral) } }
-}
-
-internal fun LazyListScope.runWarnings(warnings: List<String>, keyPrefix: String = "warning") {
-    if (warnings.isNotEmpty()) item("$keyPrefix:details") {
-        RunDisclosure(AppText.Common.INFORMATION_AND_LIMITS_TITLE) {
-            warnings.distinct().forEach { warning -> InfoBanner(warning, tone = UiTone.Neutral) }
-        }
-    }
 }
 
 @Composable
@@ -123,9 +122,10 @@ internal fun RunMapPreview(
 ) {
     val useful = paths.filter { it.second.isNotEmpty() }
     val session by graph.sessions.session.collectAsState()
+    val epoch by graph.sessions.revision.collectAsState()
     val settings by graph.settings.settings.collectAsState()
-    // Same proven owner scope as RunFeaturePage; credentials are only in-memory remember keys.
-    val owner = remember(graph, session?.userId, session?.token) { Any() }
+    // A mutation epoch owns the native document, independently of payload or display settings.
+    val owner = remember(graph, epoch) { Any() }
     // Verified against the original client by Lead; unknown values have no guessed/key fallback.
     val provider = runMapProviderFor(session?.mapWebType)
     val apiKey = session?.mapToken
@@ -137,6 +137,9 @@ internal fun RunMapPreview(
     } else key(identity) {
         // Feedback and the native panel share this configuration/mount lifetime, not the payload key.
         val document = remember { Any() }
+        val callbackFence = remember(graph, epoch, identity) { SessionEpochReadFence(epoch,
+            { graph.sessions.revision.value }, { graph.applicationScope.isActive && !graph.clearingLocalData }) }
+        DisposableEffect(callbackFence) { onDispose { callbackFence.close() } }
         val data = RunMapFeedbackData(paths, checkpoints, coordinateSystem, role)
         val latestData by rememberUpdatedState(data)
         var feedback by remember { mutableStateOf(RunMapFeedbackState.initial(identity, document, data)) }
@@ -154,11 +157,11 @@ internal fun RunMapPreview(
             importedPath = if (role == RunMapRole.IMPORTED) line else RunMapPath(),
             checkpoints = checkpoints.mapIndexed { index, point -> RunMapCheckpoint(point.id, point.point, AppText.Run.checkpointOrdinal((index + 1)), RunMapCoordinateSystem.GCJ02) },
             currentLocation = if (role == RunMapRole.ACTUAL) path?.second?.lastOrNull() else null,
-            currentCoordinateSystem = coordinateSystem, dark = dark, editMode = false)
+            currentCoordinateSystem = coordinateSystem, dark = dark)
         Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(AppUiTokens.CardRadius))) {
                 RunMapPanel(model, { event ->
-                    feedback = feedback.forDocument(identity, document, latestData).onEvent(identity, document, event)
+                    if (callbackFence.isCurrent()) feedback = feedback.forDocument(identity, document, latestData).onEvent(identity, document, event)
                 }, Modifier.fillMaxSize())
                 if (visibleFeedback.status is RunMapDocumentFeedback.Failed || visibleFeedback.transient != null) {
                     visibleFeedback.text()?.let { InfoBanner(it,
@@ -187,13 +190,7 @@ internal fun RunMapPreview(
 
 internal fun coordinate(point: GeoPoint): String = "${point.longitude},${point.latitude}"
 
-internal fun runFields(raw: JsonObject): List<Pair<String, String>> = raw.entries.mapNotNull { (key, value) ->
-    if (listOf("password", "token", "authorization", "cookie").any { key.contains(it, ignoreCase = true) }) null
-    else (value as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }?.let { key to it.take(400) }
-}
-
-internal fun LazyListScope.runRawFields(raw: JsonObject, prefix: String = "raw") {
-    val fields = runFields(raw)
+internal fun LazyListScope.runDisplayFields(fields: List<RunDisplayField>, prefix: String = "raw") {
     if (fields.isNotEmpty()) item("$prefix:fields") { RunDisclosure(AppText.Common.INFORMATION_AND_LIMITS_TITLE) {
         fields.forEach { (label, value) ->
             Text(label, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)

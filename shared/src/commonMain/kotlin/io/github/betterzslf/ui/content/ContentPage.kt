@@ -33,7 +33,7 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 fun ContentPage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBack: () -> Unit) {
     val session by graph.sessions.session.collectAsState()
     val owner = session?.userId.orEmpty()
-    val source = remember(graph) { RepositoryContentSource(graph.repositories) }
+    val source = remember(graph) { RepositoryContentSource(graph.repositories.content) }
     // Dispose the page-scoped controller on an account change.
     key(owner, page) {
         if (page.kind == "document") DocumentPage(source, page, onBack)

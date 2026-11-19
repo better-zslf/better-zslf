@@ -2,7 +2,7 @@
 """Offline iOS version bridge. Never invoke Xcode, Gradle, signing, or network tools."""
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 import os
 from pathlib import Path
 import re
@@ -13,7 +13,7 @@ from typing import Mapping, Sequence
 ROOT = Path(__file__).resolve().parents[2]
 BASE_VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 PRERELEASE = re.compile(r"rc[1-9][0-9]{0,5}\Z")
-BUNDLES = {"standard": "io.github.betterzslf", "pro": "io.github.betterzslf.pro"}
+BUNDLES = {"standard": "io.github.betterzslf"}
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ class VersionSettings:
 
     @property
     def display_version(self) -> str:
-        return self.marketing_version + ("-" + self.prerelease if self.prerelease else "") + ("-pro" if self.edition == "pro" else "")
+        return self.marketing_version + ("-" + self.prerelease if self.prerelease else "")
 
     @property
     def bundle(self) -> str:
@@ -34,7 +34,7 @@ class VersionSettings:
 
 def validated_settings(base: str, code: str, prerelease: str | None, edition: str) -> VersionSettings:
     if edition not in BUNDLES:
-        raise ValueError("betterZslfEdition must be standard or pro.")
+        raise ValueError("betterZslfEdition must be standard in the public iOS product; use the private Pro host.")
     if not BASE_VERSION.fullmatch(base):
         raise ValueError("Apple marketing version must be a numeric major.minor.patch without leading zeroes.")
     if not re.fullmatch(r"[1-9][0-9]*", code) or len(code) > 10 or int(code) > 2_100_000_000:
@@ -44,7 +44,7 @@ def validated_settings(base: str, code: str, prerelease: str | None, edition: st
     return VersionSettings(base, int(code), prerelease, edition)
 
 
-def load_properties(path: Path, edition: str = "pro") -> VersionSettings:
+def load_properties(path: Path, edition: str = "standard") -> VersionSettings:
     values: dict[str, str] = {}
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -71,7 +71,7 @@ def prepare_settings(properties: Path, arguments: Sequence[str] = (), environ: M
             raise ValueError("Expected -PversionName, -PversionCode or -PbetterZslfEdition overrides.")
         overrides[key[2:]] = value
     # Always validate the persisted source, including optional RC, before considering overrides.
-    root = load_properties(properties, overrides.get("betterZslfEdition", "pro"))
+    root = load_properties(properties, overrides.get("betterZslfEdition", "standard"))
     result = root
     if "versionName" in overrides:
         name = overrides["versionName"]
@@ -79,10 +79,7 @@ def prepare_settings(properties: Path, arguments: Sequence[str] = (), environ: M
             if name != root.display_version:
                 raise ValueError("RC versionName override must exactly match the root full version and selected edition.")
         else:
-            # Legacy two-field stable sources accept their original numeric overrides.
-            # A complete stable Pro name from metadata is also valid; RC is never invented here.
-            if root.edition == "pro" and name.endswith("-pro"):
-                name = name[:-4]
+            # Legacy two-field Standard sources accept numeric overrides; never invent an RC.
             result = validated_settings(name, str(root.version_code), None, root.edition)
     if "versionCode" in overrides:
         result = validated_settings(result.marketing_version, overrides["versionCode"], result.prerelease, result.edition)
@@ -90,7 +87,7 @@ def prepare_settings(properties: Path, arguments: Sequence[str] = (), environ: M
 
 
 def xcode_settings(properties: Path, environ: Mapping[str, str]) -> VersionSettings:
-    edition = environ.get("BETTER_ZSLF_EDITION", environ.get("ORG_GRADLE_PROJECT_betterZslfEdition", "pro"))
+    edition = environ.get("BETTER_ZSLF_EDITION", environ.get("ORG_GRADLE_PROJECT_betterZslfEdition", "standard"))
     root = load_properties(properties, edition)
     base = environ.get("MARKETING_VERSION", "")
     code = environ.get("CURRENT_PROJECT_VERSION", "")

@@ -33,7 +33,6 @@ internal sealed interface RunMapDocumentFeedback {
 }
 internal sealed interface RunMapTransientFeedback {
     data class Checkpoint(val ordinal: Int?) : RunMapTransientFeedback
-    data object PreviewEvent : RunMapTransientFeedback
 }
 
 /** Pure event consumer. Data changes never manufacture SDK success; a new mount starts Pending. */
@@ -62,7 +61,6 @@ internal data class RunMapFeedbackState private constructor(
             is RunMapEvent.Failed -> copy(status = RunMapDocumentFeedback.Failed(event.reason), transient = null)
             is RunMapEvent.CheckpointSelected -> copy(transient = RunMapTransientFeedback.Checkpoint(
                 data.checkpoints.indexOfFirst { it.id == event.id }.takeIf { it >= 0 }?.plus(1)))
-            is RunMapEvent.DrawPoint -> copy(transient = RunMapTransientFeedback.PreviewEvent)
         }
     }
 
@@ -71,7 +69,6 @@ internal data class RunMapFeedbackState private constructor(
         if (failure != null) return AppText.Run.mapFallback(failure.reason.toString())
         return when (val notice = transient) {
             is RunMapTransientFeedback.Checkpoint -> AppText.Run.selectedCheckpointNotice(notice.ordinal?.toString() ?: AppText.Common.UNKNOWN)
-            RunMapTransientFeedback.PreviewEvent -> AppText.Run.MAP_PREVIEW_EVENTS_NOT_REAL_LOCATION_HINT
             null -> if (status == RunMapDocumentFeedback.Ready) AppText.Run.MAP_READY_MARKER_VIEW_ONLY_HINT else null
         }
     }

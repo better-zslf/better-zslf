@@ -14,10 +14,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.Route
-import io.github.betterzslf.edition.EditionAccess
-import io.github.betterzslf.edition.EditionUnavailablePage
-import io.github.betterzslf.core.result.ApiError
-import io.github.betterzslf.core.result.ApiResult
+import io.github.betterzslf.composition.ContributedAction
+import io.github.betterzslf.feature.run.api.RunPreviewSelection
+import top.yukonga.miuix.kmp.nav.core.NavKey
 import io.github.betterzslf.feature.runui.*
 import io.github.betterzslf.ui.*
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -27,17 +26,17 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** The app owns runtime. Route composition never disposes a tracker, coordinator, or upload queue. */
 @Composable
-fun RunFeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, onBack: () -> Unit, runtime: RunRuntime) {
-    if (!EditionAccess.allowsPage(page.kind)) { EditionUnavailablePage(onBack); return }
+fun RunFeaturePage(graph: AppGraph, page: Route.Page, onOpen: (NavKey) -> Unit, onBack: () -> Unit, runtime: RunRuntime,
+                   contributedActions: (RunPreviewSelection?) -> List<ContributedAction> = { emptyList() }) {
     val session by graph.sessions.session.collectAsState()
-    key(graph, session?.userId, session?.token, page) {
+    val epoch by graph.sessions.revision.collectAsState()
+    key(graph, epoch, session?.userId, session?.token, page) {
         when (page.kind) {
-            "runs" -> RunTaskList(graph, onOpen, onBack)
-            "rundetail" -> RunDetailPage(graph, page, onOpen, onBack)
+            "runs" -> RunTaskList(graph, onOpen, onBack, contributedActions)
+            "rundetail" -> RunDetailPage(graph, page, onOpen, onBack, contributedActions)
             "runrecords" -> RunRecordsPage(graph, page, onOpen, onBack, runtime)
             "runrecord" -> RunRecordPage(graph, page, onBack)
-            "runtracker" -> RunTrackerPage(graph, page, onOpen, onBack, runtime)
-            "runimport" -> graph.editionFeatures.Page(graph, page, onOpen, onBack)
+            "runtracker" -> RunTrackerPage(graph, page, onOpen, onBack, runtime, contributedActions)
             else -> Screen(page.title.ifBlank { AppText.Navigation.CAMPUS_RUN }, onBack) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding).padding(AppUiTokens.PagePadding)) {
                     RunEmpty(AppText.Common.UNKNOWN_PAGE_TYPE, AppText.Run.REOPEN_FROM_RUN_ENTRY_HINT)
@@ -48,105 +47,69 @@ fun RunFeaturePage(graph: AppGraph, page: Route.Page, onOpen: (Route) -> Unit, o
 }
 
 @Composable
-fun RunTaskList(graph: AppGraph, onOpen: (Route) -> Unit, onBack: (() -> Unit)? = null) {
+fun RunTaskList(graph: AppGraph, onOpen: (NavKey) -> Unit, onBack: (() -> Unit)? = null,
+                contributedActions: (RunPreviewSelection?) -> List<ContributedAction> = { emptyList() }) {
     val session by graph.sessions.session.collectAsState()
+    val epoch by graph.sessions.revision.collectAsState()
     val settings by graph.settings.settings.collectAsState()
-    key(graph, session?.userId, session?.token) {
+    key(graph, epoch, session?.userId, session?.token) {
         val owner = session?.userId.orEmpty()
-        val bound = remember(graph, session?.userId, session?.token) { graph.repositories.run.boundToCurrentSession() }
-        val controller = remember(bound, owner) { RunTaskController(RunTaskPageSource { requestedOwner, offset, limit, filter ->
-            if (owner.isBlank() || bound == null || bound.boundOwnerId != requestedOwner) ApiResult.Failure(ApiError.Authentication())
-            else bound.tasks(requestedOwner, offset, limit, filter)
-        }, owner) }
+        val bound = remember(graph, epoch) { ApiRunReadSource.capture(graph.api) }
+        val fence = remember(graph, epoch, bound) { SessionEpochReadFence(epoch, { graph.sessions.revision.value },
+            { bound?.isCurrentSession() == true }) }
+        val controller = remember(bound, owner, fence) { RunTaskController(boundRunTaskPages(bound, fence, owner), owner) }
         val state by controller.state.collectAsState()
         val scope = rememberCoroutineScope()
         val list = rememberLazyListState()
+        var mounted by remember(controller, fence) { mutableStateOf(true) }
+        val bindings = remember(controller, fence) { RunListBindings("task-row", RunTaskItem::identityKey,
+            { mounted && graph.sessions.revision.value == epoch && (bound?.isCurrentSession() ?: true) },
+            { controller.state.value.items }) }
+        DisposableEffect(fence, bindings) { onDispose { mounted = false; bindings.retire(); fence.close() } }
+        val render = bindings.render(state.items)
+        val actions = remember(contributedActions) { contributedActions(null).mapIndexed { index, action -> index to action } }
+        val latestActions by rememberUpdatedState(actions)
+        val actionBindings = remember(controller, fence) { RunListBindings("contribution", { row: Pair<Int, ContributedAction> -> row.first.toString() },
+            { mounted && graph.sessions.revision.value == epoch && (bound?.isCurrentSession() ?: true) }, { latestActions }) }
+        DisposableEffect(actionBindings) { onDispose { actionBindings.retire() } }
+        val actionRender = actionBindings.render(actions)
+        val display = taskListDisplay(state, render, owner.isNotBlank(), settings.metricUnits,
+            actionRender.rows.map { (key, row) -> RunListContributionDisplay(key, row.second.title) })
+        val controls = RunListControls(onBack != null, !state.loading, !state.loading && !state.end)
         LaunchedEffect(controller) { if (owner.isNotBlank()) controller.refresh() }
         LaunchedEffect(controller, list, state.items.size, state.filter, state.end, state.loading, state.moreError, state.error) {
             if (!state.loading && !state.end && state.error == null && state.moreError == null && state.items.isNotEmpty()) snapshotFlow {
                 val layout = list.layoutInfo
                 layout.totalItemsCount > 0 && (layout.visibleItemsInfo.lastOrNull()?.index ?: -1) >= layout.totalItemsCount - 3
-            }.distinctUntilChanged().collect { if (it) controller.more() }
+            }.distinctUntilChanged().collect { if (it && fence.isCurrent()) controller.more() }
         }
-        Screen(AppText.Navigation.CAMPUS_RUN, onBack, actions = {
-            TextButton(AppText.Run.LOCAL_RECORD_TITLE, onClick = { onOpen(Route.Page("runtracker", title = AppText.Run.REAL_RUN_RECORD_TITLE)) })
-        }) { padding ->
-            // §10.2 / §5.3: use the shared pageContentPadding (12dp Gap, max() overlay inset,
-            // SectionGap breathing room) instead of adding scaffold, overlay and a stray 20dp
-            // together. This keeps the last row clear of the floating bar without double insets.
-            val contentPadding = pageContentPadding(padding, LocalNavigationBottomInset.current, LocalLayoutDirection.current)
-            PullToRefresh(state.loading, { scope.launch { controller.refresh() } },
-                modifier = Modifier.fillMaxSize().consumeWindowInsets(padding), contentPadding = padding,
-                refreshTexts = io.github.betterzslf.ui.appRefreshTexts()) {
-                LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
-                    item("filters") {
-                        val filters = listOf(RunTaskFilter.ALL, RunTaskFilter.UNFINISHED, RunTaskFilter.FINISHED)
-                        TabRow(tabs = listOf(AppText.Common.ALL, AppText.Common.INCOMPLETE, AppText.Common.COMPLETED),
-                            selectedTabIndex = filters.indexOf(state.filter).coerceAtLeast(0),
-                            onTabSelected = { index -> if (!state.loading) scope.launch { controller.select(filters[index]); list.scrollToItem(0) } },
-                            cornerRadius = AppUiTokens.ButtonRadius, height = 44.dp)
-                    }
-                    if (owner.isBlank()) item("login") { RunEmpty(AppText.Auth.LOGIN_REQUIRED, AppText.Run.CURRENT_ACCOUNT_TASKS_ONLY_HINT) }
-                    if (state.loading) item("loading") { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() } }
-                    state.error?.let { error -> item("error") { RunCard {
-                        InfoBanner(error, AppText.Run.TASK_LOAD_FAILED, UiTone.Warning)
-                        TextButton(AppText.Common.REFRESH, onClick = { scope.launch { controller.refresh() } })
-                    } } }
-                    if (!state.loading && state.error == null && state.items.isEmpty() && owner.isNotBlank()) item("empty") {
-                        RunEmpty(AppText.Run.NO_RUN_TASKS, AppText.Run.NO_SERVER_TASKS_LOCAL_TOOLS_AVAILABLE_HINT)
-                    }
-                    itemsIndexed(state.items, key = { index, row -> "task:${row.identityKey}:$index" }) { _, task ->
-                        val selection = RunTaskSelection.from(task)
-                        val minimum = remember(task.raw) { RunDataDecoder.detail(task.raw)?.minimumDistanceMeters }
-                        Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(AppUiTokens.CardPadding),
-                            onClick = selection?.let { selected -> ({ onOpen(Route.Page("rundetail", selected.encode(), task.title)) }) }) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                                Text(task.title, modifier = Modifier.weight(1f), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                                when (task.isFinish) {
-                                    "1" -> RunStatus(AppText.Common.COMPLETED, UiTone.Positive)
-                                    "0" -> RunStatus(AppText.Common.INCOMPLETE, UiTone.Info)
-                                    else -> RunStatus(task.isFinish ?: AppText.Common.UNKNOWN)
-                                }
-                            }
-                            Spacer(Modifier.height(10.dp))
-                            Text(listOfNotNull("${AppText.Run.DISTANCE_REQUIREMENT_TITLE} · ${RunDisplay.distance(minimum, settings.metricUnits)}", task.endText?.let(AppText.Run::endsAt)).joinToString(" · "),
-                                fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                            if (selection == null) InfoBanner(AppText.Run.MISSING_TASK_OR_SCHEDULE_READ_ONLY, tone = UiTone.Warning)
-                            Spacer(Modifier.height(AppUiTokens.Gap))
-                            Row(horizontalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
-                                RunAction(AppText.Run.SCHEDULE_SCORES_AND_HISTORY, enabled = selection != null, modifier = Modifier.weight(1f), onClick = {
-                                    selection?.let { onOpen(Route.Page("runrecords", it.encode(), AppText.Run.SCHEDULE_RUN_RECORDS_TITLE)) }
-                                })
-                                RunAction(AppText.Run.START_REAL_RECORDING, enabled = selection != null, primary = true, modifier = Modifier.weight(1f), onClick = {
-                                    selection?.let { onOpen(Route.Page("rundetail", it.encode(), task.title)) }
-                                })
-                            }
-                        }
-                    }
-                    state.moreError?.let { error -> item("more-error") { SectionCard(AppText.Run.NEXT_TASK_PAGE_FAILED_PREVIOUS_RETAINED, error, { scope.launch { controller.more() } }) } }
-                    if (!state.end && state.items.isNotEmpty()) item("more") { TextButton(AppText.Common.LOAD_NEXT_PAGE, enabled = !state.loading, onClick = { scope.launch { controller.more() } }) }
-                    if (state.end && state.items.isNotEmpty()) item("end") { Text(AppText.Run.tasksPaginationEnd(state.items.size), fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
-                    if (EditionAccess.routeEditorsEnabled) item("pro") { RunCard {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            RunStatus("Pro", UiTone.Info)
-                            TextButton(AppText.Run.LOCAL_ROUTE_PREVIEW_TITLE, onClick = {
-                                if (EditionAccess.routeEditorsEnabled) onOpen(Route.Page("runimport", title = AppText.Run.ROUTE_IMPORT_PREVIEW_TITLE))
-                            })
-                        }
-                    } }
-                    runWarnings(state.warnings)
+        RunTaskListContent(display, controls, list,
+            onEvent = { event -> if (bindings.isCurrent(render)) {
+                when (event) {
+                    RunListUiEvent.BACK -> onBack?.invoke()
+                    RunListUiEvent.REFRESH -> if (fence.isCurrent()) scope.launch { controller.refresh() }
+                    RunListUiEvent.MORE -> if (fence.isCurrent()) scope.launch { controller.more() }
+                    RunListUiEvent.LOCAL_TRACKER -> onOpen(Route.Page("runtracker", title = AppText.Run.REAL_RUN_RECORD_TITLE))
+                    RunListUiEvent.SELECT_TASKS -> Unit
                 }
-            }
-        }
+            } },
+            onFilter = { filter -> if (bindings.isCurrent(render) && !controller.state.value.loading) scope.launch {
+                controller.select(filter); list.scrollToItem(0)
+            } },
+            onRowAction = { key, action -> bindings.lookup(render, key)?.let { task -> taskListDestination(task, action)?.let(onOpen) } },
+            onContribution = { key -> if (bindings.isCurrent(render)) {
+                actionBindings.lookup(actionRender, key)?.let { onOpen(it.second.target) }
+            } })
     }
 }
 
 @Composable
-private fun RunDetailPage(graph: AppGraph, page: Route.Page, open: (Route) -> Unit, back: () -> Unit) {
+private fun RunDetailPage(graph: AppGraph, page: Route.Page, open: (NavKey) -> Unit, back: () -> Unit,
+                          contributedActions: (RunPreviewSelection?) -> List<ContributedAction>) {
     var refresh by remember { mutableIntStateOf(0) }
     val selection = remember(page.id) { RunTaskSelection.decode(page.id) }
-    val query = rememberRunQuery(graph, selection, refresh) { if (selection == null) missingRunSelection() else it.detail(selection.errandId, it.boundOwnerId.orEmpty(), selection.errandScheduleId) }
-    val detail = remember(query.data, selection) { query.data?.let(RunDataDecoder::detail)?.let { data -> selection?.let(data::withQueryContext) ?: data } }
+    val query = rememberRunQuery(graph, selection, refresh) { if (selection == null) missingRunSelection() else it.detail(selection.errandId, it.boundOwnerId, selection.errandScheduleId) }
+    val detail = remember(query.data, selection) { query.data?.value?.let { data -> selection?.let(data::withQueryContext) ?: data } }
     val settings by graph.settings.settings.collectAsState()
     Screen(AppText.Run.TASK_DETAIL_TITLE, back, actions = { TextButton(AppText.Common.REFRESH, enabled = !query.loading, onClick = { refresh++ }) }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentPadding = PaddingValues(AppUiTokens.PagePadding), verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
@@ -177,11 +140,11 @@ private fun RunDetailPage(graph: AppGraph, page: Route.Page, open: (Route) -> Un
                 item("records") { TextButton(AppText.Run.SCHEDULE_SCORES_AND_HISTORY, enabled = selection != null, onClick = {
                     selection?.let { open(Route.Page("runrecords", it.encode(), AppText.Run.SCHEDULE_RUN_RECORDS_TITLE)) }
                 }, modifier = Modifier.fillMaxWidth()) }
-                if (EditionAccess.routeEditorsEnabled) item("import") { TextButton(AppText.Run.IMPORT_ROUTE_LOCAL_PREVIEW_ACTION, onClick = {
-                    if (EditionAccess.routeEditorsEnabled) open(Route.Page("runimport", page.id, AppText.Run.ROUTE_IMPORT_PREVIEW_TITLE))
-                }, modifier = Modifier.fillMaxWidth()) }
+                contributedActions(selection?.let { RunPreviewSelection(it.errandId, it.errandScheduleId) }).forEachIndexed { index, action ->
+                    item("contribution:$index") { TextButton(action.title, onClick = { open(action.target) }, modifier = Modifier.fillMaxWidth()) }
+                }
                 runWarnings(detail.warnings)
-                runRawFields(detail.task.raw)
+                runDisplayFields(detail.task.safeDisplayFields)
             } else if (!query.loading && query.error == null) item("shape") { RunEmpty(AppText.Run.TASK_DETAIL_STRUCTURE_UNRECOGNIZED, AppText.Run.UNDECODABLE_TASK_DETAIL_NO_RECORDING_HINT) }
         }
     }
@@ -192,77 +155,65 @@ private fun RunRecordsPage(graph: AppGraph, page: Route.Page, open: (Route) -> U
     val session by graph.sessions.session.collectAsState()
     val settings by graph.settings.settings.collectAsState()
     val current by runtime.state.collectAsState()
+    val epoch by graph.sessions.revision.collectAsState()
     val owner = session?.userId.orEmpty()
     val selection = RunTaskSelection.decode(page.id) ?: current.taskSelection.takeIf { runtime.isCurrentSession() && current.ownerId == owner }
+    val list = rememberLazyListState()
+    var mounted by remember(graph, epoch) { mutableStateOf(true) }
+    DisposableEffect(graph, epoch) { onDispose { mounted = false } }
     if (selection == null) {
-        Screen(AppText.Run.SCHEDULE_RUN_RECORDS_TITLE, back) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding).padding(AppUiTokens.PagePadding)) {
-                RunEmpty(AppText.Run.SELECT_TASK_SCHEDULE_FIRST, AppText.Run.SCHEDULE_PAGINATION_SCOPE_HINT, AppText.Run.SELECT_FROM_MY_TASKS,
-                    { open(Route.Page("runs", title = AppText.Run.SELECT_RUN_TASK)) })
-            }
-        }
+        RunRecordsContent(RunRecordListDisplay(), RunListControls(canGoBack = true), list,
+            onEvent = { event -> if (mounted && graph.sessions.revision.value == epoch) when (event) {
+                RunListUiEvent.BACK -> back()
+                RunListUiEvent.SELECT_TASKS -> open(Route.Page("runs", title = AppText.Run.SELECT_RUN_TASK))
+                else -> Unit
+            } }, onOpenRow = {})
         return
     }
-    val bound = remember(graph, session?.userId, session?.token) { graph.repositories.run.boundToCurrentSession() }
-    val controller = remember(bound, owner, selection) { RunRecordController(RunRecordPageSource { requestedOwner, plan, offset, limit ->
-        if (bound == null || bound.boundOwnerId != requestedOwner) ApiResult.Failure(ApiError.Authentication()) else bound.records(requestedOwner, plan, offset, limit)
-    }, owner, selection.errandScheduleId) }
+    val bound = remember(graph, epoch) { ApiRunReadSource.capture(graph.api) }
+    val fence = remember(graph, epoch, bound) { SessionEpochReadFence(epoch, { graph.sessions.revision.value },
+        { bound?.isCurrentSession() == true }) }
+    val controller = remember(bound, owner, selection, fence) {
+        RunRecordController(boundRunRecordPages(bound, fence, owner), owner, selection.errandScheduleId)
+    }
     val state by controller.state.collectAsState()
+    val bindings = remember(controller, fence) { RunListBindings("record-row", RunRecordItem::identityKey,
+        { mounted && graph.sessions.revision.value == epoch && (bound?.isCurrentSession() ?: true) },
+        { controller.state.value.items }) }
+    DisposableEffect(fence, bindings) { onDispose { bindings.retire(); fence.close() } }
+    val render = bindings.render(state.items)
     var detailRefresh by remember { mutableIntStateOf(0) }
-    val planQuery = rememberRunQuery(graph, selection, detailRefresh) { it.detail(selection.errandId, it.boundOwnerId.orEmpty(), selection.errandScheduleId) }
+    val planQuery = rememberRunQuery(graph, selection, detailRefresh) { it.detail(selection.errandId, it.boundOwnerId, selection.errandScheduleId) }
     val minimum = remember(planQuery.data, selection) {
-        planQuery.data?.let(RunDataDecoder::detail)?.withQueryContext(selection)
+        planQuery.data?.value?.withQueryContext(selection)
             ?.takeIf { it.task.errandId == selection.errandId && it.task.scheduleId == selection.errandScheduleId }
             ?.minimumDistanceMeters
     }
     val scope = rememberCoroutineScope()
-    val list = rememberLazyListState()
     LaunchedEffect(controller) { controller.refresh() }
     LaunchedEffect(controller, list, state.items.size, state.loading, state.end, state.moreError, state.error) {
         if (!state.loading && !state.end && state.error == null && state.moreError == null && state.items.isNotEmpty()) snapshotFlow {
             val layout = list.layoutInfo
             layout.totalItemsCount > 0 && (layout.visibleItemsInfo.lastOrNull()?.index ?: -1) >= layout.totalItemsCount - 3
-        }.distinctUntilChanged().collect { if (it) controller.more() }
+        }.distinctUntilChanged().collect { if (it && fence.isCurrent()) controller.more() }
     }
-    Screen(AppText.Run.SCHEDULE_RUN_RECORDS_TITLE, back) { padding ->
-        val listPadding = pageContentPadding(padding, LocalNavigationBottomInset.current, LocalLayoutDirection.current)
-        PullToRefresh(state.loading, { detailRefresh++; scope.launch { controller.refresh() } }, modifier = Modifier.fillMaxSize().consumeWindowInsets(padding),
-            contentPadding = padding, refreshTexts = appRefreshTexts()) {
-            LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = listPadding, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item("summary") { MetricStrip(listOf(
-                    UiMetric(state.items.size.toString(), AppText.Run.LOADED_RECORDS_LABEL),
-                    UiMetric(RunDisplay.distance(minimum, settings.metricUnits), AppText.Run.SCHEDULE_REQUIREMENT_LABEL),
-                    UiMetric("—", AppText.Run.OTHER_SUMMARY_PENDING_LABEL),
-                )) }
-                if (state.loading) item("loading") { CircularProgressIndicator() }
-                state.error?.let { error -> item("error") { SectionCard(AppText.Run.RECORD_LOAD_FAILED_CONTENT_RETAINED, error, { scope.launch { controller.refresh() } }) } }
-                if (!state.loading && state.error == null && state.items.isEmpty()) item("empty") { RunEmpty(AppText.Run.NO_RECORDS_FOR_SCHEDULE, AppText.Run.SERVER_RECORD_LIST_EMPTY) }
-                itemsIndexed(state.items, key = { index, row -> "record:${row.trid}:$index" }) { _, row ->
-                    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(AppUiTokens.CardPadding),
-                        onClick = if (row.trid.isNullOrBlank()) null else ({ open(Route.Page("runrecord", row.trid, row.title)) })) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(row.title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                                Text(listOf(RunDisplay.distance(row.distanceMeters, settings.metricUnits), RunDisplay.duration(row.elapsedMillis), recordPace(row, settings.metricUnits)).joinToString(" · "),
-                                    fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                            }
-                            RunStatus(row.status ?: "—")
-                        }
-                        if (row.trid.isNullOrBlank()) Text(AppText.Run.MISSING_RECORD_ID_READ_ONLY_NEWLINE_SUFFIX, fontSize = 12.sp)
-                    }
-                }
-                state.moreError?.let { error -> item("more-error") { SectionCard(AppText.Run.NEXT_RECORD_PAGE_FAILED_PREVIOUS_RETAINED, error, { scope.launch { controller.more() } }) } }
-                if (!state.end && state.items.isNotEmpty()) item("more") { TextButton(AppText.Common.LOAD_NEXT_PAGE, enabled = !state.loading, onClick = { scope.launch { controller.more() } }) }
-                if (state.end && state.items.isNotEmpty()) item("end") { Text(AppText.Run.recordsPaginationEnd(state.items.size), fontSize = 12.sp) }
-                runWarnings(state.warnings)
-                if (planQuery.error != null) item("plan-feedback") { InfoBanner(planQuery.error.orEmpty(), tone = UiTone.Warning) }
-            }
-        }
-    }
+    val display = recordListDisplay(state, render, minimum, settings.metricUnits, planQuery.error)
+    RunRecordsContent(display, RunListControls(canGoBack = true, canRefresh = !state.loading, canMore = !state.loading && !state.end), list,
+        onEvent = { event -> if (bindings.isCurrent(render)) when (event) {
+            RunListUiEvent.BACK -> back()
+            RunListUiEvent.REFRESH -> if (fence.isCurrent()) { detailRefresh++; scope.launch { controller.refresh() } }
+            RunListUiEvent.MORE -> if (fence.isCurrent()) scope.launch { controller.more() }
+            RunListUiEvent.SELECT_TASKS -> open(Route.Page("runs", title = AppText.Run.SELECT_RUN_TASK))
+            RunListUiEvent.LOCAL_TRACKER -> Unit
+        } },
+        onOpenRow = { key -> bindings.lookup(render, key)?.let { record -> recordListDestination(record)?.let(open) } })
 }
 
-private fun recordPace(row: RunRecordItem, metric: Boolean): String =
-    if (row.distanceMeters != null && row.elapsedMillis != null) RunDisplay.pace(row.distanceMeters, row.elapsedMillis, metric) else "—"
+private fun recordPace(row: RunRecordItem, metric: Boolean): String {
+    val distance = row.distanceMeters
+    val elapsed = row.elapsedMillis
+    return if (distance != null && elapsed != null) RunDisplay.pace(distance, elapsed, metric) else "—"
+}
 
 @Composable
 private fun RunRecordPage(graph: AppGraph, page: Route.Page, back: () -> Unit) {
@@ -270,8 +221,8 @@ private fun RunRecordPage(graph: AppGraph, page: Route.Page, back: () -> Unit) {
     val settings by graph.settings.settings.collectAsState()
     val recordQuery = rememberRunQuery(graph, "record:${page.id}", refresh) { if (page.id.isBlank()) missingRunId() else it.record(page.id) }
     val trackQuery = rememberRunQuery(graph, "track:${page.id}", refresh) { if (page.id.isBlank()) missingRunId() else it.track(page.id) }
-    val record = remember(recordQuery.data) { recordQuery.data?.let(RunDataDecoder::record) }
-    val points = remember(trackQuery.data, record) { trackQuery.data?.let(RunDataDecoder::track).orEmpty().ifEmpty { record?.points.orEmpty() } }
+    val record = remember(recordQuery.data) { recordQuery.data?.value }
+    val points = remember(trackQuery.data, record) { trackQuery.data?.items.orEmpty().ifEmpty { record?.points.orEmpty() } }
     Screen(AppText.Run.RUN_SCORES_TITLE, back, actions = { TextButton(AppText.Common.QUERY_AGAIN, enabled = !recordQuery.loading && !trackQuery.loading, onClick = { refresh++ }) }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentPadding = PaddingValues(AppUiTokens.PagePadding), verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
             runFeedback(recordQuery, { refresh++ }, "record")
@@ -293,7 +244,7 @@ private fun RunRecordPage(graph: AppGraph, page: Route.Page, back: () -> Unit) {
                 points.take(100).forEachIndexed { index, point -> Text("${AppText.Run.serverCoordinateOrdinal(index + 1)} · ${coordinate(point)}", fontSize = 12.sp) }
                 if (points.size > 100) Text(AppText.Run.trackPreviewBound(points.size), fontSize = 12.sp)
             } }
-            record?.let { runRawFields(it.raw) }
+            record?.let { runDisplayFields(it.safeDisplayFields) }
         }
     }
 }

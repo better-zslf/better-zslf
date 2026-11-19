@@ -26,9 +26,5 @@ class AppTextCallbackOrderTest {
         val shown = externalIssue ?: AppText.Profile.personalStatistics(fallback(), fallback(), fallback())
         assertEquals("服务端逐字提示", shown)
         assertEquals(0, reads)
-        val absent: Int? = null
-        val speed = absent?.let { reads++; AppText.Water.signalDbm(it) } ?: "未知"
-        assertEquals("未知", speed)
-        assertEquals(0, reads)
     }
 }

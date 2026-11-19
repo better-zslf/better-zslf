@@ -1,0 +1,555 @@
+package io.github.betterzslf.schedule
+
+import android.Manifest
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.graphics.drawable.Icon
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import io.github.betterzslf.core.text.AppText.NativeSchedule
+import io.github.betterzslf.feature.schedule.ScheduleLiveBlock
+import io.github.betterzslf.feature.schedule.ScheduleLivePhase
+import io.github.betterzslf.feature.schedule.ScheduleLiveState
+import io.github.betterzslf.feature.schedule.scheduleLiveState
+import io.github.betterzslf.platform.ScheduleNativeStatus
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+/**
+ * The ongoing "live" timetable notification: in class, or counting down to the next class.
+ *
+ * This is a separate channel and a separate record from the one-shot lesson reminders, because
+ * the two have different lifecycles: a reminder fires once and is dismissed, while this stays up
+ * for the duration of the class and must be replaced, not re-posted. Keeping them apart also means
+ * disabling this feature cannot suppress a reminder the user asked for.
+ *
+ * Android 16 (API 36) promotes a ProgressStyle notification with POST_PROMOTED_NOTIFICATIONS into
+ * the Live Updates surface. That permission is optional to declare, and older versions ignore the
+ * style, so the same content renders as an ordinary ongoing notification below API 36.
+ */
+/**
+ * Identity of the current live stage: course title plus start instant. Used to remember that the
+ * user dismissed exactly this stage, without persisting anything about the course itself.
+ */
+internal fun ScheduleLiveState.key(): String = "$startsAtMillis:$phase"
+
+internal class ScheduleLiveNotifications(private val context: Context) {
+    private val notifications by lazy { context.getSystemService(NotificationManager::class.java) }
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @Serializable
+    private data class StoredLive(val revision: String, val blocks: List<Block>) {
+        /**
+         * The narrow on-disk shape of one class block.
+         *
+         * `periods` was missing here and that alone blanked the card's 节次 column on every device:
+         * publish() writes this model and immediately reconciles by rebuilding the blocks from it,
+         * so any field absent from this class is gone before the card is drawn. `location` survived
+         * precisely because it is listed -- the same block kept 教室 and lost the other two columns.
+         *
+         * `teacher` stays absent on purpose: instructor names must not reach storage
+         * (see ScheduleNative.scheduleNativeRedact), so they travel in [teacherByBlockId] instead.
+         */
+        @Serializable
+        data class Block(
+            val id: String, val title: String, val location: String,
+            val startsAtMillis: Long, val endsAtMillis: Long,
+            val periods: List<Int> = emptyList(),
+        )
+    }
+
+    /**
+     * Instructor names for the card, kept off disk.
+     *
+     * The persisted model deliberately has no teacher field, so this map carries the value across
+     * the publish/reconcile round trip within a process. A cold process started by an alarm will
+     * briefly show an empty teacher column until the next publish, which is the price of not
+     * writing names into storage.
+     */
+    /**
+     * Instructor names for the card, in the app's encrypted store.
+     *
+     * In memory alone was not enough: the engine is a singleton but a backgrounded process is
+     * killed, and the map went with it. The card then lost its teacher column until something
+     * republished -- which is what "it disappears after a while in the background" looked like.
+     *
+     * Kept out of [StoredLive] on purpose: that record is the redacted seed, and the policy in
+     * ScheduleNative is explicit that names must not travel with it. This is a separate key in the
+     * same authenticated-encrypted store the timetable already uses, so the data is not plaintext
+     * on disk and the redaction boundary is unchanged.
+     */
+    private var teacherByBlockId: Map<String, String> = emptyMap()
+
+    private val store get() = context.getSharedPreferences("better_zslf_schedule_live", Context.MODE_PRIVATE)
+
+
+    /** The class blocks of the day being watched, so a later reconcile needs no credentials. */
+    fun publish(revision: String, blocks: List<ScheduleLiveBlock>) {
+        // Merge, never replace wholesale.
+        //
+        // A cold start publishes blocks before the session has been restored, so their teacher
+        // fields are blank. Writing the map unconditionally meant that empty publish overwrote the
+        // names already on disk -- which is precisely how the column vanished "after a while in the
+        // background": every wake-up erased what the previous one had saved.
+        val incoming = blocks.filter { it.teacher.isNotBlank() }.associate { it.id to it.teacher }
+        if (incoming.isNotEmpty()) {
+            teacherByBlockId = teacherByBlockId + incoming
+            persistTeachers(teacherByBlockId)
+        } else if (teacherByBlockId.isEmpty()) {
+            // Nothing to add and nothing held in memory: recover what a previous process stored.
+            teacherByBlockId = readTeachers()
+        }
+        val payload = StoredLive(revision, blocks.map {
+            StoredLive.Block(it.id, it.title, it.location, it.startsAtMillis, it.endsAtMillis, it.periods)
+        })
+        store.edit().putString(KEY, json.encodeToString(payload)).commit()
+        reconcile(System.currentTimeMillis())
+    }
+
+    private fun persistTeachers(names: Map<String, String>) {
+        val result = runCatching {
+            val encrypted = io.github.betterzslf.platform.newAndroidEncryptedStore(context)
+            if (names.isEmpty()) encrypted.remove(TEACHER_KEY) else encrypted.put(TEACHER_KEY, json.encodeToString(names))
+        }
+        // Surfaced rather than swallowed: a silent failure here is exactly what made the teacher
+        // column vanish after the process was killed, with nothing in the log to explain it.
+        result.exceptionOrNull()?.let {
+            android.util.Log.w("LiveCardRT", "persistTeachers failed: " + it::class.java.simpleName + ": " + it.message)
+        }
+    }
+
+    private fun readTeachers(): Map<String, String> {
+        val result = runCatching {
+            val raw = io.github.betterzslf.platform.newAndroidEncryptedStore(context).get(TEACHER_KEY)
+            if (raw == null) return@runCatching emptyMap()
+            json.decodeFromString<Map<String, String>>(raw)
+        }
+        result.exceptionOrNull()?.let {
+            android.util.Log.w("LiveCardRT", "readTeachers failed: " + it::class.java.simpleName + ": " + it.message)
+        }
+        return result.getOrDefault(emptyMap())
+    }
+
+    /**
+     * Take the standard card down but keep the data behind it.
+     *
+     * A vendor island and the standard card describe the same class, so whichever one claims it the
+     * other must not also post. Removing the *stored blocks* to achieve that was wrong: those blocks
+     * are what a later reconcile rebuilds the card from, so the next tick found nothing and the card
+     * came back with its title still present but every column empty -- the fields "disappearing by
+     * themselves" after a long spell in the background.
+     */
+    fun withdrawCard() {
+        runCatching { notifications.cancel(TAG, NOTIFICATION_ID) }
+    }
+
+    /** Forget the class blocks outright. For sign-out and a revoked status only. */
+    fun clear() {
+        store.edit().remove(KEY).commit()
+        runCatching { notifications.cancel(TAG, NOTIFICATION_ID) }
+    }
+
+    /** Recompute and post/update/cancel. Safe to call at every boundary tick. */
+    fun reconcile(nowMillis: Long) {
+        val stored = store.getString(KEY, null)?.let {
+            runCatching { json.decodeFromString<StoredLive>(it) }.getOrNull()
+        }
+        if (stored == null || stored.blocks.isEmpty()) {
+            runCatching { notifications.cancel(TAG, NOTIFICATION_ID) }
+            return
+        }
+        // Restored from storage when this process has not published yet, so a card posted by an
+        // alarm after the app was killed still shows its instructor.
+        if (teacherByBlockId.isEmpty()) teacherByBlockId = readTeachers()
+        val state = scheduleLiveState(stored.blocks.map {
+            ScheduleLiveBlock(it.id, it.title, it.location, it.startsAtMillis, it.endsAtMillis,
+                teacher = teacherByBlockId[it.id].orEmpty(), periods = it.periods)
+        }, nowMillis)
+        // Logged after the storage round trip, which is where teacher and periods used to vanish:
+        // publish() wrote a model that had no slot for them and reconciled from that same model.
+        runCatching {
+            android.util.Log.i("LiveCardRT", "state teacher=[${state.teacher}] periodText=[${state.periodText}] " +
+                "course=[${state.courseName}] teachers=${teacherByBlockId.size} " +
+                "storedPeriods=${stored.blocks.map { it.periods }}")
+        }
+        lastState = state.takeIf { it.active }
+        if (!state.active || !notificationsEnabled() || dismissed(state)) {
+            lastReason = when {
+                !state.active -> "inactive"
+                !notificationsEnabled() -> "disabled"
+                else -> "dismissed"
+            }
+            runCatching { notifications.cancel(TAG, NOTIFICATION_ID) }
+            return
+        }
+        // Record the exact platform outcome; a swallowed post failure is undebuggable.
+        val built = runCatching { build(state, stored.revision) }
+        lastCardPromotable = built.getOrNull()?.let(::isPromotable) ?: false
+        val result = built.mapCatching { notifications.notify(TAG, NOTIFICATION_ID, it) }
+        lastPostFailed = result.isFailure
+        lastReason = result.exceptionOrNull()?.let { it::class.java.simpleName + ": " + (it.message ?: "") }
+            ?: ("posted:" + state.phase.name)
+    }
+
+    /**
+     * Did this card carry the characteristics the platform needs before promoting it?
+     *
+     * `hasPromotableCharacteristics()` is API 36-only, and the concept does not exist below that,
+     * so an older device reports false rather than claiming a capability it cannot check.
+     */
+    private fun isPromotable(notification: Notification): Boolean =
+        Build.VERSION.SDK_INT >= 36 && runCatching { notification.hasPromotableCharacteristics() }
+            .getOrDefault(false)
+
+    /**
+     * Post a caller-supplied state directly, bypassing the stored-block lookup.
+     *
+     * Only the in-app test button uses this: it has already resolved a synthetic state through the
+     * real state machine, and needs to see the real notification. Nothing else should call it,
+     * because it skips the dismissal bookkeeping that [reconcile] maintains.
+     */
+    fun publishTest(state: ScheduleLiveState): Boolean {
+        if (!notificationsEnabled()) {
+            lastReason = "test: notifications disabled"
+            return false
+        }
+        // A separate id, not the live one.
+        //
+        // Posting the probe under NOTIFICATION_ID meant the real reconcile -- which runs on every
+        // schedule tick -- immediately overwrote it, so the probe's content was never observable.
+        // Its own id also keeps a debug post from disturbing the production card.
+        val result = runCatching { notifications.notify(TAG_TEST, TEST_NOTIFICATION_ID, build(state, "test")) }
+        lastPostFailed = result.isFailure
+        // Record what the platform reported, including the channel's state at post time: a notify()
+        // call can succeed while nothing appears (channel blocked, importance NONE), and without
+        // these values a silent no-op looks identical to success.
+        lastReason = result.exceptionOrNull()?.let { it::class.java.simpleName + ": " + (it.message ?: "") }
+            ?: ("test-posted:" + state.phase.name +
+                " channel=" + (notifications.getNotificationChannel(CHANNEL)?.importance ?: -1) +
+                " enabled=" + notifications.areNotificationsEnabled())
+        return result.isSuccess
+    }
+
+    /**
+     * Whether the most recently built card was promotable.
+     *
+     * Reported to the reminder screen so "fluid cloud shows nothing" can be split into its two
+     * real causes: the permission is missing, or the notification shape does not qualify.
+     */
+    var lastCardPromotable: Boolean = false
+        private set
+
+    /** True when the most recent [reconcile] tried to post and the platform refused it. */
+    var lastPostFailed: Boolean = false
+        private set
+
+    /** Diagnostic for the probe: why the last reconcile did or did not post. */
+    var lastReason: String = "never"
+        private set
+
+    /**
+     * The state most recently resolved by [reconcile], or null when nothing is live.
+     *
+     * Exposed so the vendor dispatcher can render the same class block without re-deriving the
+     * schedule: two independent derivations would disagree at boundaries and could show one card
+     * saying "in class" while the other counts down.
+     */
+    fun currentState(): ScheduleLiveState? = lastState
+
+    private var lastState: ScheduleLiveState? = null
+
+    /**
+     * True when the user swiped this exact stage away. Clearing happens by comparing keys: once a
+     * later stage posts, the remembered key no longer matches and the reminder behaves normally
+     * again, so a dismissal never silences tomorrow's class.
+     */
+    private fun dismissed(state: ScheduleLiveState): Boolean {
+        val prefs = context.getSharedPreferences(TAG, Context.MODE_PRIVATE)
+        return prefs.getString(DISMISSED_KEY, null) == state.key()
+    }
+
+    private fun notificationsEnabled(): Boolean {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
+        return notifications.areNotificationsEnabled() &&
+            notifications.getNotificationChannel(CHANNEL)?.importance != NotificationManager.IMPORTANCE_NONE
+    }
+
+    private fun build(state: ScheduleLiveState, revision: String): Notification {
+        ensureChannel()
+        val icon = context.resources.getIdentifier("schedule_ic_notification", "drawable", context.packageName)
+            .takeIf { it != 0 } ?: android.R.drawable.ic_dialog_info
+        // The public (lock screen) version never names the course: it is only visible as content
+        // once the user unlocks, matching the private visibility of the reminder notifications.
+        val publicVersion = Notification.Builder(context, CHANNEL)
+            .setSmallIcon(icon)
+            .setContentTitle(NativeSchedule.LIVE_TITLE)
+            .setContentText(NativeSchedule.OPEN_TIMETABLE)
+            .build()
+        val inClass = state.phase == ScheduleLivePhase.IN_CLASS
+        val builder = Notification.Builder(context, CHANNEL)
+            .setSmallIcon(icon)
+            // The bare course name. state.title carries a "正在上课：" prefix for the collapsed
+            // form, but that prefix is exactly what subText now says -- keeping both printed the
+            // phase twice, which read as "正在上课：合成课程9 / 正在上课".
+            .setContentTitle(courseTitle(state))
+            // Four fields, four jobs -- the split a comparable app uses, and the reason its card
+            // reads cleanly at every size:
+            //   title    the course name
+            //   body     where it happens (room), never the countdown
+            //   subText  the phase (正在上课 / 下节课)
+            //   chip     the minute count, in the status-bar capsule
+            // The chronometer renders a live "1:59:51" on its own; repeating that in words is the
+            // duplicate this arrangement exists to avoid.
+            .setContentText(locationText(state))
+            .setSubText(phaseText(state))
+            .setContentIntent(openIntent(revision))
+            .setDeleteIntent(dismissIntent(state))
+            .setCategory(Notification.CATEGORY_PROGRESS)
+            // The platform tints the card's accents with this; without it the bar and chip fall
+            // back to the system default and stop matching the progress segments we set below.
+            .setColor(accentColor())
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicVersion)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            // The card brings its own ticker to the deadline, so no per-minute re-post is needed
+            // and the value stays truthful even if the process is frozen between boundaries.
+            .setShowWhen(true)
+            .setWhen(if (inClass) state.endsAtMillis else state.startsAtMillis)
+            .setUsesChronometer(true)
+            .setChronometerCountDown(true)
+        // Safety net: if both the boundary alarm and the foreground refresh are missed (frozen
+        // process, vendor battery manager), the system removes the stale card by itself instead
+        // of leaving a countdown that has gone past zero.
+        val deadline = if (inClass) state.endsAtMillis else state.startsAtMillis
+        val remaining = (deadline - System.currentTimeMillis()).coerceAtLeast(1_000L)
+        builder.setTimeoutAfter(remaining)
+        // No custom content view here, deliberately.
+        //
+        // Android 16 forbids RemoteViews inside a promoted ongoing notification, and this path
+        // requests promotion below -- that is the strongest live treatment the platform offers
+        // (status-bar capsule, lock-screen presence, system-rendered progress). Custom card and
+        // promotion are mutually exclusive, so the native path keeps promotion and lets the system
+        // draw the card. The three detail columns therefore remain a vendor-path feature; that is a
+        // platform constraint, not an oversight, and it is also why a vendor notification can never
+        // itself be promoted.
+        if (Build.VERSION.SDK_INT >= 36) {
+            // API 36: the chip is the status-bar capsule. It has the highest precedence of any
+            // chip content, so an explicit value wins over the chronometer's own rendering.
+            runCatching { builder.setShortCriticalText(state.chip) }
+        }
+        applyProgressStyle(builder, state)
+        applyLegacyStyle(builder, state)
+        // Promotion is an explicit request, not a side effect of using ProgressStyle: without
+        // this extra the notification stays a plain ongoing one even on Android 16.
+        builder.addExtras(android.os.Bundle().apply {
+            putBoolean(EXTRA_REQUEST_PROMOTED_ONGOING, true)
+        })
+        return builder.build()
+    }
+
+    /**
+     * Bare course name for the headline.
+     *
+     * Falls back to the prefixed title only when the state carries no courseName, so a state built
+     * by an older caller still shows something rather than an empty headline.
+     */
+    private fun courseTitle(state: ScheduleLiveState): String =
+        state.courseName.ifBlank { state.title }
+
+    /** Body line: the room, or nothing. The phase lives in subText and the count in the chip. */
+    private fun locationText(state: ScheduleLiveState): String =
+        state.location.ifBlank { NativeSchedule.OPEN_TIMETABLE }
+
+    /** Sub-text: which phase the card is describing. */
+    private fun phaseText(state: ScheduleLiveState): String =
+        if (state.phase == ScheduleLivePhase.IN_CLASS) NativeSchedule.LIVE_IN_CLASS else NativeSchedule.LIVE_NEXT_CLASS
+
+    /**
+     * On API 36 the promoted Live Update treatment needs ProgressStyle. Below that the style class
+     * does not exist, so the builder keeps the plain ongoing notification; the runtime check is a
+     * version test, not a compile-time assumption, because minSdk is 33.
+     */
+    /**
+     * Accent colour, following the system theme.
+     *
+     * Brightened in dark mode because a brand blue that reads well on white goes muddy on a dark
+     * shade, and the tint is also handed to `setColor` so the whole card picks it up.
+     */
+    private fun accentColor(): Int = if (isNight()) 0xFF5B9DFF.toInt() else 0xFF3382FF.toInt()
+
+    /** Track behind the progress: dimmed in dark mode so it does not outshine the progress itself. */
+    private fun trackColor(): Int = if (isNight()) 0xFF2A3A55.toInt() else 0xFFD6E5FF.toInt()
+
+    private fun isNight(): Boolean =
+        (context.resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+
+    private fun drawableId(name: String): Int =
+        context.resources.getIdentifier(name, "drawable", context.packageName)
+
+    /**
+     * API 36 path: ProgressStyle, which is what the platform promotes.
+     *
+     * The three end-point icons are part of the template rather than decoration -- they are what
+     * turns a bare bar into a track with a start, a current position and an end, which is how a
+     * live progress card reads as a timeline instead of a percentage.
+     */
+    private fun applyProgressStyle(builder: Notification.Builder, state: ScheduleLiveState) {
+        if (Build.VERSION.SDK_INT < 36) return
+        val progress = state.progress ?: return
+        runCatching {
+            val done = (progress * 100f).toInt().coerceIn(0, 100)
+            // Two segments that always sum to 100: no stray track at the end, no 1% sliver at the
+            // start, so the bar never looks like it is pointing at nothing.
+            val left = 100 - done
+            val accent = accentColor()
+            val track = trackColor()
+            val style = Notification.ProgressStyle()
+                .setStyledByProgress(true)
+                .setProgress(done)
+                .setProgressSegments(
+                    buildList {
+                        if (done > 0) add(Notification.ProgressStyle.Segment(done).setColor(accent))
+                        if (left > 0) add(Notification.ProgressStyle.Segment(left).setColor(track))
+                    },
+                )
+            // Only icon resources from this package may be used; a framework id would make
+            // SystemUI look up a drawable that does not exist here and fail the whole card.
+            drawableId("schedule_live_tracker").takeIf { it != 0 }
+                ?.let { style.setProgressTrackerIcon(Icon.createWithResource(context, it)) }
+            drawableId("schedule_live_start").takeIf { it != 0 }
+                ?.let { style.setProgressStartIcon(Icon.createWithResource(context, it)) }
+            drawableId("schedule_live_end").takeIf { it != 0 }
+                ?.let { style.setProgressEndIcon(Icon.createWithResource(context, it)) }
+            builder.setStyle(style)
+        }
+    }
+
+    /**
+     * Below API 36 there is no chip and no progress template, so the card keeps its four fields and
+     * expands the body instead. Without this the older path showed a one-line card that lost the
+     * room text entirely.
+     */
+    private fun applyLegacyStyle(builder: Notification.Builder, state: ScheduleLiveState) {
+        if (Build.VERSION.SDK_INT >= 36) return
+        runCatching { builder.setStyle(Notification.BigTextStyle().bigText(locationText(state))) }
+    }
+
+    /**
+     * A dismissal is not a timeout. `setTimeoutAfter` also fires the delete intent, so without
+     * telling the two apart a stage change would be recorded as "the user swiped it away" and the
+     * matching class would stay silent for its whole duration.
+     */
+    private fun dismissIntent(state: ScheduleLiveState): PendingIntent {
+        val intent = Intent(context, ScheduleLiveDismissReceiver::class.java)
+            .putExtra(EXTRA_DISMISS_KEY, state.key())
+            .putExtra(EXTRA_DISMISS_DEADLINE, state.endsAtMillis)
+        return PendingIntent.getBroadcast(context, 3, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    private fun ensureChannel() {
+        if (notifications.getNotificationChannel(CHANNEL) != null) return
+        // IMPORTANCE_DEFAULT, not LOW: a LOW channel is filed under the "Silent" section, which
+        // some launchers collapse entirely, making an ongoing class notification invisible. The
+        // channel still stays silent because it carries no sound and no vibration.
+        val channel = NotificationChannel(CHANNEL, NativeSchedule.LIVE_CHANNEL_TITLE,
+            NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = io.github.betterzslf.core.text.AppText.Schedule.LIVE_CHANNEL_DESCRIPTION
+            setShowBadge(false)
+            enableVibration(false)
+            setSound(null, null)
+        }
+        notifications.createNotificationChannel(channel)
+    }
+
+    private fun openIntent(revision: String): PendingIntent {
+        val data = Intent().setClassName(context.packageName, "io.github.betterzslf.MainActivity")
+            .setAction(context.packageName + ".schedule.OPEN")
+            .setData(android.net.Uri.Builder().scheme(SCHEDULE_URI_SCHEME).authority(context.packageName)
+                .appendPath(SCHEDULE_OPEN_PATH).appendPath(revision).appendPath("root").build())
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        return PendingIntent.getActivity(context, 2, data,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    /** True when the feature can post at all; used to decide whether to arm boundary alarms. */
+    fun available(): Boolean = Build.VERSION.SDK_INT >= 26
+
+    internal companion object {
+        /** Key in the encrypted store; deliberately not part of the redacted seed record. */
+        const val TEACHER_KEY = "better-zslf.schedule.live-teachers.v1"
+        /** Debug probe id and tag; deliberately distinct from the production live card. */
+        const val TAG_TEST = "schedule.live.test"
+        const val TEST_NOTIFICATION_ID = 0x5C5E99
+        const val CHANNEL = "schedule_live_v1"
+        const val TAG = "schedule.live"
+        const val NOTIFICATION_ID = 1
+        const val KEY = "live.v1"
+        const val DISMISSED_KEY = "dismissed.v1"
+        /** Broadcast extras shared with the dismiss receiver. */
+        const val EXTRA_DISMISS_KEY = "better-zslf.live.dismiss_key"
+        const val EXTRA_DISMISS_DEADLINE = "better-zslf.live.dismiss_deadline"
+        /** Android 16 promotion request extra; the platform constant is not public API. */
+        const val EXTRA_REQUEST_PROMOTED_ONGOING = "android.requestPromotedOngoing"
+    }
+}
+
+/**
+ * Records that the user swiped the live card away, but only when it really was a dismissal.
+ *
+ * `setTimeoutAfter` delivers the same delete intent when the stage expires, so the two cases are
+ * separated by comparing the deadline carried in the intent with the clock: an expiry arrives at
+ * (or just after) the deadline, a dismissal arrives well before it. Mid-stage dismissals are
+ * remembered per stage key, so that class does not come back until the next one starts.
+ */
+class ScheduleLiveDismissReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val key = intent.getStringExtra(ScheduleLiveNotifications.EXTRA_DISMISS_KEY) ?: return
+        val deadline = intent.getLongExtra(ScheduleLiveNotifications.EXTRA_DISMISS_DEADLINE, 0L)
+        val timedOut = deadline > 0L && System.currentTimeMillis() >= deadline - TIMEOUT_SLACK_MILLIS
+        if (!timedOut) {
+            context.getSharedPreferences(ScheduleLiveNotifications.TAG, Context.MODE_PRIVATE)
+                .edit().putString(ScheduleLiveNotifications.DISMISSED_KEY, key).apply()
+            ScheduleNativeEngine.from(context).reconcile()
+        }
+    }
+
+    private companion object {
+        /** Anything arriving this close to the deadline is an expiry, not a user action. */
+        const val TIMEOUT_SLACK_MILLIS = 1_500L
+    }
+}
+
+/**
+ * Debug-only: post one caller-supplied state through the standard Live Update path.
+ *
+ * Exists so the transition probe can be observed on devices where no vendor renderer applies --
+ * an emulator, or any ROM using the native API. Top-level and public for the same reason as
+ * [scheduleLiveDiagnostic]: the probe lives in a different module, and widening the engine type
+ * just for a debug hook would leak into the release contract.
+ */
+fun scheduleLivePostTest(context: android.content.Context, state: io.github.betterzslf.feature.schedule.ScheduleLiveState): Boolean =
+    ScheduleLiveNotifications(context).publishTest(state)
+
+/**
+ * Debug-only: withdraw the probe card posted by [scheduleLivePostTest].
+ *
+ * Needed because the probe owns its own tag and id to stay out of the production card's way, so
+ * the engine's normal cancel path does not reach it. Without this, "nothing is happening now"
+ * would leave the previous phase's probe card on screen.
+ */
+fun scheduleLiveClearTest(context: android.content.Context) {
+    runCatching {
+        context.getSystemService(android.app.NotificationManager::class.java)
+            ?.cancel(ScheduleLiveNotifications.TAG_TEST, ScheduleLiveNotifications.TEST_NOTIFICATION_ID)
+    }
+}

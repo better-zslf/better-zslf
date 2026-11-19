@@ -22,15 +22,7 @@ class CapabilityProbeActivity : ComponentActivity() {
             val status by tracker.state.collectAsState()
             var samples by remember { mutableIntStateOf(0) }
             var permission by remember { mutableStateOf("not requested") }
-            var fileResult by remember { mutableStateOf("none") }
             val permissions = rememberLocationPermissionRequester { permission = "granted=$it" }
-            val files = rememberFilePicker { result ->
-                fileResult = when (result) {
-                    FilePickResult.Cancelled -> "cancelled"
-                    is FilePickResult.Failed -> "error:${result.message}"
-                    is FilePickResult.Selected -> "selected:${result.file.size}"
-                }
-            }
             LaunchedEffect(tracker) { tracker.samples.collect { samples++ } }
             DisposableEffect(tracker) { onDispose { tracker.stop() } }
             AndroidView(factory = { context ->
@@ -52,14 +44,11 @@ class CapabilityProbeActivity : ComponentActivity() {
                     action("Request location permission") { permissions.launch() }
                     action("Start location") { tracker.start(10) }
                     action("Stop location") { tracker.stop() }
-                    label("", "file")
-                    action("Choose file (8 MiB maximum)") { files.launch() }
                 }
             }, update = { view ->
                 view.findViewWithTag<TextView>("status").text = "Location:${status.phase}"
                 view.findViewWithTag<TextView>("samples").text = "Samples:$samples"
                 view.findViewWithTag<TextView>("permission").text = "Permission:$permission"
-                view.findViewWithTag<TextView>("file").text = "File:$fileResult"
             })
         }
     }

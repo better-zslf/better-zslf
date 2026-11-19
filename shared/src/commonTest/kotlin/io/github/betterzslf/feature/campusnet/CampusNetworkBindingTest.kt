@@ -23,7 +23,7 @@ class CampusNetworkBindingTest {
         controller.selectAccount(controller.state.value.accounts.single().key)
         assertTrue(controller.checkPhone("13800000000"))
         assertTrue(controller.prepare("13800000000", "fixture-new-password", "fixture-new-password"))
-        return assertNotNull(controller.state.value.preview).id
+        return assertNotNull(controller.captureConfirmationId())
     }
 
     @Test fun changingTokenBetweenPreviewAndFinalConfirmationSendsZeroWriteRequests() = runTest {
@@ -74,6 +74,64 @@ class CampusNetworkBindingTest {
             assertFalse(controller.prepare("13800000000", "fixture-new", "fixture-new"))
             assertEquals(0, writes)
         } finally { release.complete(Unit); fixture.close() }
+    }
+
+    @Test fun sameValueSaveRevokesAllCapturedTypedSourcesWithoutRecaptureOrHttp() = runTest {
+        var requests = 0
+        val fixture = ApiTestFixture(MockEngine { requests++; error("Retired sources must be local") })
+        try {
+            val network = assertNotNull(RepositoryCampusNetworkSource.capture(fixture.repositories.campusNetwork))
+            val portal = assertNotNull(RepositoryCampusPortalSource.capture(fixture.repositories.campusPortal))
+            val phone = assertNotNull(RepositoryCampusProvisionedPhoneSource.capture(fixture.repositories.campusNetwork))
+            fixture.sessions.save(assertNotNull(fixture.sessions.session.value).copy())
+            assertFalse(network.isCurrentSession()); assertFalse(portal.isCurrentSession()); assertFalse(phone.isCurrentSession())
+            val results = listOf(network.accounts(), network.checkPhone("13800000000"), network.updatePassword("fixture-id", "new"),
+                portal.internetInfo(), portal.redirectTarget(), portal.dialIn("http://fixture.portal/a"), portal.offline(), phone.readProvisionedPhone())
+            results.forEach { assertEquals(CampusIssue.AUTHENTICATION, assertIs<CampusOutcome.Failure>(it).issue) }
+            assertEquals(0, requests)
+        } finally { fixture.close() }
+    }
+
+    @Test fun clearSaveAbaNeverRevivesCapturedTypedSourcesEvenWithTheSameCredentials() = runTest {
+        var requests = 0
+        val fixture = ApiTestFixture(MockEngine { requests++; error("Old ABA capability must not reach HTTP") })
+        try {
+            val original = assertNotNull(fixture.sessions.session.value)
+            val network = assertNotNull(RepositoryCampusNetworkSource.capture(fixture.repositories.campusNetwork))
+            val portal = assertNotNull(RepositoryCampusPortalSource.capture(fixture.repositories.campusPortal))
+            fixture.sessions.clear(); fixture.sessions.save(original)
+            assertFalse(network.isCurrentSession()); assertFalse(portal.isCurrentSession())
+            assertEquals(CampusIssue.AUTHENTICATION, assertIs<CampusOutcome.Failure>(network.accounts()).issue)
+            assertEquals(CampusIssue.AUTHENTICATION, assertIs<CampusOutcome.Failure>(portal.redirectTarget()).issue)
+            assertEquals(0, requests)
+        } finally { fixture.close() }
+    }
+
+    @Test fun sameSaveOrAbaDuringRedirectNeverStartsAProbeOrDialAndDoesNotPublishTheLateAddress() = runTest {
+        for (aba in listOf(false, true)) {
+            val started = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+            var requests = 0; var probes = 0
+            val fixture = ApiTestFixture(MockEngine { request ->
+                requests++
+                assertEquals("getRedirectUrl", request.url.encodedPath.substringAfterLast('/'))
+                started.complete(Unit); release.await()
+                respond("""{"code":200,"data":{"addr":"http://9.9.9.9"}}""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+            })
+            try {
+                val original = assertNotNull(fixture.sessions.session.value)
+                val source = assertNotNull(RepositoryCampusPortalSource.capture(fixture.repositories.campusPortal))
+                val controller = CampusPortalController(source, CampusPortalProbeSource { probes++; PortalProbeResult.Answered(it, false) }, { 1L })
+                val request = launch { assertFalse(controller.connect()) }
+                started.await()
+                if (aba) fixture.sessions.clear()
+                fixture.sessions.save(original)
+                val retired = controller.state.value
+                release.complete(Unit); request.join()
+                assertFalse(source.isCurrentSession()); assertEquals(0, probes); assertEquals(1, requests)
+                assertEquals(retired, controller.state.value); assertNull(controller.state.value.portalAddress)
+                controller.close()
+            } finally { release.complete(Unit); fixture.close() }
+        }
     }
 
     @Test fun unknownActualTransportEnvelopeIsUncertainAndNeverRetransmitted() = runTest {

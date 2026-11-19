@@ -20,10 +20,11 @@ import coil3.memory.MemoryCache
 import coil3.request.*
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.Route
-import io.github.betterzslf.core.result.ApiResult
 import io.github.betterzslf.feature.profile.*
-import io.github.betterzslf.feature.runui.RunDataDecoder
-import kotlinx.serialization.json.JsonElement
+import io.github.betterzslf.feature.runui.ApiRunReadSource
+import io.github.betterzslf.feature.runui.RunReadOutcome
+import io.github.betterzslf.feature.runui.RunRows
+import io.github.betterzslf.feature.runui.RunRecordItem
 import io.github.betterzslf.feature.schedule.scheduleCoursesForWeek
 import io.github.betterzslf.ui.AppUiTokens
 import io.github.betterzslf.ui.ConfirmDialog
@@ -35,6 +36,7 @@ import io.github.betterzslf.ui.SectionCard
 import io.github.betterzslf.ui.SectionTitle
 import io.github.betterzslf.ui.UiMetric
 import io.github.betterzslf.ui.UiTone
+import io.github.betterzslf.ui.SessionEpochReadFence
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -43,15 +45,16 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun ProfileFeatureScreen(graph: AppGraph, open: (Route) -> Unit) {
     val session by graph.sessions.session.collectAsState()
+    val epoch by graph.sessions.revision.collectAsState()
     if (session == null) {
         Screen(AppText.Navigation.PROFILE) { padding -> PageList(padding) { item { SectionCard(AppText.Auth.NOT_LOGGED_IN, AppText.Profile.LOG_IN_TO_LOAD_PROFILE_HINT) } } }
-    } else key(session) {
-        ProfileOwnerScreen(graph, open)
+    } else key(graph, epoch) {
+        ProfileOwnerScreen(graph, epoch, open)
     }
 }
 
 @Composable
-private fun ProfileOwnerScreen(graph: AppGraph, open: (Route) -> Unit) {
+private fun ProfileOwnerScreen(graph: AppGraph, epoch: Long, open: (Route) -> Unit) {
     val context = LocalPlatformContext.current
     val scope = rememberCoroutineScope()
     // New PUBLIC client owned by this page/session, never graph.api or its engine.
@@ -63,7 +66,8 @@ private fun ProfileOwnerScreen(graph: AppGraph, open: (Route) -> Unit) {
             .build()
     }
     val resources = remember(imageLoader, avatars) { ProfilePageResources(imageLoader, avatars) }
-    val controller = remember(graph, avatars, scope) { ProfileController(graph.repositories.profile, graph.sessions.session, avatars, scope) }
+    val controller = remember(graph, avatars, scope) { ProfileController(graph.repositories.profile, graph.sessions.session, avatars, scope,
+        sessionRevision = graph.sessions.revision) }
     val observed by controller.state.collectAsState()
     val state = if (observed.hasSession) controller.visibleState() else observed
     var logout by remember { mutableStateOf(false) }
@@ -100,10 +104,15 @@ private fun ProfileOwnerScreen(graph: AppGraph, open: (Route) -> Unit) {
                 // activity (history was a browsing counter, not a run count). It now reads the
                 // user's own run records once and reports real totals. Until that read finishes
                 // both cells show "not provided" rather than an invented zero.
-                val runs by produceState<ApiResult<JsonElement>?>(null, graph) {
+                val runs by produceState<RunReadOutcome<RunRows<RunRecordItem>>?>(null, graph, epoch) {
                     val owner = graph.sessions.session.value?.userId ?: return@produceState
-                    val bound = graph.repositories.run.boundToCurrentSession() ?: return@produceState
-                    value = bound.records(owner)
+                    val bound = ApiRunReadSource.capture(graph.api) ?: return@produceState
+                    val fence = SessionEpochReadFence(epoch, { graph.sessions.revision.value },
+                        { bound.isCurrentSession() })
+                    try {
+                        val result = fence.readCurrent { bound.records(owner) }
+                        if (fence.isCurrent()) value = result
+                    } finally { fence.close() }
                 }
                 val totals = remember(runs) { runTotals(runs) }
                 MetricStrip(listOf(
@@ -222,7 +231,7 @@ private fun ProfileAvatar(state: ProfileAvatarState, loader: ImageLoader, contro
 }
 
 /** Totals read from the user's own run records; null when the read failed or never started. */
-private data class RunTotals(val distance: Double, val count: Int)
+internal data class RunTotals(val distance: Double, val count: Int)
 
 /**
  * Reads the user-wide record list through the shared, already-audited decoder.
@@ -231,9 +240,8 @@ private data class RunTotals(val distance: Double, val count: Int)
  * so it reports zero; only a failed read reports nothing. Conflating the two made a fresh account
  * look like a broken request.
  */
-private fun runTotals(result: ApiResult<JsonElement>?): RunTotals? {
-    val data = (result as? ApiResult.Success)?.data ?: return null
-    val items = RunDataDecoder.records(data).items
+internal fun runTotals(result: RunReadOutcome<RunRows<RunRecordItem>>?): RunTotals? {
+    val items = (result as? RunReadOutcome.Success)?.data?.items ?: return null
     val metres = items.sumOf { item ->
         item.distanceMeters?.takeIf { value -> value.isFinite() && value >= 0 } ?: 0.0
     }

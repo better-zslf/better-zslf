@@ -36,6 +36,57 @@ EDITION_ROOTS = (
     ("shared/src/standardMain/kotlin/", "kt"),
     ("shared/src/proMain/kotlin/", "kt"),
 )
+# V2 explicit production roots, independently pinned rather than imported.
+EXTRACTED_ROOTS = (
+    "core/text/src/commonMain/kotlin/",
+    "core/run-model/src/commonMain/kotlin/",
+    "core/logging/src/commonMain/kotlin/",
+    "core/network-session/src/commonMain/kotlin/",
+    "core/storage/src/commonMain/kotlin/",
+    "platform/storage/src/androidMain/kotlin/",
+    "design-system/src/commonMain/kotlin/",
+    "feature/run/api/src/commonMain/kotlin/",
+    "feature/run/domain/src/commonMain/kotlin/",
+    "feature/run/data/src/commonMain/kotlin/",
+    "feature/run/presentation/src/commonMain/kotlin/",
+    "feature/run/ui/src/commonMain/kotlin/",
+    "feature/services/presentation/src/commonMain/kotlin/",
+    "feature/services/ui/src/commonMain/kotlin/",
+    "platform-ui/readonly-map/src/commonMain/kotlin/",
+    "feature/schedule/api/src/commonMain/kotlin/",
+    "feature/schedule/domain/src/commonMain/kotlin/",
+    "feature/schedule/data/src/commonMain/kotlin/",
+    "feature/schedule/ui/src/commonMain/kotlin/",
+    "feature/home/presentation/src/commonMain/kotlin/",
+    "feature/home/ui/src/commonMain/kotlin/",
+    "feature/update/domain/src/commonMain/kotlin/",
+    "feature/update/data/src/commonMain/kotlin/",
+    "feature/update/presentation/src/commonMain/kotlin/",
+    "feature/update/ui/src/commonMain/kotlin/",
+    "feature/accountrecovery/domain/src/commonMain/kotlin/",
+    "feature/accountrecovery/data/src/commonMain/kotlin/",
+    "feature/accountrecovery/presentation/src/commonMain/kotlin/",
+    "feature/accountrecovery/ui/src/commonMain/kotlin/",
+    "feature/campusnet/domain/src/commonMain/kotlin/",
+    "feature/campusnet/data/src/commonMain/kotlin/",
+    "feature/campusnet/presentation/src/commonMain/kotlin/",
+    "feature/campusnet/ui/src/commonMain/kotlin/",
+    "feature/auth/domain/src/commonMain/kotlin/",
+    "feature/auth/data/src/commonMain/kotlin/",
+    "feature/auth/presentation/src/commonMain/kotlin/",
+    "feature/auth/ui/src/commonMain/kotlin/",
+    "platform/updates/src/commonMain/kotlin/",
+    "platform/schedule-native/src/commonMain/kotlin/",
+    "feature/schedule/runtime/src/commonMain/kotlin/",
+    "feature/run/runtime/src/commonMain/kotlin/",
+    "platform/location/src/commonMain/kotlin/",
+    "feature/profile/domain/src/commonMain/kotlin/",
+    "feature/profile/data/src/commonMain/kotlin/",
+    "feature/profile/presentation/src/commonMain/kotlin/",
+    "feature/content/domain/src/commonMain/kotlin/",
+    "feature/content/data/src/commonMain/kotlin/",
+    "feature/content/presentation/src/commonMain/kotlin/",
+)
 DIAGNOSTIC_PATH = "shared/src/iosMain/kotlin/io/github/betterzslf/platform/IosStartupDiagnostics.kt"
 # Full diagnostic text is fixture DATA only; this independent SHA freezes it.
 # It is never imported/executed. Every exception still matches just one token.
@@ -516,6 +567,8 @@ class GuardExceptionTests(unittest.TestCase):
             (self.root / "shared/src/commonMain/kotlin/io/github/betterzslf" / name).mkdir(parents=True)
         for prefix, _ in (*PHASE_C_ROOTS, *EDITION_ROOTS):
             (self.root / prefix).mkdir(parents=True)
+        for prefix in EXTRACTED_ROOTS:
+            (self.root / prefix).mkdir(parents=True)
         self.write(self.app_path, "fun App() = Unit\n")
         self.source = 'val protocol = "协议"\n'
         self.write(self.ui_path, self.source)
@@ -737,7 +790,7 @@ class GuardExceptionTests(unittest.TestCase):
 
     def test_factory_rejects_wrong_source_out_of_scope_and_non_han(self):
         token = guard.scan_source(self.source)[0]
-        bad_paths = ["../Sample.kt", "/tmp/Sample.kt", "shared/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt",
+        bad_paths = ["../Sample.kt", "/tmp/Sample.kt", "core/text/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt",
                      "shared/src/commonMain/kotlin/io/github/betterzslf/ui/../App.kt", "C:/Sample.kt"]
         for path in bad_paths:
             with self.subTest(path=path), self.assertRaises(ValueError):
@@ -750,7 +803,7 @@ class GuardExceptionTests(unittest.TestCase):
     def test_scope_excludes_core_feature_tests_deps_and_other_source_sets(self):
         # Keep the legacy outside-scope regression; C now includes native Main roots.
         self.write(self.ui_path, 'val label = "ASCII"\n')
-        outside = ["shared/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt",
+        outside = ["core/text/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt",
                    "shared/src/commonTest/kotlin/io/github/betterzslf/ui/Bad.kt",
                    "shared/src/androidTest/kotlin/io/github/betterzslf/ui/Bad.kt",
                    "shared/src/iosTest/kotlin/io/github/betterzslf/platform/Bad.kt",
@@ -819,9 +872,9 @@ class GuardExceptionTests(unittest.TestCase):
 
     def test_only_exact_catalog_file_is_excluded_not_its_directory(self):
         self.write(self.ui_path, "val label = Unit\n")
-        catalog = "shared/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt"
+        catalog = "core/text/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt"
         self.write(catalog, '$$"""unsupported catalog syntax is excluded"""')
-        siblings = ["shared/src/commonMain/kotlin/io/github/betterzslf/core/text/" + suffix
+        siblings = ["core/text/src/commonMain/kotlin/io/github/betterzslf/core/text/" + suffix
                     for suffix in ("Other.kt", "nested/AppText.kt", "AppTextExtra.kt")]
         for path in siblings:
             self.write(path, 'val label = "同目录也受守卫"\n')
@@ -858,11 +911,11 @@ class GuardExceptionTests(unittest.TestCase):
                 self.assertIn(("lexical_error", path), [(e["code"], e["path"]) for e in result.errors])
 
     def test_phase_b_factory_accepts_exact_paths_and_retains_canonical_checks(self):
-        for suffix in ("core/C.kt", "core/text/Sibling.kt", "feature/F.kt", "data/D.kt", "platform/P.kt", "AppGraph.kt"):
+        for suffix in ("core/C.kt", "core/text/Sibling.kt", "core/text/AppText.kt", "feature/F.kt", "data/D.kt", "platform/P.kt", "AppGraph.kt"):
             path = "shared/src/commonMain/kotlin/io/github/betterzslf/" + suffix
             self.assertEqual(guard.make_exception(path, self.source, guard.scan_source(self.source)[0],
                                                  "Protocol value", "fixture")["path"], path)
-        for suffix in ("core//C.kt", "core/./C.kt", "core/../C.kt", "core/text/AppText.kt", "AppGraph.kt/", "AppGraph.kts"):
+        for suffix in ("core//C.kt", "core/./C.kt", "core/../C.kt", "AppGraph.kt/", "AppGraph.kts"):
             with self.subTest(suffix=suffix), self.assertRaises(ValueError):
                 guard.make_exception("shared/src/commonMain/kotlin/io/github/betterzslf/" + suffix,
                                      self.source, guard.scan_source(self.source)[0], "Protocol value", "fixture")
@@ -1129,7 +1182,7 @@ class GuardExceptionTests(unittest.TestCase):
         self.assertEqual([v["source"] for v in result.violations], ['"版本显示"'] * len(paths))
         self.assertEqual(result.errors, ())
 
-    def test_edition_missing_root_or_file_instead_of_directory_fails_closed(self):
+    def test_retired_edition_roots_are_optional_but_non_directories_fail_closed(self):
         self.write(self.ui_path, "val label = Unit\n")
         for prefix, _ in EDITION_ROOTS:
             with self.subTest(prefix=prefix):
@@ -1141,9 +1194,9 @@ class GuardExceptionTests(unittest.TestCase):
                             if replaced_by_file:
                                 path.write_text("not a directory", encoding="utf-8")
                             result = self.run_guard()
-                            self.assertFalse(result.ok)
-                            self.assertEqual([(e["code"], e["path"]) for e in result.errors],
-                                             [("scope_error", prefix)])
+                            expected = [("scope_error", prefix)] if replaced_by_file else []
+                            self.assertEqual(result.ok, not expected)
+                            self.assertEqual([(e["code"], e["path"]) for e in result.errors], expected)
                             self.assertEqual(result.violations, ())
                 finally:
                     if path.is_file():
@@ -1270,9 +1323,9 @@ class GuardExceptionTests(unittest.TestCase):
                 self.assertIn(("lexical_error", path), [(e["code"], e["path"]) for e in result.errors])
                 (self.root / path).unlink()
 
-    def test_phase_c_only_the_original_common_catalog_is_excluded(self):
+    def test_phase_c_only_the_moved_catalog_is_excluded(self):
         self.write(self.ui_path, "val label = Unit\n")
-        self.write("shared/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt", '$$"""catalog excluded"""')
+        self.write("core/text/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt", '$$"""catalog excluded"""')
         paths = []
         for prefix, extension in PHASE_C_ROOTS:
             path = prefix + "io/github/betterzslf/core/text/AppText." + extension
@@ -1556,18 +1609,92 @@ class GuardExceptionTests(unittest.TestCase):
         self.assertEqual(guard.GuardResult(2, 3, 2, 2, (), (), 0, 0, 0, 2).diagnostic_tokens, 2)
 
 
+class ExtractedModuleScopeTests(unittest.TestCase):
+    """移出 shared 后仍覆盖所有生产源，精确例外不随路径自动迁移。"""
+
+    setUp = GuardExceptionTests.setUp
+    write = GuardExceptionTests.write
+    allow = GuardExceptionTests.allow
+    entry = GuardExceptionTests.entry
+    run_guard = GuardExceptionTests.run_guard
+
+    def test_each_required_module_root_scans_arbitrary_packages(self):
+        self.write(self.ui_path, "val label = Unit\n")
+        paths = []
+        for prefix in EXTRACTED_ROOTS:
+            path = prefix + "unrelated/nested/Display.kt"
+            paths.append(path)
+            self.write(path, 'val label = "新模块显示"\n')
+        result = self.run_guard()
+        self.assertEqual(result.errors, ())
+        self.assertEqual({v["path"] for v in result.violations}, set(paths))
+        self.assertEqual(result.files_scanned, 50)
+
+    def test_required_module_roots_fail_closed_when_absent(self):
+        self.write(self.ui_path, "val label = Unit\n")
+        for prefix in EXTRACTED_ROOTS:
+            with self.subTest(prefix=prefix):
+                (self.root / prefix).rmdir()
+                self.assertIn(("scope_error", prefix), [(e["code"], e["path"]) for e in self.run_guard().errors])
+                (self.root / prefix).mkdir()
+
+    def test_platform_main_roots_are_scanned_but_tests_and_resources_are_not(self):
+        self.write(self.ui_path, "val label = Unit\n")
+        paths = []
+        for module in ("core/text", "core/run-model", "core/logging", "core/network-session", "design-system", "feature/schedule/data", "feature/update/data",
+                       "feature/update/domain", "feature/home/presentation", "feature/home/ui"):
+            for source_set in ("androidMain", "iosMain", "jvmMain", "nativeMain"):
+                path = module + "/src/" + source_set + "/kotlin/Display.kt"
+                paths.append(path)
+                self.write(path, 'val label = "平台显示"\n')
+            for relative in ("src/commonTest/kotlin/Outside.kt", "src/androidUnitTest/kotlin/Outside.kt",
+                             "src/commonMain/resources/Outside.kt", "build/generated/Outside.kt"):
+                self.write(module + "/" + relative, '$$"""outside unsupported"""')
+        result = self.run_guard()
+        self.assertEqual(result.errors, ())
+        self.assertEqual({v["path"] for v in result.violations}, set(paths))
+
+    def test_catalog_at_old_shared_path_is_not_excluded(self):
+        self.write(self.ui_path, "val label = Unit\n")
+        old = "shared/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt"
+        self.write(old, 'val label = "旧目录副本"\n')
+        result = self.run_guard()
+        self.assertEqual([(v["path"], v["source"]) for v in result.violations], [(old, '"旧目录副本"')])
+
+    def test_module_exception_factory_retains_canonical_scope(self):
+        for prefix in EXTRACTED_ROOTS:
+            path = prefix + "nested/Protocol.kt"
+            self.assertEqual(guard.make_exception(path, self.source, guard.scan_source(self.source)[0],
+                                                 "Reviewed wire value", "fixture")["path"], path)
+        for path in ("core/text/src/commonTest/kotlin/Outside.kt", "design-system/src/commonMain/resources/A.kt",
+                     "core/run-model/src/commonMain/kotlin/../Outside.kt",
+                     "core/text/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt"):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                guard.make_exception(path, self.source, guard.scan_source(self.source)[0], "Wire", "fixture")
+
+    def test_moved_exception_path_is_reported_not_retargeted(self):
+        self.allow([self.entry()])
+        moved = "design-system/src/commonMain/kotlin/renamed/Protocol.kt"
+        self.write(moved, self.source)
+        (self.root / self.ui_path).unlink()
+        result = self.run_guard()
+        self.assertEqual(result.exempted_tokens, 0)
+        self.assertEqual([(e["code"], e["path"]) for e in result.errors], [("exception_match_error", self.ui_path)])
+        self.assertEqual([v["path"] for v in result.violations], [moved])
+
+
 class PlatformRenderBytesTests(unittest.TestCase):
     """Restricted literal assembly only; never execute Kotlin, HTML or JS."""
 
     root = Path(__file__).resolve().parents[2]
-    platform = "shared/src/commonMain/kotlin/io/github/betterzslf/platform/"
+    platform = "platform-ui/readonly-map/src/commonMain/kotlin/io/github/betterzslf/platform/"
 
     def source(self, path):
         with (self.root / path).open(encoding="utf-8", newline="") as stream:
             return stream.read()
 
     def catalog_label(self, name):
-        catalog = self.source("shared/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt")
+        catalog = self.source("core/text/src/commonMain/kotlin/io/github/betterzslf/core/text/AppText.kt")
         run = re.search(r"^    object Run \{\n(.*?)^    \}", catalog, re.M | re.S).group(1)
         matches = re.findall(r"^        const val " + re.escape(name) + r": String = ([^\r\n]+)$", run, re.M)
         self.assertEqual(len(matches), 1)
@@ -1591,34 +1718,26 @@ class PlatformRenderBytesTests(unittest.TestCase):
         self.assertEqual(len(candidates), 1)
         token = candidates[0]
         self.assertEqual([h.expression_source for h in token.holes], [
-            "csp", "AppText.Run.ROUTE_MAP_ACCESSIBILITY_LABEL", "data", "documentId",
-            "RunMapEditing.script", "RunMapEditing.amapBinding", "RunMapEditing.tiandituBinding", "sdkTag"])
+            "csp", "AppText.Run.ROUTE_MAP_ACCESSIBILITY_LABEL", "data", "documentId", "sdkTag"])
         return token
 
-    def editing_literals(self, edition):
-        self.assertIn(edition, ("standard", "pro"))
-        source = self.source("shared/src/" + edition + "Main/kotlin/io/github/betterzslf/platform/RunMapEditing.kt")
-        declarations = list(re.finditer(r"^    const val (script|amapBinding|tiandituBinding): String = ", source, re.M))
-        self.assertEqual([m.group(1) for m in declarations], ["script", "amapBinding", "tiandituBinding"])
-        tokens = {t.start: t for t in guard.scan_source(source)}
-        values = {}
-        for declaration in declarations:
-            self.assertIn(declaration.end(), tokens)
-            token = tokens[declaration.end()]
-            self.assertIn(token.kind, ("string", "raw_string"))
-            self.assertEqual(token.holes, ())
-            # Only a complete literal initializer is supported, not a call/concat/template fallback.
-            suffix = source[token.end:].splitlines(keepends=True)
-            self.assertIsNotNone(re.fullmatch(r"[ \t]*(?:\r\n|\r|\n)?", suffix[0] if suffix else ""))
-            values["RunMapEditing." + declaration.group(1)] = token.decoded_literal
-        return values
+    def frozen_readonly_template(self):
+        # 从本文件既有冻结模板明确删掉唯一绘图能力，不从live源码重生成期望。
+        start = RUN_MAP_HTML.index("  function clicked(event){\n")
+        end = RUN_MAP_HTML.index("  function initialize(){\n", start)
+        source = RUN_MAP_HTML[:start] + RUN_MAP_HTML[end:]
+        for binding in ("map.on('click',clicked);", "map.addEventListener('click',clicked);"):
+            self.assertEqual(source.count(binding), 1)
+            source = source.replace(binding, "")
+        token = guard.scan_source(source)[0]
+        self.assertEqual([h.expression_source for h in token.holes], ["csp", "data", "documentId", "sdkTag"])
+        return token
 
-    def route_values(self, values, edition):
-        return {**values, "AppText.Run.ROUTE_MAP_ACCESSIBILITY_LABEL": self.catalog_label("ROUTE_MAP_ACCESSIBILITY_LABEL"),
-                **self.editing_literals(edition)}
+    def route_values(self, values):
+        return {**values, "AppText.Run.ROUTE_MAP_ACCESSIBILITY_LABEL": self.catalog_label("ROUTE_MAP_ACCESSIBILITY_LABEL")}
 
-    def kotlin_golden_documents(self, method):
-        source = self.source("shared/src/commonTest/kotlin/io/github/betterzslf/core/text/AppTextPlatformGoldenTest.kt")
+    def kotlin_golden_document(self, method):
+        source = self.source("platform-ui/readonly-map/src/commonTest/kotlin/io/github/betterzslf/platform/RunMapDocumentGoldenTest.kt")
         starts = list(re.finditer(r"^    fun " + re.escape(method) + r"\(\) \{", source, re.M))
         self.assertEqual(len(starts), 1)
         section_start = starts[0].end()
@@ -1626,23 +1745,19 @@ class PlatformRenderBytesTests(unittest.TestCase):
         next_method = re.search(r"^    fun \w+\(", section, re.M)
         self.assertIsNotNone(next_method)
         section = section[:next_method.start()]
-        declarations = list(re.finditer(r"^        val (expected|expectedStandard) = ", section, re.M))
-        self.assertEqual([m.group(1) for m in declarations], ["expected", "expectedStandard"])
+        declarations = list(re.finditer(r"^        val expected = ", section, re.M))
+        self.assertEqual(len(declarations), 1)
         # Lex the complete balanced file; sections only locate declarations, never relax parsing.
         tokens = {t.start: t for t in guard.scan_source(source)}
-        documents = {}
-        for declaration, edition in zip(declarations, ("pro", "standard")):
-            absolute_start = section_start + declaration.end()
-            self.assertIn(absolute_start, tokens)
-            token = tokens[absolute_start]
-            self.assertEqual(token.kind, "raw_string")
-            self.assertTrue(token.source.startswith('"""<!doctype html>'))
-            self.assertEqual(token.holes, ())
-            documents[edition] = token.decoded_literal.encode("utf-8")
-        return documents
+        absolute_start = section_start + declarations[0].end()
+        self.assertIn(absolute_start, tokens)
+        token = tokens[absolute_start]
+        self.assertEqual(token.kind, "raw_string")
+        self.assertTrue(token.source.startswith('"""<!doctype html>'))
+        self.assertEqual(token.holes, ())
+        return token.decoded_literal.encode("utf-8")
 
-    def golden_values(self, provider, edition):
-        self.assertIn(edition, ("pro", "standard"))
+    def golden_values(self, provider):
         # Independent public inputs from the Kotlin fixture, NOT extracted from generated HTML.
         document_id = "platform_golden_document_44"
         domains, frame, sdk_url = {
@@ -1656,47 +1771,41 @@ class PlatformRenderBytesTests(unittest.TestCase):
                "style-src 'unsafe-inline' " + domains + "; img-src data: blob: " + domains + "; font-src data: " + domains + "; "
                "connect-src " + domains + "; worker-src blob:;")
         data = ('{"documentId":"' + document_id + '","provider":"' + provider + '","frame":"' + frame
-                + '","apiKey":"public_fixture_key_44","editMode":' + ("true" if edition == "pro" else "false")
-                + ',"dark":true,"actual":[[[1.25,2.5],[3.75,4.5]]],"recommended":[[[1.25,2.5],[3.75,4.5]]],'
+                + '","apiKey":"public_fixture_key_44","dark":true,"actual":[[[1.25,2.5],[3.75,4.5]]],"recommended":[[[1.25,2.5],[3.75,4.5]]],'
                 + '"imported":[[[3.75,4.5],[1.25,2.5]]],"current":[1.25,2.5],"center":[1.25,2.5],"zoom":15,'
                 + r'"checkpoints":[{"id":"checkpoint_fixture","label":"public\u003c\u0026\u003e\u2028\u2029","point":[3.75,4.5]}]}')
         sdk_tag = r'"\u003cscript nonce=\"' + document_id + r'\" src=\"' + sdk_url + r'\"\u003e\u003c/script\u003e"'
         return {"csp": csp, "data": data, "documentId": document_id, "sdkTag": sdk_tag}
 
-    def test_phase_c_live_route_html_complete_bytes_equal_frozen_original(self):
-        before = guard.scan_source(RUN_MAP_HTML)[0]
+    def test_readonly_route_html_matches_frozen_template_without_drawing(self):
+        before = self.frozen_readonly_template()
         after = self.route_template()
-        self.assertEqual([h.expression_source for h in before.holes], ["csp", "data", "documentId", "sdkTag"])
         for values in ({"csp": "", "data": "", "documentId": "", "sdkTag": ""},
                        {"csp": "default-src 'none'; script-src 'nonce-fixture';",
                         "data": '{"synthetic":"<>&\\u2028"}', "documentId": "fixture_doc",
                         "sdkTag": '"synthetic_sdk_tag"'}):
             with self.subTest(values=values):
-                # Preserve the original full Pro snapshot and both existing input vectors.
-                self.assertEqual(self.assemble(before, values), self.assemble(after, self.route_values(values, "pro")))
+                self.assertEqual(self.assemble(before, values), self.assemble(after, self.route_values(values)))
 
-    def test_both_editions_match_each_independent_kotlin_full_utf8_golden(self):
+    def test_public_renderer_matches_each_independent_kotlin_full_utf8_golden(self):
         template = self.route_template()
-        for method, provider, pro_size, pro_sha in (
-            ("amapDocumentPreservesOriginalUtf8", "AMAP", 9281,
-             "80ffee5e183cce08eda42a0708410e0fa8a2fcac6616a6c5e03cff955a6e5f30"),
-            ("tianDiTuDocumentPreservesOriginalUtf8", "TIAN_DI_TU", 9356,
-             "32b15e51d9dee508c257088f9cb57512289d1db3ed49e234afde54729c48983a"),
+        for method, provider, size, fingerprint in (
+            ("amapDocumentPreservesReviewedUtf8", "AMAP", 8727,
+             "5fc2f04bcda40b2579f36ecf6170d44a5feabf2540190118f232051b4f88143c"),
+            ("tianDiTuDocumentPreservesReviewedUtf8", "TIAN_DI_TU", 8802,
+             "cc8bde11f4c28f34ba3d164ace82168c9d6092efce9b0548a1b4a779f71d0203"),
         ):
-            expected = self.kotlin_golden_documents(method)
-            self.assertEqual(len(expected["pro"]), pro_size)
-            self.assertEqual(hashlib.sha256(expected["pro"]).hexdigest(), pro_sha)
-            for edition in ("pro", "standard"):
-                with self.subTest(provider=provider, edition=edition):
-                    values = self.route_values(self.golden_values(provider, edition), edition)
-                    actual = self.assemble(template, values)
-                    # Standard uses its OWN independent Kotlin literal, never a modified Pro snapshot.
-                    self.assertEqual(actual, expected[edition])
-                    if edition == "standard":
-                        self.assertTrue(all(value == "" for value in self.editing_literals(edition).values()))
-                        for fragment in (b"function clicked(event)", b"post('draw'", b"map.on('click',clicked);",
-                                         b"map.addEventListener('click',clicked);"):
-                            self.assertNotIn(fragment, actual)
+            with self.subTest(provider=provider):
+                expected = self.kotlin_golden_document(method)
+                self.assertEqual(len(expected), size)
+                self.assertEqual(hashlib.sha256(expected).hexdigest(), fingerprint)
+                values = self.golden_values(provider)
+                actual = self.assemble(template, self.route_values(values))
+                self.assertEqual(actual, expected)
+                self.assertEqual(self.assemble(self.frozen_readonly_template(), values), expected)
+                for fragment in (b"editMode", b"function clicked(event)", b"post('draw'", b"map.on('click',clicked);",
+                                 b"map.addEventListener('click',clicked);"):
+                    self.assertNotIn(fragment, actual)
 
     def test_route_assembly_rejects_unknown_interpolation(self):
         token = guard.scan_source('"""$csp ${unknown.value}"""')[0]
@@ -1735,7 +1844,7 @@ class RepositoryDisplayTextGateTests(unittest.TestCase):
         result = guard.run_guard(root)
         self.assertTrue(result.ok, repr({"errors": result.errors, "violations": result.violations}))
         shell = (root / "scripts/ci-android.sh").read_text(encoding="utf-8")
-        command = "python3 scripts/display_text_guard.py --root ."
+        command = "python3 -B scripts/display_text_guard.py --root ."
         self.assertEqual(shell.count(command), 1)
         self.assertLess(shell.index(command), shell.index("bash ./gradlew"))
         from ci_workflow_contract import read_test_workflow

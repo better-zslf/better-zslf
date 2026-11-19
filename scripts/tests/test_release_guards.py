@@ -57,12 +57,12 @@ class VersionTests(unittest.TestCase):
     def test_comments_and_crlf(self):
         self.assertEqual(self.check_version("# Version source\r\nVERSION_NAME=0.1.0\r\nVERSION_CODE=1\r\n")["versionName"], "0.1.0")
 
-    def test_pro_suffix_keeps_base_version_and_stable_code(self):
-        self.assertEqual(self.check_version("VERSION_NAME=1.2.3\nVERSION_CODE=42\n", "v1.2.3-pro", "pro"),
-                         {"versionName": "1.2.3-pro", "versionCode": 42, "tag": "v1.2.3-pro"})
+    def test_public_metadata_rejects_private_product_selection(self):
+        with self.assertRaisesRegex(ValueError, "Edition must be standard"):
+            self.check_version("VERSION_NAME=1.2.3\nVERSION_CODE=42\n", "v1.2.3-pro", "pro")
 
-    def test_pro_rejects_unsuffixed_tag(self):
-        with self.assertRaisesRegex(ValueError, "Tag must exactly"):
+    def test_private_product_cannot_reuse_public_unsuffixed_metadata(self):
+        with self.assertRaisesRegex(ValueError, "Edition must be standard"):
             self.check_version("VERSION_NAME=1.2.3\nVERSION_CODE=42\n", "v1.2.3", "pro")
 
     def test_standard_rejects_pro_tag(self):
@@ -74,16 +74,16 @@ class VersionTests(unittest.TestCase):
             with self.subTest(edition=edition), self.assertRaisesRegex(ValueError, "Edition"):
                 self.check_version("VERSION_NAME=1.2.3\nVERSION_CODE=42\n", edition=edition)
 
-    def test_pro_properties_still_use_numeric_ios_marketing_version(self):
+    def test_public_marketing_version_does_not_accept_private_suffix(self):
         with self.assertRaisesRegex(ValueError, "numeric x.y.z"):
-            self.check_version("VERSION_NAME=1.2.3-pro\nVERSION_CODE=42\n", edition="pro")
+            self.check_version("VERSION_NAME=1.2.3-pro\nVERSION_CODE=42\n")
 
     def test_optional_rc_keeps_numeric_marketing_base_and_exact_full_tag(self):
         properties = "VERSION_NAME=1.0.0\nVERSION_CODE=2\nVERSION_PRERELEASE=rc1\n"
         self.assertEqual(self.check_version(properties, "v1.0.0-rc1"),
                          {"versionName": "1.0.0-rc1", "versionCode": 2, "tag": "v1.0.0-rc1"})
-        self.assertEqual(self.check_version(properties, "v1.0.0-rc1-pro", "pro"),
-                         {"versionName": "1.0.0-rc1-pro", "versionCode": 2, "tag": "v1.0.0-rc1-pro"})
+        with self.assertRaisesRegex(ValueError, "Edition must be standard"):
+            self.check_version(properties, "v1.0.0-rc1-pro", "pro")
         self.assertEqual(self.check_version(properties.replace("rc1", "rc999999"))["versionName"], "1.0.0-rc999999")
 
     def test_rc_is_bounded_and_cannot_be_empty_or_inject_an_edition(self):
@@ -98,7 +98,7 @@ class VersionTests(unittest.TestCase):
         for tag in ("v1.0.0", "v1.0.0-rc2", "v1.0.1-rc1", "v1.0.0-rc1-pro"):
             with self.subTest(tag=tag), self.assertRaisesRegex(ValueError, "Tag must exactly"):
                 self.check_version(properties, tag)
-        with self.assertRaisesRegex(ValueError, "Tag must exactly"):
+        with self.assertRaisesRegex(ValueError, "Edition must be standard"):
             self.check_version(properties, "v1.0.0-rc1", "pro")
 
     def test_cli_emits_channel_without_changing_three_key_metadata_schema(self):
@@ -114,7 +114,7 @@ class VersionTests(unittest.TestCase):
                 self.assertIn(f"prerelease={expected}\n", github.read_text(encoding="utf-8"))
 
     def test_package_identity_is_explicit(self):
-        self.assertEqual(APPLICATION_IDS, {"standard": "io.github.betterzslf", "pro": "io.github.betterzslf.pro"})
+        self.assertEqual(APPLICATION_IDS, {"standard": "io.github.betterzslf"})
 
 
 class SigningInputTests(unittest.TestCase):

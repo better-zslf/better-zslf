@@ -15,7 +15,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.betterzslf.AppGraph
 import io.github.betterzslf.Route
-import io.github.betterzslf.edition.EditionAccess
+import io.github.betterzslf.composition.ContributedAction
+import io.github.betterzslf.feature.run.api.RunPreviewSelection
+import top.yukonga.miuix.kmp.nav.core.NavKey
 import io.github.betterzslf.feature.run.*
 import io.github.betterzslf.feature.runui.*
 import io.github.betterzslf.platform.RunMapCoordinateSystem
@@ -29,7 +31,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** Navigation changes presentation only; the app-level native runtime keeps its existing ownership. */
 @Composable
-internal fun RunTrackerPage(graph: AppGraph, page: Route.Page, open: (Route) -> Unit, back: () -> Unit, runtime: RunRuntime) {
+internal fun RunTrackerPage(graph: AppGraph, page: Route.Page, open: (NavKey) -> Unit, back: () -> Unit, runtime: RunRuntime,
+                            contributedActions: (RunPreviewSelection?) -> List<ContributedAction> = { emptyList() }) {
     val currentSession by graph.sessions.session.collectAsState()
     val runtimeState by runtime.state.collectAsState()
     val settings by graph.settings.settings.collectAsState()
@@ -40,8 +43,8 @@ internal fun RunTrackerPage(graph: AppGraph, page: Route.Page, open: (Route) -> 
     // A newly navigated task must not relabel an already active local journal.
     val activeTask = model.taskSelection.takeIf { local.metadata != null && local.phase !in listOf(RunSessionPhase.FINISHED, RunSessionPhase.CANCELLED) }
     val selection = activeTask ?: RunTaskSelection.decode(page.id) ?: model.taskSelection
-    val query = if (selection == null) RunPageQuery() else rememberRunQuery(graph, selection, refresh) { it.detail(selection.errandId, it.boundOwnerId.orEmpty(), selection.errandScheduleId) }
-    val detail = remember(query.data, selection) { query.data?.let(RunDataDecoder::detail)?.let { data -> selection?.let(data::withQueryContext) ?: data } }
+    val query = if (selection == null) RunPageQuery<RunReadValue<RunTaskDetail>>() else rememberRunQuery(graph, selection, refresh) { it.detail(selection.errandId, it.boundOwnerId, selection.errandScheduleId) }
+    val detail = remember(query.data, selection) { query.data?.value?.let { data -> selection?.let(data::withQueryContext) ?: data } }
     var permissionGranted by remember { mutableStateOf(false) }
     var permissionMessage by remember { mutableStateOf<String?>(null) }
     val permission = rememberLocationPermissionRequester { granted ->
@@ -174,9 +177,9 @@ internal fun RunTrackerPage(graph: AppGraph, page: Route.Page, open: (Route) -> 
             itemsIndexed(model.localSessions, key = { index, row -> "local:${row.metadata.trid}:$index" }) { _, row ->
                 SectionCard(AppText.Run.localSessionTitle(row.metadata.trid), AppText.Run.localSessionSummary(runPhase(row.phase), row.acceptedSampleCount), { scope.launch { runtime.restore(row.metadata.trid) } })
             }
-            if (selection != null && EditionAccess.routeEditorsEnabled) item("import-mode") { TextButton(AppText.Run.SWITCH_TO_ROUTE_IMPORT_PREVIEW_THIS_TIME, onClick = {
-                if (EditionAccess.routeEditorsEnabled) { showDetails = false; open(Route.Page("runimport", selection.encode(), AppText.Run.ROUTE_IMPORT_PREVIEW_TITLE)) }
-            }) }
+            contributedActions(selection?.let { RunPreviewSelection(it.errandId, it.errandScheduleId) }).forEachIndexed { index, action ->
+                item("contribution:$index") { TextButton(action.title, onClick = { showDetails = false; open(action.target) }, modifier = Modifier.fillMaxWidth()) }
+            }
         }
     }
 

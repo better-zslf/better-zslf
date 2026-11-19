@@ -6,4 +6,15 @@ plugins {
 
 kotlin {
     android { androidResources { enable = true } }
+    sourceSets {
+        androidMain.dependencies {
+            // Offline AAR-metadata alignment: compose.ui resolves legacy androidx
+            // transitives (activity-ktx 1.7.0 / core-ktx 1.16.0) that were never cached
+            // locally. Align to the catalog versions already resolved in the product
+            // graph (activity 1.13.0 / androidx-core 1.18.0) so offline metadata
+            // checks resolve instead of failing on uncached legacy versions.
+            implementation("androidx.activity:activity-ktx:1.13.0")
+            implementation("androidx.core:core-ktx:1.18.0")
+        }
+    }
 }

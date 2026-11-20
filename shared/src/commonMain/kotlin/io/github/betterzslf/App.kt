@@ -70,6 +70,8 @@ import top.yukonga.miuix.kmp.nav.core.*
 import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
 import top.yukonga.miuix.kmp.nav.transition.NavTransitions
 import top.yukonga.miuix.kmp.theme.*
+import top.yukonga.miuix.kmp.glass.GlassNavigationBar
+import top.yukonga.miuix.kmp.glass.GlassNavigationItem
 
 /**
  * Slot identifier for the single local timetable record.
@@ -525,28 +527,32 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
     // pill, outer spacing and system navigation area, unlike measuring inside padding modifiers.
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
         val useRail = NavigationLayoutPolicy.useRail(maxWidth.value)
-        // Ardot 24:22 ④: the pill is a glass surface, so it needs a backdrop of the page beneath.
+        // The floating bar samples the page beneath it through this recorded layer.
         val barBackdrop = rememberLayerBackdrop()
         val isDark = appDarkSurface()
-        val barShape = RoundedCornerShape(AppUiTokens.NavigationRadius)
-        val barGlass = glassMaterial(backdrop = barBackdrop, shape = barShape, isDark = isDark)
+        val glassItems = remember(icons, titles) {
+            icons.indices.map { index -> GlassNavigationItem(icon = icons[index], label = titles[index]) }
+        }
         Scaffold(containerColor = MiuixTheme.colorScheme.surface,
             contentWindowInsets = WindowInsets(0, 0, 0, 0), bottomBar = {
             if (!useRail && showBottomNavigation) {
                 Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 12.dp)) {
-                    NavigationBar(
-                        // The blur owns the surface, so the bar's own fill must be transparent or
-                        // it would paint over the captured backdrop and flatten the glass again.
-                        modifier = Modifier.fillMaxWidth().then(barGlass),
-                        color = Color.Transparent,
-                        showDivider = false,
+                    // OS4 glass bar (Ardot 24:22 ④): the drag indicator, its edge springs, press
+                    // scaling and the lit rim are all owned by the component. The previous
+                    // hand-rolled pill could not express any of that without ~250 lines of our own
+                    // gesture and accessibility code.
+                    GlassNavigationBar(
+                        items = glassItems,
+                        selectedIndex = activeTab,
+                        onSelect = { index -> onSelect(NavigationLayoutPolicy.selectTab(selected, index)) },
+                        backdrop = barBackdrop,
+                        modifier = Modifier.fillMaxWidth(),
+                        style = topBarGlassStyle(isDark),
+                        material = appBarGlassMaterial(isDark),
+                        stroke = appGlassStroke(isDark),
+                        shadow = AppGlassFloatShadow,
                         defaultWindowInsetsPadding = false,
-                    ) {
-                        titles.forEachIndexed { index, title ->
-                            NavigationBarItem(selected = activeTab == index,
-                                onClick = { onSelect(NavigationLayoutPolicy.selectTab(selected, index)) }, icon = icons[index], label = title)
-                        }
-                    }
+                    )
                 }
             }
         }) { padding ->
@@ -557,9 +563,8 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
             Row(Modifier.fillMaxSize().clipToBounds()) {
                 if (useRail) NavigationRail(
                     modifier = Modifier.fillMaxHeight(),
-                    // Miuix 0.9.4 already supplies a default ScrollState for its item column.
-                    // Passing it explicitly only expresses scrolling intent; it is not a
-                    // clipping fix. Keep the rail bounded, without an outer verticalScroll.
+                    // Miuix supplies a default ScrollState for its item column. Passing it
+                    // explicitly only expresses scrolling intent; it is not a clipping fix.
                     scrollState = rememberScrollState(),
                     defaultWindowInsetsPadding = true,
                 ) {

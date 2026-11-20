@@ -1,110 +1,103 @@
 package io.github.betterzslf.ui
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import top.yukonga.miuix.kmp.material.EdgePeak
+import top.yukonga.miuix.kmp.material.GlassEdgeStrokes
+import top.yukonga.miuix.kmp.material.GlassMaterials
+import top.yukonga.miuix.kmp.material.GlassShadows
 
 /**
- * The rc10 material is a set of numbers taken from Ardot `24:1 材质与光影规范`. Every value below
- * is copied from that canvas and is the only reason the material looks like the design; a silent
- * edit here changes the app's look without failing anything else, so each is pinned.
+ * The app now takes its glass values from MIUIX's own OS4 presets rather than from the Ardot
+ * `24:1` canvas.
+ *
+ * That canvas was written against the OS3 bloom stroke (`Highlight` / `BloomStroke`, alpha
+ * 0.10/0.16). MIUIX 0.9.5-beta01 removed that stack entirely in favour of OS4 glass, which adds
+ * refraction, three blended colour layers and dispersion shadows — dimensions the OS3 spec has no
+ * field for. So the honest thing to pin is not "did the old numbers survive" (they cannot) but
+ * "are we actually on the official presets, and do the few values we still author hold up".
  */
 class GlassMaterialTest {
-    @Test fun highlightMatchesTheSpecifiedDualLightBloom() {
-        // Highlight(width = 1.dp, alpha = 浅 0.10 / 深 0.16)
-        assertEquals(1.dp, AppGlassTokens.HighlightWidth)
-        assertEquals(0.10f, AppGlassTokens.HighlightAlphaLight)
-        assertEquals(0.16f, AppGlassTokens.HighlightAlphaDark)
-        // innerBlurRadius = 2.dp. The library's six presets are 1.7/2.0/2.3/2.6/2.8/3.5dp, and
-        // 2dp is exactly GlassStrokeMiddleDark, which is why this is the one value needing no
-        // conversion between canvas and library.
-        assertEquals(2.dp, AppGlassTokens.InnerBlurRadius)
-        // Both lights must be live, otherwise the "dualPeak" stroke shows a single blob.
-        assertEquals(1f, AppGlassTokens.PrimaryLightIntensity)
-        assertTrue(AppGlassTokens.SecondaryLightIntensity > 0f)
+    @Test fun barsUseTheOfficialFloatingGlassPreset() {
+        // puredThinGlass: a 20dp blur plus three colour layers. The three layers, not one flat
+        // tint, are what give OS4 glass its body -- collapsing them to a single SrcOver colour is
+        // the specific regression this pins.
+        val light = GlassMaterials.PuredThinGlassLight
+        val dark = GlassMaterials.PuredThinGlassDark
+        assertEquals(20.dp, light.blurRadius)
+        assertEquals(20.dp, dark.blurRadius)
+        assertTrue(light.second != null && light.third != null, "light preset must keep all three layers")
+        assertTrue(dark.second != null && dark.third != null, "dark preset must keep all three layers")
+        // Light and dark must differ; a shared preset would lose one theme's glass.
+        assertTrue(light.first.color != dark.first.color)
+        assertTrue(light.second?.color != dark.second?.color)
     }
 
-    @Test fun lightPositionsAreConvertedIntoLibrariesNormalizedSpace() {
-        // The shader normalizes (x - 0.5, y - 0.7, z) from a 0..1 UV space. The canvas used a
-        // centre-origin -1..1 space, so the two are not interchangeable: a naive copy of the
-        // design's (0.0, -0.6) would land at y = 0.1 and clip against the top edge.
-        val primary = AppGlassTokens.PrimaryLight
-        assertEquals(0.5f, primary.x, "primary light stays horizontally centred")
-        assertTrue(primary.y < 0.7f, "y below the 0.7 origin reads as 'above centre'")
-        assertTrue(primary.z < 0f, "negative z places the light behind the surface plane")
-        // The design labels the secondary light "lower right"; because y < 0.7 renders *above*
-        // centre, only y > 0.7 actually lands below it. The canvas annotation states the opposite
-        // of the library semantics, so this assertion is the correction, not a transcription.
-        val secondary = AppGlassTokens.SecondaryLight
-        assertTrue(secondary.x > 0.5f, "secondary light sits right of centre")
-        assertTrue(secondary.y > 0.7f, "secondary light sits below centre")
+    @Test fun rimComesFromTheOss4PresetFamilyNotAHandTunedStroke() {
+        // Every miuix-glass component defaults to GlassEdgeStrokes.forTheme, so using it here is
+        // what makes our surfaces and the library's read as one material.
+        val light = GlassEdgeStrokes.forTheme(isDark = false)
+        val dark = GlassEdgeStrokes.forTheme(isDark = true)
+        assertEquals(GlassEdgeStrokes.MiddleLight, light)
+        assertEquals(GlassEdgeStrokes.MiddleDark, dark)
+        // OS4 rims are 0.8dp with a 1.2dp bevel -- thinner and tighter than the OS3 bloom stroke
+        // (1dp / 2dp inner blur) this project used to hand-write.
+        assertEquals(0.8.dp, light.width)
+        assertEquals(1.2.dp, light.bevel)
+        // The OS4 presets gate each light axially (the default); only OS3-style strokes used Dual.
+        assertEquals(EdgePeak.Vertical, light.peak)
     }
 
-    @Test fun cardMaterialMeetsTheDarkSurfaceContrastFloor() {
-        // §24:1: a dark card must clear 1.25:1 against the page or it reads as a hole. The border
-        // and shadow are the remaining separation, but the fill alone has to carry the floor.
+    @Test fun shadowsAreTheLibraryPresets() {
+        // Float under the nav bar, Regular under panels. These are GlassShadow values, which carry
+        // a dispersion term the plain Compose shadow has no equivalent for.
+        assertEquals(24f, GlassShadows.Float.radius)
+        assertEquals(64f, GlassShadows.Regular.radius)
+        assertEquals(GlassShadows.Float, AppGlassFloatShadow)
+        assertEquals(GlassShadows.Regular, AppGlassPanelShadow)
+        assertTrue(GlassShadows.Float.dispersion > 0f)
+    }
+
+    @Test fun navigationBarHeightFollowsTheComponentDefault() {
+        // GlassNavigationBarDefaults.Height is 54dp, deliberately shorter than the 64dp pill this
+        // project hand-rolled. Recording it here makes an accidental divergence obvious.
+        assertEquals(54.dp, AppGlassTokens.NavigationHeight)
+        assertTrue(AppGlassTokens.NavigationHeight >= 48.dp, "must still clear the touch-target floor")
+    }
+
+    @Test fun handAuthoredCardMaterialStillMeetsTheContrastFloor() {
+        // Cards sit on an opaque page, not over a backdrop, so they cannot use glassPanel and
+        // are the one surface still authored by hand. These are the values that must not drift.
         val ratio = contrast(AppUiTokens.CardDarkRaised, AppUiTokens.BackgroundDark)
         assertTrue(ratio >= 1.25f, "dark card/page contrast was $ratio")
-        // The rim must be visible against the card it sits on, and must differ per theme: one
-        // shared grey would disappear on one of the two surfaces.
         assertTrue(contrast(AppGlassTokens.CardBorderLight, AppUiTokens.Card) > 1f)
         assertTrue(contrast(AppGlassTokens.CardBorderDark, AppUiTokens.CardDarkRaised) > 1f)
         assertTrue(AppGlassTokens.CardBorderLight != AppGlassTokens.CardBorderDark)
-        // Dark needs a deeper shadow: #22262D on #0D0F12 is a much tighter gap than white on grey.
         assertTrue(AppGlassTokens.CardShadowDark >= AppGlassTokens.CardShadowLight)
         assertTrue(AppGlassTokens.CardShadowAlphaDark > AppGlassTokens.CardShadowAlphaLight)
     }
 
-    @Test fun barTintKeepsGlassReadableWithoutHidingIt() {
-        // The tint is blended *inside* the blur, so it is the only thing keeping scrolled text
-        // from showing through the labels. Too low and the bar is unreadable, too high and the
-        // blur is pointless -- both bounds are the reason this is a token and not a literal.
-        assertTrue(AppGlassTokens.BarTintAlphaLight in 0.4f..0.8f)
-        assertTrue(AppGlassTokens.BarTintAlphaDark in 0.4f..0.8f)
-        assertTrue(AppGlassTokens.BarBlurRadius > 0f)
-        // The blur radius is clamped to [0, 150] by the library; a value past that is a silent
-        // no-op rather than an error, so it is checked here.
-        assertTrue(AppGlassTokens.BarBlurRadius <= 150f)
-        assertTrue(AppGlassTokens.EdgeBlurRadius <= 150f)
-    }
-
-    @Test fun progressiveEdgeRampIsMonotonicAndFitsTheBand() {
-        val gradient = AppGlassTokens.EdgeGradient
-        // Full strength at 25%, clear at 100%, along 90 degrees (top to bottom). Reversing these
-        // would make the band strongest at the bottom, i.e. a visible seam instead of a fade.
-        assertTrue(gradient.startFraction < gradient.endFraction)
-        assertEquals(90f, gradient.angle)
-        assertEquals(0.25f, gradient.startFraction)
-        assertEquals(1f, gradient.endFraction)
-        assertTrue(gradient.curve > 0f)
-        // The library documents this pass as a full-resolution overlay per frame and warns
-        // against large fills; a tall band would be exactly that mistake.
-        assertTrue(AppGlassTokens.EdgeBandHeight in 80.dp..120.dp)
-    }
-
     @Test fun squircleCurvatureStaysInsideTheLibrarysClamp() {
-        // SquircleDefaults clamps extension to 1f..2f. 1.1f is the library default used by every
-        // Miuix component; the spec asks for the canvas' cornerSmoothing 0.6, which maps to 1.20f.
+        // Only governs the clips we still draw ourselves; miuix-glass carries its own smoothing.
         assertEquals(1.20f, AppGlassTokens.SquircleExtension)
         assertTrue(AppGlassTokens.SquircleExtension in 1f..2f)
-        // Only the corner tile size changes -- every radius stays the delivered value.
+        // Radii are layout tokens and were not part of the material migration.
         assertEquals(16.dp, AppUiTokens.CardRadius)
-        assertEquals(30.dp, AppGlassTokens.NavigationRadius)
+        assertEquals(30.dp, AppUiTokens.NavigationRadius)
     }
 
     @Test fun sheenStaysBelowTheTextAndOutOfTheContrastBudget() {
-        // 6% white over the first line would quietly eat contrast, which §3.2 forbids; the band
-        // is therefore capped both in alpha and in height.
+        // 6% white over the first line would quietly eat contrast; capped in alpha and height.
         assertTrue(AppGlassTokens.SheenAlpha <= 0.08f)
         assertTrue(AppGlassTokens.SheenHeight <= 32.dp)
-        // Saturation of pure white over white is zero, so the sheen can never be a visible grey
-        // wash on a light card; it only shows up on tinted and dark surfaces.
-        assertTrue(io.github.betterzslf.ui.AppUiTokens.Card.luminance() > 0.9f)
+        assertTrue(AppUiTokens.Card.luminance() > 0.9f)
     }
 
-    private fun contrast(a: androidx.compose.ui.graphics.Color, b: androidx.compose.ui.graphics.Color): Float {
+    private fun contrast(a: Color, b: Color): Float {
         val first = a.luminance()
         val second = b.luminance()
         return (maxOf(first, second) + 0.05f) / (minOf(first, second) + 0.05f)

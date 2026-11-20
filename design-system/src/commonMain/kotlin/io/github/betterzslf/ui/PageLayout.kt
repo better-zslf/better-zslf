@@ -20,6 +20,7 @@ import io.github.betterzslf.core.text.AppText
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.glass.GlassTopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 
@@ -40,20 +41,20 @@ fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier = this
 fun navigationOverlayInset(padding: PaddingValues, barVisible: Boolean): Dp =
     if (barVisible) padding.calculateBottomPadding().coerceAtLeast(0.dp) else 0.dp
 
+/**
+ * The app-bar chrome for every page.
+ *
+ * Uses `GlassTopAppBar` rather than composing a `TopAppBar` onto a blur we drive ourselves: the
+ * glass bar owns its own material, rim, button pills, title blur during collapse, and — through
+ * `progressiveBlur` — the gradient band under the bar. That band is why the previous hand-rolled
+ * 96dp `progressiveTextureBlur` companion is gone from this file; the component supersedes it and
+ * its `maskProgress` is wired to the scroll behaviour, which our separate band could not do.
+ */
 @Composable
 fun Screen(title: String, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}, content: @Composable (PaddingValues) -> Unit) {
     val behavior = MiuixScrollBehavior()
     val backdrop = rememberLayerBackdrop()
     val isDark = appDarkSurface()
-    // Ardot 24:1 ③: the bar is a real glass surface with the dual-light rim, not a flat tint.
-    // `highlight` is what gives the edge its light; without it the blur alone reads as a dull band.
-    // The bar's own fill must be transparent or it paints over the blur, so the material carries
-    // the opaque fallback a device without a compilable runtime shader needs.
-    val barModifier = glassMaterial(
-        backdrop = backdrop,
-        shape = RoundedCornerShape(0.dp),
-        isDark = isDark,
-    )
     Scaffold(
         // Scroll/blur may extend behind the toolbar, never behind the OS status area. Applying
         // and consuming the top inset here also prevents nested top bars from adding it twice.
@@ -62,35 +63,41 @@ fun Screen(title: String, onBack: (() -> Unit)? = null, actions: @Composable Row
             .nestedScroll(behavior.nestedScrollConnection),
         containerColor = MiuixTheme.colorScheme.surface,
         topBar = {
-            if (onBack == null) {
-                TopAppBar(title = title, color = Color.Transparent, modifier = barModifier,
-                    titlePadding = AppUiTokens.PagePadding, scrollBehavior = behavior, actions = actions)
-            } else {
-                SmallTopAppBar(title = title, color = Color.Transparent, modifier = barModifier,
-                    scrollBehavior = behavior,
-                    navigationIcon = {
+            GlassTopAppBar(
+                title = title,
+                backdrop = backdrop,
+                scrollBehavior = behavior,
+                // The band needs a tall scroll surface to ramp against; the component drives it
+                // from the scroll offset, so it stays correct without a fixed-height overlay.
+                progressiveBlur = true,
+                expandable = onBack == null,
+                style = topBarGlassStyle(isDark),
+                material = appBarGlassMaterial(isDark),
+                stroke = appGlassStroke(isDark),
+                navigationIcon = if (onBack == null) {
+                    {}
+                } else {
+                    {
                         IconButton(onClick = onBack) {
                             Icon(BackChevron, contentDescription = AppText.Common.BACK, tint = MiuixTheme.colorScheme.onSurface)
                         }
-                    }, actions = actions)
-            }
+                    }
+                },
+                actions = actions,
+            )
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize()) {
-            // Capture the actual opaque page, not an empty parent or a static tint rectangle.
-            Box(Modifier.fillMaxSize().layerBackdrop(backdrop).background(MiuixTheme.colorScheme.surface)) {
-                content(padding)
-            }
-            // The ramp needs ~96dp to read; hanging it on the 52dp bar would turn it into a hard
-            // edge. A sibling of the captured box, not a child: recording the band into the same
-            // layer it samples would feed its own blur result back in on the next frame.
-            Box(
-                Modifier.fillMaxWidth().height(AppGlassTokens.EdgeBandHeight)
-                    .progressiveGlassEdge(backdrop, shape = RoundedCornerShape(0.dp), tintColor = MiuixTheme.colorScheme.background),
-            )
+        // Capture the actual opaque page, not an empty parent or a static tint rectangle.
+        Box(Modifier.fillMaxSize().layerBackdrop(backdrop).background(MiuixTheme.colorScheme.surface)) {
+            content(padding)
         }
     }
 }
+
+/** The OS4 optical preset for bar chrome: medium body, regular edge. Theme-aware. */
+@Composable
+fun topBarGlassStyle(isDark: Boolean = appDarkSurface()) =
+    top.yukonga.miuix.kmp.material.GlassDefaults.style(isDark)
 
 /**
  * Insets for scroll content below [Screen] or a product shell. The measured floating navigation

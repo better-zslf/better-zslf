@@ -1,6 +1,5 @@
 package io.github.betterzslf.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -17,27 +16,21 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import top.yukonga.miuix.kmp.blur.Backdrop
-import top.yukonga.miuix.kmp.blur.BlendColorEntry
-import top.yukonga.miuix.kmp.blur.BlurBlendMode
-import top.yukonga.miuix.kmp.blur.BlurColors
-import top.yukonga.miuix.kmp.blur.ProgressiveBlur
-import top.yukonga.miuix.kmp.blur.highlight.BloomStroke
-import top.yukonga.miuix.kmp.blur.highlight.Highlight
-import top.yukonga.miuix.kmp.blur.highlight.LightPosition
-import top.yukonga.miuix.kmp.blur.highlight.rememberTiltLight
-import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
-import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardColors
 import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.material.EdgeStroke
+import top.yukonga.miuix.kmp.material.GlassEdgeStrokes
+import top.yukonga.miuix.kmp.material.GlassMaterial
+import top.yukonga.miuix.kmp.material.GlassMaterials
+import top.yukonga.miuix.kmp.material.GlassShape
+import top.yukonga.miuix.kmp.material.GlassShadows
 import top.yukonga.miuix.kmp.squircle.addSquircleRect
 import top.yukonga.miuix.kmp.squircle.isSquircleEnabled
 import top.yukonga.miuix.kmp.squircle.squircleClip
@@ -45,59 +38,42 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 
 /**
- * Material tokens from Ardot `24:1 材质与光影规范 rc10`, named after the MIUIX 0.9.4 parameters
- * they feed so a review can diff design values against code without translation.
+ * OS4 (HyperOS 4) glass material tokens.
  *
- * Sizes and brand colours stay in [AppUiTokens]; nothing here changes a radius or a hue, it only
- * adds light, curvature and depth on top of the delivered layout.
+ * Design decision: the Ardot `24:1 材质与光影规范` was written against the OS3 bloom stroke
+ * (`Highlight` / `BloomStroke`, alpha 0.10/0.16, lights at (0.5, 0.35, -0.5)). MIUIX 0.9.5-beta01
+ * **removed that entire stack** in favour of OS4 glass, so those numbers are no longer reachable
+ * and no longer meaningful — OS4 adds refraction, three colour layers and dispersion shadows that
+ * the OS3 spec has no field for.
+ *
+ * Rather than re-deriving them, every value here comes from MIUIX's own presets. That is the
+ * decision taken with the maintainer: OS4 stock look, official defaults, design canvas demoted
+ * from "value source" to "structure reference". Only genuinely project-specific material (card
+ * depth on a non-glass surface) is still authored below.
  */
 object AppGlassTokens {
-    /** `Highlight.width` — the library has one stroke width, there is no inner/outer half split. */
-    val HighlightWidth = 1.dp
-
-    /** `Highlight.alpha` — the dark theme needs a stronger rim to read on a darker backdrop. */
-    const val HighlightAlphaLight = 0.10f
-    const val HighlightAlphaDark = 0.16f
-
     /**
-     * `BloomStroke.innerBlurRadius`. 2dp is exactly the library's `GlassStrokeMiddleDark` preset,
-     * and the glide band of the spec's own bleed; the six library presets are 1.7/2.0/2.3/2.6/2.8/3.5dp.
+     * Minimum height of the glass navigation bar, from `GlassNavigationBarDefaults.Height`.
+     * 54dp, not the 64dp the previous hand-rolled pill used.
      */
-    val InnerBlurRadius = 2.dp
+    val NavigationHeight: Dp = 54.dp
+
+    /** Card corner radius. Unchanged: the design's 16dp is a layout token, not a material one. */
+    val CardRadius: Dp = AppUiTokens.CardRadius
 
     /**
-     * Primary light. The design canvas uses a centre-origin -1..1 space; the shader normalises
-     * `(x - 0.5, y - 0.7, z)`, so a centred top light is (0.5, 0.35). The secondary light is
-     * designed at "lower right", which in this space means y *above* the 0.7 origin reference,
-     * so it must move to 0.85 rather than staying near 0.5.
-     */
-    val PrimaryLight = LightPosition(0.5f, 0.35f, -0.5f)
-    val SecondaryLight = LightPosition(0.85f, 0.85f, -0.35f)
-    const val PrimaryLightIntensity = 1f
-    const val SecondaryLightIntensity = 0.35f
-
-    /** Gyroscope parallax, Android only; every other platform keeps the light anchored. */
-    const val TiltSensitivity = 0.15f
-
-    /** `noiseCoefficient` for gradient faces. The library default is 0.0045f. */
-    const val NoiseCoefficient = 0.03f
-
-    /** Progressive edge band under the app bar (§区3): 52dp of bar is too short for a 0.25→1.0 ramp. */
-    val EdgeBandHeight = 96.dp
-    const val EdgeBlurRadius = 20f
-    val EdgeGradient = ProgressiveBlur(angle = 90f, startFraction = 0.25f, endFraction = 1.0f, curve = 2.0f)
-
-    /**
-     * Superellipse curvature. `SquircleDefaults.Extension` is 1.1f (library default, used by every
-     * Miuix component); the spec asks for the canvas' cornerSmoothing 0.6, which maps to 1.20f.
-     * Radii are untouched — only the corner tile size changes.
+     * Superellipse curvature for the surfaces that are NOT rendered by `miuix-glass`.
+     *
+     * `GlassShape` has its own `smoothing` (1f = continuous) and `miuix-glass` applies it itself,
+     * so this only governs the self-drawn clips and card rims that remain in our own code.
+     * `SquircleDefaults.Extension` is 1.1f; the design canvas' cornerSmoothing 0.6 maps to 1.20f.
      */
     const val SquircleExtension = 1.20f
 
     /**
-     * Card depth. `Miuix Card` exposes only `CardColors` (a single fill), so shadow and border are
-     * layered outside it. Light cards cast a 1dp whisper, dark cards need 2dp to separate the
-     * `#22262D` surface from the `#0D0F12` page (measured 1.26:1, the floor for "raised").
+     * Card depth on the plain (non-glass) surfaces: page cards sit on an opaque page, not on a
+     * backdrop, so they cannot use `glassPanel` — there is nothing behind them to sample. These
+     * stay hand-authored and are the only such values left in the app.
      */
     val CardShadowLight = 1.dp
     val CardShadowDark = 2.dp
@@ -108,17 +84,9 @@ object AppGlassTokens {
     const val CardShadowAlphaLight = 0.06f
     const val CardShadowAlphaDark = 0.35f
 
-    /** Top-reflectance band on tappable cards; `CardColors` is a single colour, so this is overlay. */
+    /** Top-reflectance band on tappable cards; the glass components do this themselves. */
     val SheenHeight = 24.dp
     const val SheenAlpha = 0.06f
-
-    /** Bar tint over the blur. High enough to keep 13sp labels legible, low enough to keep the glass. */
-    const val BarTintAlphaLight = 0.62f
-    const val BarTintAlphaDark = 0.55f
-
-    const val BarBlurRadius = 24f
-
-    val NavigationRadius = AppUiTokens.NavigationRadius
 }
 
 /** True when the resolved theme surface is dark; the single source for every material branch. */
@@ -127,127 +95,50 @@ object AppGlassTokens {
 fun appDarkSurface(): Boolean = MiuixTheme.colorScheme.surface.luminance() < 0.5f
 
 /**
- * The dual-light edge bloom of the spec: `Highlight(width = 1.dp, alpha = 浅 0.10 / 深 0.16,
- * style = BloomStroke(innerBlurRadius = 2.dp, dualPeak = true, 两个 LightSource))`.
+ * The glass body for floating bars: `GlassMaterials.puredThinGlass` — a 20dp blur with three
+ * colour layers (`PlusDarker` / `SoftLight` / `HardLight`). This is the official MIUIX preset for
+ * floating surfaces; the three blended layers, not one flat tint, are what give OS4 glass its body.
  *
- * Both lights are fed through [rememberTiltLight], so tilting the phone slides the rim highlight
- * across the glass — that is the "dynamic" part of the material, not a static stroke. Platforms
- * without a rotation sensor keep the light anchored at the designed position.
+ * `dynamicGlassMaterial` is deliberately NOT used: it only diverges from the preset when
+ * `MiuixTheme.isDynamicColor` is on, and this project ships a fixed brand palette (Monet is opt-in
+ * and stays on Miuix's own tokens). Calling it anyway would be dead branching.
  */
 @Composable
-fun rememberGlassHighlight(isDark: Boolean = appDarkSurface()): Highlight {
-    val primary = rememberTiltLight(
-        basePosition = AppGlassTokens.PrimaryLight,
-        intensity = AppGlassTokens.PrimaryLightIntensity,
-        sensitivity = AppGlassTokens.TiltSensitivity,
-    )
-    val secondary = rememberTiltLight(
-        basePosition = AppGlassTokens.SecondaryLight,
-        intensity = AppGlassTokens.SecondaryLightIntensity,
-        sensitivity = AppGlassTokens.TiltSensitivity,
-    )
-    return remember(isDark, primary, secondary) {
-        Highlight(
-            width = AppGlassTokens.HighlightWidth,
-            alpha = if (isDark) AppGlassTokens.HighlightAlphaDark else AppGlassTokens.HighlightAlphaLight,
-            style = BloomStroke(
-                innerBlurRadius = AppGlassTokens.InnerBlurRadius,
-                primaryLight = primary,
-                secondaryLight = secondary,
-                dualPeak = true,
-            ),
-        )
-    }
-}
+fun appBarGlassMaterial(isDark: Boolean = appDarkSurface()): GlassMaterial =
+    GlassMaterials.puredThinGlass(isDark)
 
 /**
- * A blurred, edge-lit material for one surface over a captured [backdrop].
- *
- * [tintColor] is folded into the blur's own blend stack rather than painted as a sibling
- * `background(...)`: a separate opaque fill would sit on top of the blur and erase it, which is
- * exactly how the old top bar ended up looking like a flat band.
- *
- * [fallbackColor] is painted *behind* the blur. The effect needs a compilable `RuntimeShader`, and
- * a device or emulator that fails to compile it draws nothing at all — with a transparent caller
- * fill that turns the bar into a black hole rather than a surface. The fallback is the same
- * `surfaceContainer` the bar used before the material existed, so a failed shader degrades to the
- * previous look instead of a visible defect. This is not hypothetical: the API 36 emulator's
- * SwiftShader rejects the blur shader and renders the pill black without it.
+ * The lit rim for a glass silhouette. `GlassEdgeStrokes.forTheme` picks `MiddleLight` /
+ * `MiddleDark` — the same preset every `miuix-glass` component reaches for by default, so our
+ * surfaces and the library's read as one material.
  */
 @Composable
-fun glassMaterial(
-    backdrop: Backdrop,
-    shape: Shape,
-    isDark: Boolean = appDarkSurface(),
-    tintColor: Color = MiuixTheme.colorScheme.background,
-    tintAlpha: Float = if (isDark) AppGlassTokens.BarTintAlphaDark else AppGlassTokens.BarTintAlphaLight,
-    blurRadius: Float = AppGlassTokens.BarBlurRadius,
-    fallbackColor: Color = MiuixTheme.colorScheme.surfaceContainer,
-    highlight: Highlight? = rememberGlassHighlight(isDark),
-): Modifier {
-    val colors = remember(tintColor, tintAlpha) {
-        BlurColors(blendColors = listOf(BlendColorEntry(tintColor.copy(alpha = tintAlpha), BlurBlendMode.SrcOver)))
-    }
-    // Chain order is paint order: the fallback fill first, the blur on top of it.
-    return Modifier.background(fallbackColor, shape).textureBlur(
-        backdrop = backdrop,
-        shape = shape,
-        blurRadius = blurRadius,
-        noiseCoefficient = AppGlassTokens.NoiseCoefficient,
-        colors = colors,
-        highlight = highlight,
-    )
-}
+fun appGlassStroke(isDark: Boolean = appDarkSurface()): EdgeStroke =
+    GlassEdgeStrokes.forTheme(isDark = isDark)
 
-/**
- * The gradient band that lets scrolled content dissolve into the bar above it
- * (`progressiveTextureBlur(blurRadius = 20f, gradient = ProgressiveBlur(90f, 0.25f, 1.0f, 2.0f))`).
- *
- * It is a band of its own rather than a parameter on the 52dp bar: the ramp needs 80~120dp of
- * height to read, and the library notes this pass costs a full-resolution overlay per frame, so
- * it must stay on a short edge band and never on a large fill.
- *
- * [tintColor]/[tintAlpha] must match the bar's own tint. The band paints on top of the bar's
- * bottom edge, and without the tint it reads as a lighter stripe glued under the bar instead of a
- * continuation of it — the library fades these colours out together with the blur, which is what
- * makes the seam disappear. Without a tint the band is a visible tone step, not a fade.
- */
+/** Standard floating-control shadow (`GlassShadows.Float`), used under the nav bar. */
+val AppGlassFloatShadow get() = GlassShadows.Float
+
+/** Elevated surface shadow (`GlassShadows.Regular`), used under panels. */
+val AppGlassPanelShadow get() = GlassShadows.Regular
+
+/** A crisp (non-squircle) glass silhouette for full-bleed bars. */
 @Composable
-fun Modifier.progressiveGlassEdge(
-    backdrop: Backdrop,
-    shape: Shape,
-    gradient: ProgressiveBlur = AppGlassTokens.EdgeGradient,
-    blurRadius: Float = AppGlassTokens.EdgeBlurRadius,
-    tintColor: Color = MiuixTheme.colorScheme.background,
-    tintAlpha: Float = if (appDarkSurface()) AppGlassTokens.BarTintAlphaDark else AppGlassTokens.BarTintAlphaLight,
-): Modifier {
-    val colors = remember(tintColor, tintAlpha) {
-        BlurColors(blendColors = listOf(BlendColorEntry(tintColor.copy(alpha = tintAlpha), BlurBlendMode.SrcOver)))
-    }
-    return this.progressiveTextureBlur(
-        backdrop = backdrop,
-        shape = shape,
-        blurRadius = blurRadius,
-        gradient = gradient,
-        noiseCoefficient = 0f,
-        colors = colors,
-    )
-}
+fun barGlassShape(cornerRadius: Dp = AppUiTokens.NavigationRadius): GlassShape =
+    remember(cornerRadius) { GlassShape(cornerRadius) }
 
-/** Squircle clip at the spec's 1.20f curvature, falling back to a rounded rect without shaders. */
+/** Squircle clip at the design's 1.20f curvature, falling back to a rounded rect without shaders. */
 @Composable
 fun Modifier.appSquircleClip(cornerRadius: Dp, extension: Float = AppGlassTokens.SquircleExtension): Modifier =
     this.squircleClip(cornerRadius = cornerRadius, extension = extension)
 
 /**
- * Card depth: the drop shadow and the 1dp rim a `Miuix Card` cannot carry itself.
+ * Card depth for opaque page cards: drop shadow plus a 1dp rim.
  *
- * Chain it as the *last* modifier so the rim paints above the card's own fill — `squircleBorder`
- * draws behind its node's content and would be hidden by the opaque surface.
+ * `Miuix Card` accepts a single fill colour, so neither can live inside it, and `glassPanel`
+ * is not an option here — these cards sit on an opaque page, not over a backdrop.
  *
- * `Modifier.shadow` only accepts a Compose [Shape], while the rim is a MIUIX path; the two are
- * reconciled by using the same radius and letting [AppGlassTokens.SquircleExtension] nudge the
- * path's corner tiles, which is invisible at a 1dp stroke.
+ * Chain it so the rim paints above the card's own fill.
  */
 @Composable
 fun Modifier.appCard(
@@ -274,7 +165,7 @@ fun Modifier.appCard(
 
 /**
  * The 1dp rim alone, drawn over the card content. Split out because a few cards already carry
- * their own shadow (the brand mark, the press-feedback rows) and only need the edge light.
+ * their own shadow and only need the edge light.
  */
 @Composable
 fun Modifier.appCardBorder(
@@ -309,8 +200,8 @@ fun Modifier.appCardBorder(
 }
 
 /**
- * The top reflectance a tappable card gets in the spec (white 6% → transparent over 24dp).
- * Painted as an overlay because [top.yukonga.miuix.kmp.basic.CardColors] holds one colour only.
+ * The top reflectance a tappable card gets: white 6% fading out over 24dp.
+ * Painted as an overlay because `CardColors` holds one colour only.
  */
 @Composable
 fun Modifier.appCardSheen(cornerRadius: Dp = AppUiTokens.CardRadius, height: Dp = AppGlassTokens.SheenHeight): Modifier =
@@ -339,13 +230,13 @@ fun Modifier.appCardSheen(cornerRadius: Dp = AppUiTokens.CardRadius, height: Dp 
     }
 
 /**
- * The one card every screen uses, carrying the rc10 material: squircle curvature, a 1dp rim and
- * the themed depth shadow. `Miuix Card` cannot express any of that itself — it takes only a
- * single fill — so the material is layered around it here instead of at 52 separate call sites.
+ * The one card every screen uses: squircle curvature, a 1dp rim and the themed depth shadow.
  *
- * [sheen] adds the top reflectance the spec gives tappable rows. It has to be painted *inside*
- * the card, behind the content: 6% white over the first text line would cost contrast, which the
- * spec forbids. That is why this wraps the content rather than decorating the outside.
+ * Deliberately a drop-in for `Miuix Card` at every existing call site — it adds material and
+ * nothing else, not even a width or margin default.
+ *
+ * [sheen] adds the top reflectance. It has to be painted *inside* the card, behind the content:
+ * 6% white over the first text line would cost contrast, which the design forbids.
  */
 @Composable
 fun AppCard(
@@ -363,8 +254,6 @@ fun AppCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
-        // Deliberately no fillMaxWidth()/insideMargin default of its own: this has to stay a
-        // drop-in for Miuix Card at every existing call site, adding only the material.
         modifier = modifier.appCard(cornerRadius = cornerRadius, elevated = elevated),
         cornerRadius = cornerRadius,
         insideMargin = insideMargin,

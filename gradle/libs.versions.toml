@@ -1,8 +1,8 @@
 [versions]
 kotlin = "2.4.21"
-compose = "1.12.2"
+compose = "1.13.0-rc01"
 agp = "9.4.1"
-miuix = "0.9.4"
+miuix = "0.9.5-beta02"
 ktor = "3.4.3"
 coroutines = "1.11.0"
 serialization = "1.12.0"
@@ -26,6 +26,9 @@ miuix-preference = { module = "top.yukonga.miuix.kmp:miuix-preference", version.
 miuix-icons = { module = "top.yukonga.miuix.kmp:miuix-icons", version.ref = "miuix" }
 miuix-nav = { module = "top.yukonga.miuix.kmp:miuix-nav", version.ref = "miuix" }
 miuix-blur = { module = "top.yukonga.miuix.kmp:miuix-blur", version.ref = "miuix" }
+miuix-material = { module = "top.yukonga.miuix.kmp:miuix-material", version.ref = "miuix" }
+miuix-glass = { module = "top.yukonga.miuix.kmp:miuix-glass", version.ref = "miuix" }
+miuix-glass-icons = { module = "top.yukonga.miuix.kmp:miuix-glass-icons", version.ref = "miuix" }
 ktor-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 ktor-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }

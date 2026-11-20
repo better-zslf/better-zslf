@@ -12,7 +12,9 @@ kotlin {
             api(libs.miuix.ui)
             implementation(libs.compose.animation)
             implementation(libs.miuix.icons)
-            implementation(libs.miuix.blur)
+            api(libs.miuix.material)
+            api(libs.miuix.blur)
+            api(libs.miuix.glass)
         }
     }
 }

@@ -27,6 +27,8 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.betterzslf.ui.AppCard
+import io.github.betterzslf.ui.appSquircleClip
 
 /**
  * The login entry chooser, migrated whole from the original LoginChooser. Visuals, brand mark,
@@ -92,7 +94,7 @@ fun AuthChooserContent(
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(AppUiTokens.FieldRadius))
+                        .appSquircleClip(AppUiTokens.FieldRadius)
                         .clickable(onClick = { dispatch(AuthLoginUiEvent.CHOOSE_DORM) })
                         .padding(vertical = 12.dp)
                         .testTag("entryDorm"),
@@ -128,7 +130,7 @@ private fun LoginEntryCard(
     bound: Boolean,
     onClick: () -> Unit,
 ) {
-    Card(
+    AppCard(
         modifier = Modifier.fillMaxWidth().height(72.dp).testTag(testTag),
         cornerRadius = AppUiTokens.CardRadius,
         insideMargin = PaddingValues(AppUiTokens.CardPadding),
@@ -136,7 +138,7 @@ private fun LoginEntryCard(
     ) {
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(accent), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(40.dp).appSquircleClip(12.dp).background(accent), contentAlignment = Alignment.Center) {
                 Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {

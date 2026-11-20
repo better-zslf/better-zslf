@@ -21,6 +21,7 @@ import io.github.betterzslf.ui.UiTone
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import io.github.betterzslf.ui.AppCard
 
 /** Pure content: immutable display state and zero-payload intents only. No effects or owners. */
 @Composable
@@ -36,7 +37,7 @@ fun AppUpdateContent(state: AppUpdateUiState, onEvent: (AppUpdateEvent) -> Unit)
     Screen(AppText.Updates.APP_UPDATE_TITLE, { emit(AppUpdateEvent.Back) }) { padding ->
         PageList(padding) {
             item("versions") {
-                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                     insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
                     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
                         UpdateVersionRow(AppText.Updates.CURRENT_VERSION_LABEL, state.currentVersionName)
@@ -75,7 +76,7 @@ fun AppUpdateContent(state: AppUpdateUiState, onEvent: (AppUpdateEvent) -> Unit)
                 is AppUpdateResultUi.Available -> {
                     val candidate = result
                     item("release") {
-                        Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                        AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                             insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
                             Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                                 Text(AppText.Updates.availableVersion(candidate.versionName), fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
@@ -101,7 +102,7 @@ fun AppUpdateContent(state: AppUpdateUiState, onEvent: (AppUpdateEvent) -> Unit)
                     title = AppText.Updates.PLATFORM_UPDATE_METHOD_TITLE, tone = UiTone.Info)
             } else if (state.nativePhase != AppUpdatePhase.IDLE) {
                 item("native-status") {
-                    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                         insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
                         Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                             SectionTitle(AppText.Updates.NATIVE_UPDATE_STATUS_TITLE)

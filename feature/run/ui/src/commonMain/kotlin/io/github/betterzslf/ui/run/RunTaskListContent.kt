@@ -58,7 +58,7 @@ fun RunTaskListContent(
                     RunEmpty(AppText.Run.NO_RUN_TASKS, AppText.Run.NO_SERVER_TASKS_LOCAL_TOOLS_AVAILABLE_HINT)
                 }
                 items(state.rows, key = { it.localKey }) { row ->
-                    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                         insideMargin = PaddingValues(AppUiTokens.CardPadding),
                         onClick = if (row.canOpen) ({ onRowAction(row.localKey, RunTaskRowAction.DETAIL) }) else null) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {

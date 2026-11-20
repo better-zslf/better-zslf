@@ -106,7 +106,7 @@ private fun AboutScreen(graph: AppGraph, back: () -> Unit, openUpdates: () -> Un
         item { InfoBanner(AppText.App.INDEPENDENT_CLIENT_DESCRIPTION, tone = UiTone.Neutral) }
         item { InfoBanner(graph.productIdentity.privacySummary,
             title = AppText.App.DATA_USE_WHEN_NEEDED_TITLE) }
-        item { Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
+        item { AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
             ArrowPreference(AppText.Updates.PROJECT_RELEASES_AND_UPDATES_LABEL, summary = AppText.Updates.MANUAL_GITHUB_RELEASES_CHECK_SUMMARY, onClick = openUpdates)
             ArrowPreference(AppText.App.PROJECT_SOURCE_LABEL, onClick = { graph.platform.openUrl("https://github.com/better-zslf/better-zslf") })
         } }

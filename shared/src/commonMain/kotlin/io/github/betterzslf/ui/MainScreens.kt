@@ -26,11 +26,11 @@ import top.yukonga.miuix.kmp.utils.PressFeedbackType
 /** Also used by the selected edition facade; no Pro implementation type leaks into common UI. */
 @Composable
 fun CampusShortcut(title: String, icon: ImageVector, accent: Color, supportingText: String = "", onClick: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
         colors = CardDefaults.defaultColors(color = Color.Transparent), insideMargin = PaddingValues(vertical = 4.dp),
         pressFeedbackType = PressFeedbackType.Sink, onClick = onClick) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(accent.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(52.dp).appSquircleClip(16.dp).background(accent.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
                 Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(27.dp))
             }
             Text(title, fontSize = 12.sp, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)

@@ -14,10 +14,10 @@ import io.github.betterzslf.ui.AppUiTokens
 import io.github.betterzslf.ui.PageList
 import io.github.betterzslf.ui.Screen
 import io.github.betterzslf.ui.SectionTitle
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.betterzslf.ui.AppCard
 
 /** Pure catalog content: no repositories, graph, navigation types, permissions or edition flags. */
 @Composable
@@ -30,7 +30,7 @@ fun ServicesContent(state: ServicesUiState, onEvent: (ServicesEvent) -> Unit) {
             state.sections.forEach { section ->
                 item("section:${section.id}:title") { SectionTitle(section.title) }
                 item("section:${section.id}:entries") {
-                    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                         insideMargin = PaddingValues(horizontal = 6.dp, vertical = 6.dp)) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             section.entries.forEach { entry ->

@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
+import io.github.betterzslf.ui.AppCard
 
 /**
  * Protocol documents only (用户协议 / 隐私政策 / 使用帮助). Columns, articles, browsing history,
@@ -75,7 +76,7 @@ private fun DocumentPage(source: ContentSource, page: Route.Page, back: () -> Un
                     item {
                         // The document body is the server response; never substitute design sample text.
                         if (detail.html.isBlank()) EmptyCard(AppText.Content.NO_BODY_CONTENT)
-                        else Card(Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
+                        else AppCard(Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
                             HtmlPanel(detail.html, Modifier.fillMaxWidth().height(580.dp))
                         }
                     }

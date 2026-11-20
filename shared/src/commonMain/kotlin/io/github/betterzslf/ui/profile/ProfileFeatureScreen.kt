@@ -40,6 +40,7 @@ import io.github.betterzslf.ui.SessionEpochReadFence
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.betterzslf.ui.AppCard
 
 /** Shared Android/iOS/JVM Miuix profile. Avatar decoding never receives a network URL. */
 @Composable
@@ -82,7 +83,7 @@ private fun ProfileOwnerScreen(graph: AppGraph, epoch: Long, open: (Route) -> Un
     }) { padding ->
         PageList(padding) {
             item("identity") {
-                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                     insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         ProfileAvatar(state.avatar, imageLoader, controller)
@@ -143,7 +144,7 @@ private fun ProfileOwnerScreen(graph: AppGraph, epoch: Long, open: (Route) -> Un
             // They stay reachable on a fresh 390dp-wide profile without scrolling under the pill.
             item("app-heading") { SectionTitle(AppText.App.ABOUT_TITLE) }
             item("app-actions") {
-                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
+                AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
                     ArrowPreference(AppText.App.ABOUT_APP_TITLE,
                         onClick = { open(Route.Page("about", title = AppText.App.ABOUT_APP_TITLE)) })
                     ArrowPreference(AppText.Updates.VERSION_UPDATE_TITLE, summary = graph.platform.versionName,
@@ -152,7 +153,7 @@ private fun ProfileOwnerScreen(graph: AppGraph, epoch: Long, open: (Route) -> Un
             }
             item("account-heading") { SectionTitle(AppText.Profile.ACCOUNT_SECTION_TITLE) }
             item("account-actions") {
-                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
+                AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
                     ArrowPreference(AppText.Settings.SETTINGS_TITLE,
                         onClick = { open(Route.Page("settings", title = AppText.Settings.SETTINGS_TITLE)) })
                     ArrowPreference(AppText.Auth.CHANGE_PASSWORD_TITLE,
@@ -173,7 +174,7 @@ private fun ProfileOwnerScreen(graph: AppGraph, epoch: Long, open: (Route) -> Un
             }
             item("help-heading") { SectionTitle(AppText.App.AGREEMENTS_AND_HELP_SECTION_TITLE) }
             item("help-actions") {
-                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
+                AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
                     listOf(
                         AppText.Document.USER_AGREEMENT to AppText.App.USER_AGREEMENT_DISPLAY_LABEL,
                         AppText.Document.PRIVACY_POLICY to AppText.App.PRIVACY_POLICY_DISPLAY_LABEL,

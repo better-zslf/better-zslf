@@ -25,6 +25,8 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.betterzslf.ui.AppCard
+import io.github.betterzslf.ui.appSquircleClip
 
 @Composable
 internal fun ScheduleManagementPage(
@@ -45,7 +47,7 @@ internal fun ScheduleManagementPage(
         PageList(padding) {
             // Ardot P42 puts the account identity first, with the password state as a green
             // reassurance line beneath it rather than a second card.
-            item("management-account") { Card(modifier = Modifier.fillMaxWidth(),
+            item("management-account") { AppCard(modifier = Modifier.fillMaxWidth(),
                 cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(AppText.Schedule.ACCOUNT_FIELD, fontSize = 12.sp,
@@ -62,7 +64,7 @@ internal fun ScheduleManagementPage(
             if (state.storageFailure) item("management-storage") { InfoBanner(AppText.Schedule.STORAGE_FAILURE, tone = UiTone.Warning) }
             state.message?.takeIf(String::isNotBlank)?.let { message -> item("management-message") { InfoBanner(message, tone = UiTone.Warning) } }
             notice?.let { message -> item("management-local-message") { InfoBanner(message, tone = UiTone.Warning) } }
-            item("management-actions") { Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues()) {
+            item("management-actions") { AppCard(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues()) {
                 ArrowPreference(if (state.boundAccount == null) AppText.Schedule.BIND else AppText.Schedule.UPDATE_CREDENTIALS,
                     enabled = actionable && !state.storageFailure,
                     onClick = { onOpen(scheduleRoute(ScheduleRoutes.BIND, if (state.boundAccount != null) "password" else "")) })
@@ -87,7 +89,7 @@ internal fun ScheduleManagementPage(
             }
             item("management-visibility-heading") { SectionTitle(AppText.Schedule.DISPLAY_SECTION_TITLE) }
             item("management-visibility") {
-                Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues(0.dp)) {
+                AppCard(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues(0.dp)) {
                     // Hiding the last visible day is refused rather than silently undone: a board
                     // that ignores the switch would look like a bug.
                     val visibleCount = 7 - current.hiddenWeekdays.count { it in 1..7 }
@@ -116,7 +118,7 @@ internal fun ScheduleManagementPage(
             // then an explicit full-width confirm button inside the same surface.
             item("management-unbind") {
                 Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(AppUiTokens.CardRadius))
+                    Modifier.fillMaxWidth().appSquircleClip(AppUiTokens.CardRadius)
                         .background(MiuixTheme.colorScheme.error.copy(alpha = 0.10f))
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),

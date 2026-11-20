@@ -31,6 +31,7 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.betterzslf.ui.AppCard
 
 internal const val VISIBLE_LOG_LIMIT: Int = DEBUG_LOG_WINDOW_LIMIT
 
@@ -69,7 +70,7 @@ fun DebugSettingsScreen(
         // PageList is the only vertical LazyColumn; log rows join this same LazyListScope.
         PageList(padding) {
             item("debug-mode") {
-                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                     insideMargin = PaddingValues(0.dp)) {
                     SwitchPreference(
                         title = AppText.DevTools.DEBUG_MODE_TITLE,
@@ -94,7 +95,7 @@ fun DebugSettingsScreen(
             }
             item("debug-local-only") { InfoBanner(AppText.DevTools.LOCAL_ONLY_HINT, tone = UiTone.Neutral) }
             item("debug-export") {
-                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                     insideMargin = PaddingValues(0.dp)) {
                     ArrowPreference(title = AppText.DevTools.EXPORT,
                         summary = AppText.DevTools.logSummary(entries.size, exportText.length),

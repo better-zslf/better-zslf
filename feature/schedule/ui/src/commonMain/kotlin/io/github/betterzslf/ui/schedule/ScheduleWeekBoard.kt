@@ -22,6 +22,7 @@ import io.github.betterzslf.feature.schedule.*
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.betterzslf.ui.AppCard
 
 /** One design row of the body grid: 12 periods of 35dp (Ardot 14:178 lineHeight 35). */
 private val ScheduleRowHeight: Dp = 35.dp
@@ -172,7 +173,7 @@ private fun ScheduleBoardCard(
     // §9.1 / §10.2: the in-progress block carries the design's red running outline in addition
     // to its readable 进行中 label, so the state is not signalled by colour alone.
     val cardModifier = if (block.running) modifier.border(1.dp, SchedulePalettes.RunningOutline, shape) else modifier
-    Card(
+    AppCard(
         modifier = cardModifier.semantics { contentDescription = description },
         cornerRadius = 8.dp,
         insideMargin = PaddingValues(vertical = 4.dp, horizontal = 4.dp),

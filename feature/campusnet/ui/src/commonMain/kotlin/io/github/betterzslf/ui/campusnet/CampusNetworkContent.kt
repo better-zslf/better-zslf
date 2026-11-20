@@ -30,6 +30,7 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.betterzslf.ui.AppCard
 
 internal enum class CampusConnectionState { NotSignedIn, Offline, Connecting, Online, Failed, NotOnCampus }
 
@@ -129,7 +130,7 @@ fun CampusNetworkContent(
                 if (!state.loading && state.queryMessage == null && state.accounts.isEmpty() && state.phase != CampusPasswordPhase.SESSION_CHANGED)
                     item("empty") { EmptyCard(AppText.CampusNetwork.NO_PROVISIONED_BROADBAND_ACCOUNTS) }
                 items(state.accounts, key = { it.key }) { account ->
-                    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                         insideMargin = PaddingValues(AppUiTokens.CardPadding),
                         colors = CardDefaults.defaultColors(color = if (state.selectedAccountKey == account.key)
                             MiuixTheme.colorScheme.primary.copy(alpha = 0.10f) else MiuixTheme.colorScheme.surfaceContainer)) {
@@ -148,7 +149,7 @@ fun CampusNetworkContent(
                     }
                 }
                 item("operation-toggle") {
-                    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
+                    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius) {
                         ArrowPreference(AppText.CampusNetwork.CARRIER_PASSWORD_ACTIONS_TITLE,
                             summary = if (state.expanded) AppText.CampusNetwork.COLLAPSE_AND_CLEAR_PASSWORD_INPUT else AppText.CampusNetwork.MANUAL_EXPANSION_REQUIRED_HINT,
                             enabled = !state.busy && !state.terminal, holdDownState = state.expanded,
@@ -161,7 +162,7 @@ fun CampusNetworkContent(
                             title = AppText.CampusNetwork.SELECT_ACCOUNT_FIRST_TITLE, tone = UiTone.Info)
                     }
                     item("password-form") {
-                        Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                        AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                             insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
                             Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                                 phoneField(controls.editable && selected?.canChangePassword == true)
@@ -184,7 +185,7 @@ fun CampusNetworkContent(
                     }
                 }
                 state.preview?.let { preview -> item("preview") {
-                    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                         insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
                         Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                             SectionTitle(AppText.CampusNetwork.CURRENT_OPERATION_PREVIEW_TITLE)
@@ -268,7 +269,7 @@ private fun CampusConnectionCard(
         CampusConnectionState.Online, CampusConnectionState.Failed -> ""
         CampusConnectionState.NotOnCampus -> AppText.CampusNetwork.STATUS_NOT_ON_CAMPUS_HINT
     }
-    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
         insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (state == CampusConnectionState.Connecting) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)

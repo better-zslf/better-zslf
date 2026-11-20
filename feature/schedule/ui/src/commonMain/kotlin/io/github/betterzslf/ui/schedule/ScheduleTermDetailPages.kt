@@ -20,6 +20,7 @@ import io.github.betterzslf.ui.*
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.betterzslf.ui.appSquircleClip
 
 @Composable
 public fun ScheduleTermWeekPage(runtime: ScheduleRuntime, onBack: () -> Unit) {
@@ -129,14 +130,14 @@ public fun ScheduleDetailPage(runtime: ScheduleRuntime, encoded: String, onBack:
                         whenLabel,
                         fontSize = 13.sp,
                         color = MiuixTheme.colorScheme.primary,
-                        modifier = Modifier.clip(RoundedCornerShape(999.dp))
+                        modifier = Modifier.appSquircleClip(999.dp)
                             .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.10f))
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                     )
                 }
             }
             item("detail-fields") {
-                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                     insideMargin = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                     colors = CardDefaults.defaultColors(color = MiuixTheme.colorScheme.surfaceVariant)) {
                     Column(Modifier.fillMaxWidth()) {

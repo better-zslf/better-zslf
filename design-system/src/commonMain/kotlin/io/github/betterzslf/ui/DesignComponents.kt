@@ -67,7 +67,7 @@ fun AppBrandMark(modifier: Modifier = Modifier, size: Dp = 84.dp) {
     Box(
         modifier.size(size)
             .shadow(10.dp, RoundedCornerShape(24.dp), ambientColor = AppUiTokens.Primary.copy(alpha = 0.18f), spotColor = AppUiTokens.Primary.copy(alpha = 0.18f))
-            .clip(RoundedCornerShape(24.dp))
+            .appSquircleClip(24.dp)
             .background(Brush.linearGradient(listOf(Color(0xFF599EFF), Color(0xFF266BF2)))),
         contentAlignment = Alignment.Center,
     ) {
@@ -171,7 +171,7 @@ fun InfoBanner(
     } else modifier
     Column(
         bannerModifier.fillMaxWidth()
-            .clip(RoundedCornerShape(AppUiTokens.FieldRadius))
+            .appSquircleClip(AppUiTokens.FieldRadius)
             .background(accent.copy(alpha = 0.10f))
             .animateContentSize()
             .padding(AppUiTokens.CardPadding),
@@ -188,8 +188,9 @@ data class UiMetric(val value: String, val label: String)
 @Composable
 fun MetricStrip(metrics: List<UiMetric>, modifier: Modifier = Modifier, onClick: ((index: Int) -> Unit)? = null) {
     if (metrics.isEmpty()) return
-    Card(modifier = modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
-        insideMargin = PaddingValues(if (onClick == null) AppUiTokens.CardPadding else 0.dp)) {
+    AppCard(modifier = modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+        insideMargin = PaddingValues(if (onClick == null) AppUiTokens.CardPadding else 0.dp),
+        sheen = onClick != null) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
             metrics.forEachIndexed { index, metric ->
                 if (onClick == null) {
@@ -198,7 +199,7 @@ fun MetricStrip(metrics: List<UiMetric>, modifier: Modifier = Modifier, onClick:
                         Text(metric.label, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     }
                 } else {
-                    Row(Modifier.weight(1f).clip(RoundedCornerShape(AppUiTokens.FieldRadius))
+                    Row(Modifier.weight(1f).appSquircleClip(AppUiTokens.FieldRadius)
                         .clickable(role = Role.Button) { onClick(index) }
                         .semantics(mergeDescendants = true) { contentDescription = "${metric.label}, ${metric.value}" }
                         .padding(AppUiTokens.CardPadding).heightIn(min = AppUiTokens.ButtonHeight),

@@ -10,7 +10,11 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import io.github.betterzslf.core.net.ApiClient
 import io.github.betterzslf.core.storage.SessionStore
 import io.github.betterzslf.data.AppRepositories
@@ -521,14 +525,20 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
     // pill, outer spacing and system navigation area, unlike measuring inside padding modifiers.
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
         val useRail = NavigationLayoutPolicy.useRail(maxWidth.value)
+        // Ardot 24:22 ④: the pill is a glass surface, so it needs a backdrop of the page beneath.
+        val barBackdrop = rememberLayerBackdrop()
+        val isDark = appDarkSurface()
+        val barShape = RoundedCornerShape(AppUiTokens.NavigationRadius)
+        val barGlass = glassMaterial(backdrop = barBackdrop, shape = barShape, isDark = isDark)
         Scaffold(containerColor = MiuixTheme.colorScheme.surface,
             contentWindowInsets = WindowInsets(0, 0, 0, 0), bottomBar = {
             if (!useRail && showBottomNavigation) {
                 Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 12.dp)) {
                     NavigationBar(
-                        modifier = Modifier.clip(RoundedCornerShape(AppUiTokens.NavigationRadius)),
-                        // An opaque Miuix card surface keeps scrolled content behind the pill.
-                        color = MiuixTheme.colorScheme.surfaceContainer,
+                        // The blur owns the surface, so the bar's own fill must be transparent or
+                        // it would paint over the captured backdrop and flatten the glass again.
+                        modifier = Modifier.fillMaxWidth().then(barGlass),
+                        color = Color.Transparent,
                         showDivider = false,
                         defaultWindowInsetsPadding = false,
                     ) {
@@ -562,8 +572,11 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
                 // Top/End/Bottom remain unconsumed for each page's own Scaffold; no double safe area.
                 val railConsumedInsets = if (useRail) WindowInsets.displayCutout.union(WindowInsets.navigationBars).only(WindowInsetsSides.Start)
                     else WindowInsets(0, 0, 0, 0)
+                // `layerBackdrop` records this pane so the floating pill above it can actually glass
+                // over the page: without a captured layer the blur would have nothing to sample and
+                // the bar would have to fall back to an opaque fill.
                 Box(Modifier.weight(1f).fillMaxHeight().consumeWindowInsets(railConsumedInsets).clipToBounds()
-                    .background(MiuixTheme.colorScheme.surface)) {
+                    .layerBackdrop(barBackdrop).background(MiuixTheme.colorScheme.surface)) {
                     // One stable host for both layouts: resizing changes chrome, never the tab's owner.
                     NavDisplay(backStack = stack, modifier = Modifier.fillMaxSize().clipToBounds(),
                         onBack = { if (stack.size > 1) stack.removeLastOrNull() }, transition = NavTransitions.MiuixDefault,

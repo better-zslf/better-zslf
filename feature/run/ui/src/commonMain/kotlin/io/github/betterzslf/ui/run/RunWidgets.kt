@@ -38,7 +38,7 @@ fun RunAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, 
 
 @Composable
 fun RunCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Card(modifier = modifier.fillMaxWidth().animateContentSize(), cornerRadius = AppUiTokens.CardRadius,
+    AppCard(modifier = modifier.fillMaxWidth().animateContentSize(), cornerRadius = AppUiTokens.CardRadius,
         insideMargin = PaddingValues(AppUiTokens.CardPadding), content = content)
 }
 

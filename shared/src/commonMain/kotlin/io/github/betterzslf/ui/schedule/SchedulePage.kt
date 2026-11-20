@@ -25,6 +25,8 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Tune
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.betterzslf.ui.AppCard
+import io.github.betterzslf.ui.appSquircleClip
 
 internal object ScheduleRoutes {
     const val ROOT = "schedule"
@@ -223,7 +225,7 @@ private fun ScheduleWeekScreenContent(
  */
 @Composable
 private fun ScheduleBoardCardContainer(content: @Composable () -> Unit) {
-    Card(
+    AppCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = AppUiTokens.CardRadius,
         insideMargin = PaddingValues(10.dp),
@@ -259,7 +261,7 @@ private fun ScheduleHeader(
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
-            Modifier.clip(RoundedCornerShape(18.dp))
+            Modifier.appSquircleClip(18.dp)
                 .background(MiuixTheme.colorScheme.primary)
                 .semantics(mergeDescendants = true) { contentDescription = AppText.Schedule.weekLabel(week) }
                 .padding(horizontal = 14.dp, vertical = 7.dp),
@@ -321,7 +323,7 @@ private fun ScheduleDayBody(
             for (day in visibleDays) {
                 val selected = day == activeDay
                 Box(
-                    Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(10.dp))
+                    Modifier.weight(1f).height(36.dp).appSquircleClip(10.dp)
                         .background(if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceVariant)
                         .semantics { contentDescription = AppText.Schedule.dayLabel(day) }
                         .clickableNoRipple { onSelectDay(day) },
@@ -371,7 +373,7 @@ private fun ScheduleDayCard(
         coursePeriodTimes(course, periods), course.location,
         if (running) AppText.Schedule.IN_PROGRESS else "",
     ).filter { it.isNotBlank() }.joinToString(", ")
-    Card(
+    AppCard(
         modifier = Modifier.fillMaxWidth().semantics { contentDescription = description },
         cornerRadius = 14.dp,
         insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),

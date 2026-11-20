@@ -32,7 +32,7 @@ fun SettingsScreen(graph: AppGraph, open: (Route) -> Unit, back: () -> Unit) {
         PageList(padding) {
             storageError?.let { error -> item { InfoBanner(error, title = AppText.App.LOCAL_DATA_NOTICE, tone = UiTone.Warning) } }
             item { SectionTitle(AppText.Settings.APPEARANCE_TITLE) }
-            item { Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
+            item { AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
                 WindowDropdownPreference(title = AppText.Settings.DARK_MODE_TITLE, items = themeNames,
                     selectedIndex = modes.indexOf(settings.theme).coerceAtLeast(0),
                     onSelectedIndexChange = { index -> modes.getOrNull(index)?.let { mode -> graph.settings.update { it.copy(theme = mode) } } })
@@ -41,7 +41,7 @@ fun SettingsScreen(graph: AppGraph, open: (Route) -> Unit, back: () -> Unit) {
                     checked = settings.dynamicColor, onCheckedChange = { checked -> graph.settings.update { it.copy(dynamicColor = checked) } })
             } }
             item { SectionTitle(AppText.Navigation.CAMPUS_RUN) }
-            item { Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
+            item { AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
                 WindowDropdownPreference(title = AppText.Settings.LOCATION_SAMPLING_INTERVAL_TITLE,
                     items = sampling.map { AppText.Settings.samplingInterval(it) },
                     selectedIndex = sampling.indexOf(settings.samplingSeconds).coerceAtLeast(0),
@@ -54,7 +54,7 @@ fun SettingsScreen(graph: AppGraph, open: (Route) -> Unit, back: () -> Unit) {
             } }
             item { SectionTitle(AppText.Settings.LOCAL_DATA_TITLE) }
             graph.storageNotice?.let { notice -> item { InfoBanner(notice, title = AppText.App.LOCAL_DATA_NOTICE, tone = UiTone.Warning) } }
-            item { Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
+            item { AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
                 ArrowPreference(title = if (graph.clearingLocalData) AppText.Settings.CLEARING_LOCAL_DATA else AppText.Settings.CLEAR_LOCAL_DATA,
                     summary = AppText.Settings.CLEAR_DATA_STOPS_ACTIVITY_AND_LOGS_OUT_HINT,
                     enabled = !graph.clearingLocalData, onClick = { if (!graph.clearingLocalData) clear = true })
@@ -65,7 +65,7 @@ fun SettingsScreen(graph: AppGraph, open: (Route) -> Unit, back: () -> Unit) {
                     onClick = { open(Route.Page("about", title = AppText.App.ABOUT_APP_TITLE)) })
             } }
             // The developer option is only reachable after five taps on the version string in About.
-            if (settings.debugMode) item { Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
+            if (settings.debugMode) item { AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius, insideMargin = PaddingValues(0.dp)) {
                 ArrowPreference(AppText.DevTools.TITLE, summary = AppText.DevTools.ENTRY_SUMMARY,
                     onClick = { open(Route.Page("devtools", title = AppText.DevTools.TITLE)) })
             } }

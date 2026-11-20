@@ -22,6 +22,7 @@ import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.betterzslf.ui.AppCard
 
 internal const val DEBUG_LOG_WINDOW_LIMIT: Int = 200
 
@@ -73,7 +74,7 @@ private fun DebugLogRow(entry: LogEntry) {
         LogLevel.WARN -> if (dark) AppUiTokens.WarningDark else AppUiTokens.Warning
         LogLevel.ERROR -> MiuixTheme.colorScheme.error
     }
-    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
         insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
         SelectionContainer {
             Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {

@@ -52,7 +52,7 @@ fun RunRecordsContent(
                         RunEmpty(AppText.Run.NO_RECORDS_FOR_SCHEDULE, AppText.Run.SERVER_RECORD_LIST_EMPTY)
                     }
                     items(state.rows, key = { it.localKey }) { row ->
-                        Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                        AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                             insideMargin = PaddingValues(AppUiTokens.CardPadding),
                             onClick = if (row.canOpen) ({ onOpenRow(row.localKey) }) else null) {
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {

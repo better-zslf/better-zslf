@@ -239,7 +239,7 @@ internal fun DormNetworkPage(graph: AppGraph, onBack: () -> Unit) {
                 }
             }
             item {
-                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                     insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
                     Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                         TextField(
@@ -399,7 +399,7 @@ private fun CampusDiagnosisBody(
         }
     }
 
-    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
         insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
         Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
             Text(AppText.CampusNetwork.DIAGNOSIS_TITLE, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)

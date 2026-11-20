@@ -5,10 +5,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import io.github.betterzslf.ui.AppUiTokens
 import top.yukonga.miuix.kmp.basic.*
+import io.github.betterzslf.ui.AppCard
 
 @Composable
 fun SchedulePanel(content: @Composable ColumnScope.() -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
         insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
         Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap), content = content)
     }

@@ -18,6 +18,7 @@ import io.github.betterzslf.ui.primaryTextActionColors
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.betterzslf.ui.AppCard
 
 /**
  * Complete recovery layout. The three controlled field slots receive only enabled flags; text,
@@ -63,7 +64,7 @@ fun AccountRecoveryContent(
             } }
             item("verification-heading") { SectionTitle(AppText.Recovery.PHONE_AND_CODE_SECTION_TITLE) }
             item("verification-form") {
-                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                     insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
                     Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                         phoneField(controls.editable)
@@ -88,7 +89,7 @@ fun AccountRecoveryContent(
                 }
                 item("password-heading") { SectionTitle(AppText.Recovery.NEW_PASSWORD_SECTION_TITLE) }
                 item("password-form") {
-                    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                         insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
                         Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                             passwordFields(controls.editable)
@@ -105,7 +106,7 @@ fun AccountRecoveryContent(
                 }
             }
             state.preview?.let { preview -> item("preview") {
-                Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                     insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
                     Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap)) {
                         SectionTitle(AppText.Recovery.RESET_PREVIEW_TITLE)

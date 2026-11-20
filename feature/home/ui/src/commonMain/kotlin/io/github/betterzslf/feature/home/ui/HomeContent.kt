@@ -21,6 +21,8 @@ import io.github.betterzslf.ui.PrimaryAction
 import io.github.betterzslf.ui.SectionTitle
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.betterzslf.ui.AppCard
+import io.github.betterzslf.ui.appSquircleClip
 
 /** Complete home content, usable without an application graph, repository, clock or navigation host. */
 @Composable
@@ -41,7 +43,7 @@ fun HomeContent(state: HomeUiState, onEvent: (HomeEvent) -> Unit) {
             if (state.today.isNotEmpty()) {
                 item("home-today-title") { SectionTitle(AppText.Home.todayCourses(state.today.size)) }
                 item("home-today-list") {
-                    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+                    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
                         insideMargin = PaddingValues(horizontal = 6.dp, vertical = 6.dp)) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             state.today.forEach { row -> HomeCourseRow(row, open) }
@@ -72,11 +74,11 @@ private fun BlueHeroCard(hero: HomeHero, today: List<HomeRow>, open: (HomeOccurr
         HomeHeroMode.LONG_GAP -> listOf(Color(0xFF4D90FF), Color(0xFF2A68E7))
         else -> listOf(Color(0xFF3F8CFF), Color(0xFF245CEB))
     }
-    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = 20.dp,
+    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 20.dp,
         insideMargin = PaddingValues(0.dp),
         colors = CardDefaults.defaultColors(color = Color.Transparent),
         onClick = course?.let { { open(it.occurrenceId) } }) {
-        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Brush.linearGradient(gradient))) {
+        Box(Modifier.fillMaxWidth().appSquircleClip(20.dp).background(Brush.linearGradient(gradient))) {
             Column(Modifier.padding(AppUiTokens.CardPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 when (hero.mode) {
                     HomeHeroMode.LONG_GAP -> LongGapContent(hero, today, course)
@@ -91,7 +93,7 @@ private fun BlueHeroCard(hero: HomeHero, today: List<HomeRow>, open: (HomeOccurr
 
 @Composable
 private fun HeroBadge(text: String, whitePill: Boolean) {
-    Box(Modifier.clip(RoundedCornerShape(12.dp))
+    Box(Modifier.appSquircleClip(12.dp)
         .background(if (whitePill) Color.White else Color.White.copy(alpha = 0.2f))
         .padding(horizontal = 10.dp, vertical = 4.dp)) {
         Text(text, color = if (whitePill) Color(0xFF1A6BFF) else Color.White, fontSize = 12.sp)
@@ -210,7 +212,7 @@ private fun LongGapContent(hero: HomeHero, today: List<HomeRow>, course: HomeCou
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         today.dropWhile { it.occurrence.occurrenceId != course?.occurrenceId }.take(2).forEach { row ->
-            Box(Modifier.clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.16f))
+            Box(Modifier.appSquircleClip(12.dp).background(Color.White.copy(alpha = 0.16f))
                 .padding(horizontal = 10.dp, vertical = 6.dp)) {
                 Text(AppText.Home.courseLine(row.start, row.occurrence.title), color = Color.White, fontSize = 12.sp)
             }
@@ -220,7 +222,7 @@ private fun LongGapContent(hero: HomeHero, today: List<HomeRow>, course: HomeCou
 
 @Composable
 private fun SurfaceHeroCard(hero: HomeHero, open: (HomeOccurrenceId) -> Unit, action: (HomeAction) -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = 20.dp, insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
+    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 20.dp, insideMargin = PaddingValues(AppUiTokens.CardPadding)) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             when (hero.mode) {
                 HomeHeroMode.DONE_TODAY -> DoneTodayContent(hero, open, action)
@@ -235,7 +237,7 @@ private fun SurfaceHeroCard(hero: HomeHero, open: (HomeOccurrenceId) -> Unit, ac
 
 @Composable
 private fun SurfaceBadge(text: String, emphasized: Boolean) {
-    Box(Modifier.clip(RoundedCornerShape(12.dp))
+    Box(Modifier.appSquircleClip(12.dp)
         .background(if (emphasized) MiuixTheme.colorScheme.primaryContainer else MiuixTheme.colorScheme.surface)
         .padding(horizontal = 10.dp, vertical = 4.dp)) {
         Text(text, color = if (emphasized) MiuixTheme.colorScheme.onPrimaryContainer
@@ -254,7 +256,7 @@ private fun ActionRow(label: String, onClick: () -> Unit) {
 
 @Composable
 private fun UpcomingCourseBlock(course: HomeCourseUi, open: (HomeOccurrenceId) -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+    Row(Modifier.fillMaxWidth().appSquircleClip(14.dp)
         .background(MiuixTheme.colorScheme.surface).padding(12.dp)
         .clickable { open(course.occurrenceId) },
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -342,7 +344,7 @@ private fun NoPlanContent(action: (HomeAction) -> Unit) {
 @Composable
 private fun HomeCourseRow(row: HomeRow, open: (HomeOccurrenceId) -> Unit) {
     val course = row.occurrence
-    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = 12.dp,
+    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 12.dp,
         insideMargin = PaddingValues(horizontal = 12.dp, vertical = 12.dp), onClick = { open(course.occurrenceId) }) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.width(40.dp)) {
@@ -356,7 +358,7 @@ private fun HomeCourseRow(row: HomeRow, open: (HomeOccurrenceId) -> Unit) {
                 if (meta.isNotBlank()) Text(meta, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             }
             if (row.isNext) {
-                Box(Modifier.clip(RoundedCornerShape(10.dp)).background(MiuixTheme.colorScheme.primaryContainer)
+                Box(Modifier.appSquircleClip(10.dp).background(MiuixTheme.colorScheme.primaryContainer)
                     .padding(horizontal = 8.dp, vertical = 2.dp)) {
                     Text(AppText.Home.NEXT_BADGE, fontSize = 11.sp, color = MiuixTheme.colorScheme.onPrimaryContainer)
                 }

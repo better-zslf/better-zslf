@@ -98,7 +98,7 @@ public fun ScheduleCourseCard(course: ScheduleCourse, periods: List<SchedulePeri
         2 -> if (dark) AppUiTokens.WarningDark else AppUiTokens.Warning
         else -> MiuixTheme.colorScheme.primary
     }
-    Card(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
+    AppCard(modifier = Modifier.fillMaxWidth(), cornerRadius = AppUiTokens.CardRadius,
         insideMargin = PaddingValues(AppUiTokens.CardPadding), showIndication = true, onClick = onOpen,
         colors = CardDefaults.defaultColors(color = accent.copy(alpha = if (dark) 0.15f else 0.08f))) {
         Column(verticalArrangement = Arrangement.spacedBy(AppUiTokens.Gap / 2)) {

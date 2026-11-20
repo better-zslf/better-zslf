@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
+import io.github.betterzslf.ui.AppCard
 
 @Composable
 internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> Unit, onBack: () -> Unit) {
@@ -110,7 +111,7 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
             // as well (it is what setShortCriticalText feeds), and the preference is harmless when
             // nothing reads it. Gating it on the vendor family made the switch impossible to reach
             // in the mock build, which is where it most needs testing.
-            item("reminders-capsule-text") { Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues()) {
+            item("reminders-capsule-text") { AppCard(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues()) {
                     SwitchPreference(checked = state.capsuleLongText,
                         title = AppText.Schedule.CAPSULE_TEXT_TITLE,
                         summary = AppText.Schedule.CAPSULE_TEXT_SUMMARY,
@@ -129,7 +130,7 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                             }
                     } })
             } }
-            item("reminders-switch") { Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues()) {
+            item("reminders-switch") { AppCard(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues()) {
                 SwitchPreference(checked = state.remindersEnabled,
                     title = AppText.Schedule.REMINDERS_SWITCH, summary = AppText.Schedule.REMINDER_RULES,
                     enabled = state.owner != null && !state.busy && !applying && (state.boundAccount != null || state.remindersEnabled),
@@ -149,7 +150,7 @@ internal fun ScheduleReminderPage(runtime: ScheduleRuntime, onOpen: (Route) -> U
                         } }) }
                 }
             } }
-            item("reminders-capabilities") { Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues()) {
+            item("reminders-capabilities") { AppCard(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues()) {
                 ArrowPreference(AppText.Schedule.NOTIFICATION_PERMISSION,
                     summary = if (capabilities.notificationsGranted) AppText.Schedule.NATIVE_GRANTED else AppText.Schedule.NATIVE_BLOCKED,
                     onClick = { request { if (capabilities.notificationsGranted) native.openNotificationSettings() else native.requestNotificationPermission() } })

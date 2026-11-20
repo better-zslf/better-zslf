@@ -34,7 +34,7 @@ fun AsyncContent(key: Any?, load: suspend () -> ApiResult<JsonElement>, content:
     val loader by rememberUpdatedState(load)
     val result by produceState<ApiResult<JsonElement>?>(null, key, attempt) { value = null; value = loader() }
     when (val state = result) {
-        null -> Card(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues(24.dp)) {
+        null -> AppCard(modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 CircularProgressIndicator(Modifier.size(24.dp))
                 Text(AppText.Common.LOADING, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)

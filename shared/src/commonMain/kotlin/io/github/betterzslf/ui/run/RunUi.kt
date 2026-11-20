@@ -21,6 +21,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.isActive
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.betterzslf.ui.appSquircleClip
 
 internal data class RunPageQuery<T>(val loading: Boolean = false, val data: T? = null, val error: String? = null)
 
@@ -131,7 +132,7 @@ internal fun RunMapPreview(
     val apiKey = session?.mapToken
     val identity = remember(owner, provider, apiKey) { RunMapFeedbackIdentity(owner, provider, apiKey) }
     if (useful.isEmpty() && checkpoints.isEmpty()) {
-        Box(modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(AppUiTokens.CardRadius)), contentAlignment = Alignment.Center) {
+        Box(modifier.fillMaxWidth().height(height).appSquircleClip(AppUiTokens.CardRadius), contentAlignment = Alignment.Center) {
             RunEmpty(AppText.Run.NO_DISPLAYABLE_COORDINATES, AppText.Run.NO_REAL_POSITION_OR_ROUTE_NO_SIMULATION_HINT)
         }
     } else key(identity) {
@@ -159,7 +160,7 @@ internal fun RunMapPreview(
             currentLocation = if (role == RunMapRole.ACTUAL) path?.second?.lastOrNull() else null,
             currentCoordinateSystem = coordinateSystem, dark = dark)
         Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(AppUiTokens.CardRadius))) {
+            Box(Modifier.fillMaxWidth().height(height).appSquircleClip(AppUiTokens.CardRadius)) {
                 RunMapPanel(model, { event ->
                     if (callbackFence.isCurrent()) feedback = feedback.forDocument(identity, document, latestData).onEvent(identity, document, event)
                 }, Modifier.fillMaxSize())

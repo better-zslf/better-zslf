@@ -32,6 +32,12 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import io.github.betterzslf.ui.AppCard
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import io.github.betterzslf.ui.AppSnackbarHost
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 
 internal const val VISIBLE_LOG_LIMIT: Int = DEBUG_LOG_WINDOW_LIMIT
 
@@ -49,6 +55,12 @@ fun DebugSettingsScreen(
     onExport: () -> Unit,
     onBack: () -> Unit,
 ) {
+    // Export is a one-shot confirmation: it used to be silent apart from a log line, which left
+    // the developer guessing whether the clipboard actually got the text. Snackbar is the right
+    // shape for that -- it floats, self-dismisses, and does not leave furniture behind the way an
+    // inline InfoBanner would.
+    val snackbarHost = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     var confirmClear by remember { mutableStateOf(false) }
     var levelFilter by remember { mutableIntStateOf(0) }
     val filter = when (levelFilter) {
@@ -100,7 +112,12 @@ fun DebugSettingsScreen(
                     ArrowPreference(title = AppText.DevTools.EXPORT,
                         summary = AppText.DevTools.logSummary(entries.size, exportText.length),
                         enabled = canExport,
-                        onClick = { if (exportText.isNotEmpty()) onExport() })
+                        onClick = {
+                            if (exportText.isNotEmpty()) {
+                                onExport()
+                                scope.launch { snackbarHost.showSnackbar(AppText.DevTools.LOG_EXPORTED) }
+                            }
+                        })
                     HorizontalDivider(modifier = Modifier.padding(horizontal = AppUiTokens.CardPadding))
                     TextButton(AppText.DevTools.CLEAR, enabled = entries.isNotEmpty(),
                         modifier = Modifier.padding(horizontal = AppUiTokens.CardPadding, vertical = 4.dp),
@@ -125,6 +142,13 @@ fun DebugSettingsScreen(
                 confirmClear = false
                 onClear()
             }
+        }
+        // Screen's content slot is a plain Box, so overlay the host from a bottom-aligned wrapper.
+        Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
+            AppSnackbarHost(
+                state = snackbarHost,
+                modifier = Modifier.padding(horizontal = AppUiTokens.PagePadding, vertical = AppUiTokens.Gap),
+            )
         }
     }
 }

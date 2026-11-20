@@ -599,6 +599,8 @@ object AppText {
         const val SELECT_TERM_WEEK = "学期与周次"
         const val TERMS = "学期"
         const val WEEKS = "周次"
+        /** Breadcrumb label when the academic term name is not yet known. */
+        const val WEEKS_TERM_FALLBACK: String = "本学期"
         const val SERVER_DEFAULT = "教务默认学期"
         const val CURRENT_VIEW = "当前查看"
         const val HISTORY_HINT = "查看历史学期不会改变提醒的数据源学期。"
@@ -948,6 +950,8 @@ object AppText {
         const val PERIOD_CALIBRATION: String = "作息校准"
         const val APP_UPDATE: String = "应用更新"
         const val ABOUT_APP: String = "关于应用"
+        const val SEARCH_LABEL: String = "搜索服务"
+        const val SEARCH_EMPTY: String = "没有匹配的服务"
     }
 
     object Profile {
@@ -1678,6 +1682,8 @@ object AppText {
         const val CLEAR_CONFIRM_DESCRIPTION: String = "只删除这台设备上的调试日志，不影响账号、设置与业务数据。"
         const val EXPORT: String = "导出日志"
         const val EXPORT_READY: String = "已生成日志文本，可复制后反馈。"
+        /** One-shot confirmation after the export lands on the clipboard. */
+        const val LOG_EXPORTED: String = "日志已复制到剪贴板"
         const val TRUNCATED_HINT: String = "为保证流畅，这里最多显示最近 {0} 条匹配日志；导出包含全部保留记录。"
         fun logSummary(entries: Int, characters: Int): String = "$entries 条记录 · $characters 字符"
         fun tapHint(remaining: Int): String = "再点击 $remaining 次版本号可开启开发者选项"

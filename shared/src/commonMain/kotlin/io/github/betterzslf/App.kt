@@ -72,6 +72,11 @@ import top.yukonga.miuix.kmp.nav.transition.NavTransitions
 import top.yukonga.miuix.kmp.theme.*
 import top.yukonga.miuix.kmp.glass.GlassNavigationBar
 import top.yukonga.miuix.kmp.glass.GlassNavigationItem
+import top.yukonga.miuix.kmp.icon.glass.HomeOutline
+import top.yukonga.miuix.kmp.icon.glass.Weeks
+import top.yukonga.miuix.kmp.icon.glass.Carrier
+import top.yukonga.miuix.kmp.icon.glass.GridView
+import top.yukonga.miuix.kmp.icon.glass.Contacts
 
 /**
  * Slot identifier for the single local timetable record.
@@ -521,7 +526,10 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
     // (P46) but its pages stay reachable through the third tab's stack.
     val titles = listOf(AppText.Navigation.HOME, AppText.Navigation.TIMETABLE, AppText.Navigation.CAMPUS_NETWORK,
         AppText.Navigation.SERVICES, AppText.Navigation.PROFILE)
-    val icons = listOf(MiuixIcons.Home, MiuixIcons.Notes, MiuixIcons.Carrier, MiuixIcons.GridView, MiuixIcons.Contacts)
+    // MiuixIcons.Glass: the OS4 icon set ships with miuix-glass-icons. The regular set's
+    // stroke weight is tuned for opaque cards; on a glass bar it reads heavy next to the material.
+    val icons = listOf(MiuixIcons.Glass.HomeOutline, MiuixIcons.Glass.Weeks, MiuixIcons.Glass.Carrier,
+        MiuixIcons.Glass.GridView, MiuixIcons.Glass.Contacts)
     val showBottomNavigation = stack.lastOrNull() is Route.TabRoot
     // Miuix measures the whole bottomBar before composing its body. Its padding includes the
     // pill, outer spacing and system navigation area, unlike measuring inside padding modifiers.
@@ -547,10 +555,11 @@ private fun MainShell(graph: AppGraph, selected: Int, onSelect: (Int) -> Unit, s
                         onSelect = { index -> onSelect(NavigationLayoutPolicy.selectTab(selected, index)) },
                         backdrop = barBackdrop,
                         modifier = Modifier.fillMaxWidth(),
-                        style = topBarGlassStyle(isDark),
+                        style = topBarGlassStyle(),
                         material = appBarGlassMaterial(isDark),
                         stroke = appGlassStroke(isDark),
                         shadow = AppGlassFloatShadow,
+                        height = AppGlassTokens.NavigationHeight,
                         defaultWindowInsetsPadding = false,
                     )
                 }

@@ -36,6 +36,8 @@ import top.yukonga.miuix.kmp.squircle.isSquircleEnabled
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
+import top.yukonga.miuix.kmp.basic.SnackbarHost
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /**
  * OS4 (HyperOS 4) glass material tokens.
@@ -53,10 +55,22 @@ import top.yukonga.miuix.kmp.utils.PressFeedbackType
  */
 object AppGlassTokens {
     /**
-     * Minimum height of the glass navigation bar, from `GlassNavigationBarDefaults.Height`.
-     * 54dp, not the 64dp the previous hand-rolled pill used.
+     * Height of the glass navigation bar.
+     *
+     * `GlassNavigationBarDefaults.Height` is 54dp, which reads as a cramped strip under a 64dp
+     * design bar. The component takes `height` through `heightIn(min = height)` and sizes its
+     * indicator as `height - IndicatorPaddingVertical * 2`, so raising it moves both together.
      */
-    val NavigationHeight: Dp = 54.dp
+    val NavigationHeight: Dp = 64.dp
+
+    /**
+     * Blur radius for floating bars, overriding the material preset.
+     *
+     * `puredThinGlass` ships 20dp, which dissolves the backdrop into a flat grey wash — the bar
+     * stops looking like glass and starts looking like a dirty band. 8dp keeps the structure of
+     * what is scrolling underneath, which is the whole point of the effect.
+     */
+    val BarBlurRadius: Dp = 8.dp
 
     /** Card corner radius. Unchanged: the design's 16dp is a layout token, not a material one. */
     val CardRadius: Dp = AppUiTokens.CardRadius
@@ -96,8 +110,9 @@ fun appDarkSurface(): Boolean = MiuixTheme.colorScheme.surface.luminance() < 0.5
 
 /**
  * The glass body for floating bars: `GlassMaterials.puredThinGlass` — a 20dp blur with three
- * colour layers (`PlusDarker` / `SoftLight` / `HardLight`). This is the official MIUIX preset for
- * floating surfaces; the three blended layers, not one flat tint, are what give OS4 glass its body.
+ * colour layers (`PlusDarker` / `SoftLight` / `HardLight`) — with the blur radius pulled down to
+ * [AppGlassTokens.BarBlurRadius]. The three blended layers, not one flat tint, are what give OS4
+ * glass its body; the radius is what decides whether the backdrop stays legible underneath.
  *
  * `dynamicGlassMaterial` is deliberately NOT used: it only diverges from the preset when
  * `MiuixTheme.isDynamicColor` is on, and this project ships a fixed brand palette (Monet is opt-in
@@ -105,7 +120,9 @@ fun appDarkSurface(): Boolean = MiuixTheme.colorScheme.surface.luminance() < 0.5
  */
 @Composable
 fun appBarGlassMaterial(isDark: Boolean = appDarkSurface()): GlassMaterial =
-    GlassMaterials.puredThinGlass(isDark)
+    remember(isDark) {
+        GlassMaterials.puredThinGlass(isDark).copy(blurRadius = AppGlassTokens.BarBlurRadius)
+    }
 
 /**
  * The lit rim for a glass silhouette. `GlassEdgeStrokes.forTheme` picks `MiddleLight` /
@@ -272,4 +289,23 @@ fun AppCard(
             }
         }
     }
+}
+
+/**
+ * The transient-feedback host.
+ *
+ * The project reports everything through [InfoBanner], an in-page strip. That is right for a
+ * persistent state ("binding failed, retry below") but wrong for a one-shot confirmation: an
+ * inline banner for "copied" leaves permanent furniture behind and shifts the layout under the
+ * user. Miuix `SnackbarHost` floats above the content, dismisses itself, and supports a single
+ * action, which is exactly that case.
+ *
+ * Host it once per screen that needs it, above the content but below any bar overlay.
+ */
+@Composable
+fun AppSnackbarHost(
+    state: SnackbarHostState,
+    modifier: Modifier = Modifier,
+) {
+    SnackbarHost(state = state, modifier = modifier, canSwipeToDismiss = true)
 }

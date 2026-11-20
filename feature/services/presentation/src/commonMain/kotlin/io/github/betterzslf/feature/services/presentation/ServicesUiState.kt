@@ -23,8 +23,24 @@ data class ServiceSectionUi(val id: String, val title: String, val entries: List
 }
 
 /** A renderable snapshot. Products supply the catalog; UI knows neither edition nor application graph. */
-class ServicesUiState(title: String, val introduction: String, sections: List<ServiceSectionUi>) {
+class ServicesUiState(
+    title: String,
+    val introduction: String,
+    sections: List<ServiceSectionUi>,
+    /**
+     * Search affordance copy.
+     *
+     * Injected by the product rather than read from `AppText` here: `:feature:services:ui` may
+     * depend only on `:design-system` and this module, so the UI cannot reach `core:text`, and a
+     * Han literal is not allowed in this module either. Passing the copy the same way `title` and
+     * every section/entry title already arrive satisfies both guards and keeps the UI a pure
+     * function of the snapshot.
+     */
+    val searchLabel: String,
+    val searchEmptyLabel: String,
+) {
     val title: String = title.also { require(it.isNotBlank()) }
+
     val sections: List<ServiceSectionUi> = SnapshotList(sections.map { it.copy(entries = SnapshotList(it.entries)) })
 
     init {
@@ -37,6 +53,32 @@ class ServicesUiState(title: String, val introduction: String, sections: List<Se
     fun eventFor(id: ServiceEntryId): ServicesEvent.Selected? =
         sections.asSequence().flatMap { it.entries.asSequence() }
             .firstOrNull { it.id == id && it.enabled }?.let { ServicesEvent.Selected(it.id) }
+
+    /**
+     * Catalog filtered by a search query, as a new snapshot.
+     *
+     * Matching is title-or-summary substring, case-insensitive, on the already-snapshotted text.
+     * Sections that lose every entry are dropped rather than rendered as empty headings, and an
+     * empty query returns the full catalog unchanged.
+     *
+     * Kept here rather than in the composable so the filter is unit-testable without a UI host,
+     * and so the UI stays a pure function of the returned state.
+     */
+    fun filtered(query: String): ServicesUiState {
+        val needle = query.trim()
+        if (needle.isEmpty()) return this
+        val matched = sections.mapNotNull { section ->
+            val hits = section.entries.filter { entry ->
+                entry.title.contains(needle, ignoreCase = true) ||
+                    entry.summary?.contains(needle, ignoreCase = true) == true
+            }
+            if (hits.isEmpty()) null else section.copy(entries = hits)
+        }
+        return ServicesUiState(title, introduction, matched, searchLabel, searchEmptyLabel)
+    }
+
+    /** True when [filtered] would drop everything, used to render the empty-result state. */
+    fun isEmptyCatalog(): Boolean = sections.all { it.entries.isEmpty() }
 }
 
 sealed interface ServicesEvent {

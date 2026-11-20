@@ -36,7 +36,7 @@ internal class ServiceDirectory(contributions: ApplicationContributions) {
             entry("public.updates", AppText.Services.APP_UPDATE, ServiceAccent.Neutral),
             entry("public.about", AppText.Services.ABOUT_APP, ServiceAccent.Neutral),
         )),
-    ))
+    ), searchLabel = AppText.Services.SEARCH_LABEL, searchEmptyLabel = AppText.Services.SEARCH_EMPTY)
 
     fun routeFor(event: ServicesEvent): NavKey? = when (event) {
         is ServicesEvent.Selected -> state.eventFor(event.id)?.let { routes[it.id] }

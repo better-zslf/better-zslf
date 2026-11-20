@@ -50,6 +50,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.Colors
 import top.yukonga.miuix.kmp.theme.lightColorScheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme
+import top.yukonga.miuix.kmp.basic.SmallTitle
 
 /** Shared mirrored back glyph for screen chrome and account-entry navigation. */
 val BackChevron: ImageVector = ImageVector.Builder(
@@ -349,10 +350,26 @@ fun PasswordVisibilityIcon(visible: Boolean, onToggle: () -> Unit, modifier: Mod
     }
 }
 
+/**
+ * The section heading above a settings group.
+ *
+ * Backed by Miuix `SmallTitle` rather than a hand-rolled `Row` + 17sp `Text`: the component is the
+ * library's own grouping semantic, uses `onBackgroundVariant` for the muted tone, and carries the
+ * 28dp/8dp inside margin the rest of the Miuix preference stack already assumes. Keeping our own
+ * text here meant section headings sat on a different rhythm from the `ArrowPreference` rows below
+ * them.
+ *
+ * [actionLabel] is an escape hatch for the few groups with an inline action; `SmallTitle` has no
+ * trailing slot, so that variant keeps the row layout.
+ */
 @Composable
 fun SectionTitle(title: String, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-        if (actionLabel != null && onAction != null) TextButton(text = actionLabel, onClick = onAction)
+    if (actionLabel != null && onAction != null) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            TextButton(text = actionLabel, onClick = onAction)
+        }
+    } else {
+        SmallTitle(title)
     }
 }

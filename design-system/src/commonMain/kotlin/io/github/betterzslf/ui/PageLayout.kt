@@ -21,6 +21,8 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.glass.GlassTopAppBar
+import top.yukonga.miuix.kmp.material.GlassStyle
+import top.yukonga.miuix.kmp.material.GlassStyles
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 
@@ -71,7 +73,7 @@ fun Screen(title: String, onBack: (() -> Unit)? = null, actions: @Composable Row
                 // from the scroll offset, so it stays correct without a fixed-height overlay.
                 progressiveBlur = true,
                 expandable = onBack == null,
-                style = topBarGlassStyle(isDark),
+                style = topBarGlassStyle(),
                 material = appBarGlassMaterial(isDark),
                 stroke = appGlassStroke(isDark),
                 navigationIcon = if (onBack == null) {
@@ -94,10 +96,19 @@ fun Screen(title: String, onBack: (() -> Unit)? = null, actions: @Composable Row
     }
 }
 
-/** The OS4 optical preset for bar chrome: medium body, regular edge. Theme-aware. */
-@Composable
-fun topBarGlassStyle(isDark: Boolean = appDarkSurface()) =
-    top.yukonga.miuix.kmp.material.GlassDefaults.style(isDark)
+/**
+ * The OS4 optical preset for bar chrome.
+ *
+ * `CommonSmallRegular` rather than the library default `CommonMediumRegularLowLight`: at
+ * `ior = 1.4 / blend.saturation = 1.4 / amount = 0.24` it distorts and tints the backdrop far less
+ * than the default's `3.0 / 2.0 / 0.2`, and the higher saturation is what makes the colour coming
+ * through the glass look alive instead of washed out.
+ *
+ * There is no dark member of the `CommonSmall*` family — that size class ships light presets only.
+ * Theme separation is supplied by the material (`puredThinGlass` has light/dark bodies) and the
+ * rim stroke (`GlassEdgeStrokes.forTheme`), not by the optical style, so one style serves both.
+ */
+fun topBarGlassStyle(): GlassStyle = GlassStyles.CommonSmallRegular
 
 /**
  * Insets for scroll content below [Screen] or a product shell. The measured floating navigation

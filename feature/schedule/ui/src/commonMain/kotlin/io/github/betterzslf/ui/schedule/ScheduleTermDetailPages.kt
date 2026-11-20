@@ -21,6 +21,8 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import io.github.betterzslf.ui.appSquircleClip
+import top.yukonga.miuix.kmp.basic.BreadcrumbBar
+import top.yukonga.miuix.kmp.basic.BreadcrumbItem
 
 @Composable
 public fun ScheduleTermWeekPage(runtime: ScheduleRuntime, onBack: () -> Unit) {
@@ -115,6 +117,26 @@ public fun ScheduleDetailPage(runtime: ScheduleRuntime, encoded: String, onBack:
     Screen(AppText.Schedule.DETAILS_TITLE, onBack) { padding -> PageList(padding) {
         if (courses.isEmpty()) item("detail-unavailable") { InfoBanner(AppText.Schedule.DETAIL_UNAVAILABLE, tone = UiTone.Warning) }
         val week = selection?.week ?: state.selectedWeek
+        // The course detail sits three levels deep (term -> week -> course) and until now the only
+        // indication of that was the generic "details" title: the user had to remember which week
+        // they had opened. A breadcrumb states the trail instead, and its items are clickable back
+        // up the same path.
+        if (courses.isNotEmpty() || week != null) {
+            item("detail-breadcrumb") {
+                val termLabel = snapshot?.term?.name?.takeIf(String::isNotBlank)
+                    ?: AppText.Schedule.WEEKS_TERM_FALLBACK
+                val trail = buildList {
+                    add(BreadcrumbItem(path = "term", text = termLabel))
+                    add(BreadcrumbItem(path = "week", text = AppText.Schedule.weekLabel(week)))
+                    add(BreadcrumbItem(path = "course",
+                        text = courses.firstOrNull()?.title?.ifBlank { null } ?: AppText.Schedule.DETAILS_TITLE))
+                }
+                BreadcrumbBar(items = trail, onItemClick = { index ->
+                    // Only "up" is a real destination: the terminal item is where we already are.
+                    if (index == 0) onBack()
+                })
+            }
+        }
         // The first course is the one the design draws in full; the rest are the same-slot list.
         courses.firstOrNull()?.let { primary ->
             item("detail-header") {

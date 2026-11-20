@@ -16,13 +16,13 @@ import sys
 
 ROOT = pathlib.Path(r"E:\better-zslf")
 UNSIGNED = ROOT / "work" / "pro-ci" / "androidApp" / "build" / "outputs" / "apk" / "release" / "androidApp-release-unsigned.apk"
-DIST = ROOT / ".local" / "rc60-dist"
+DIST = ROOT / ".local" / "rc61-dist"
 DEBUG_KEYSTORE = pathlib.Path.home() / ".android" / "debug.keystore"
 # The debug keystore's published defaults; changing them would break adb install parity.
 DEBUG_STORE_PASS = "android"
 DEBUG_ALIAS = "androiddebugkey"
 DEBUG_KEY_PASS = "android"
-OUT_NAME = "betterzslf-pro-1.0.0-rc60-pro-release-debugsigned.apk"
+OUT_NAME = "betterzslf-pro-1.0.0-rc61-pro-release-debugsigned.apk"
 
 
 def build_tools() -> pathlib.Path:

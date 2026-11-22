@@ -31,4 +31,4 @@ include(":feature:auth:domain", ":feature:auth:data", ":feature:auth:presentatio
 include(":feature:profile:domain", ":feature:profile:data", ":feature:profile:presentation")
 include(":feature:content:domain", ":feature:content:data", ":feature:content:presentation")
 include(":platform:updates", ":platform:schedule-native", ":platform:storage", ":platform:location", ":platform-ui:readonly-map")
-include(":shared", ":androidApp", ":platform:android-host")
+include(":shared", ":androidApp", ":desktopApp", ":platform:android-host")

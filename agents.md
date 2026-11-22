@@ -26,6 +26,7 @@
 - `platform/`：设备能力实现——location（GPS 定位＋前台服务）、schedule-native（课表通知/小组件）、updates（安装器）、storage（加密存储）。
 - `shared/`：总装壳——页面路由（Route/AppGraph binder）、产品组装、跨功能集成测试；业务逻辑不在此层。
 - `androidApp/`：免费版 Android 产品根；`platform/android-host`：宿主库。
+- `desktopApp/`：桌面 UI 预览入口（`gradlew :desktopApp:run`，JVM 内存桩、免装机改 UI 即看；不是产品面，不发布）。
 
 ## 关键约定
 

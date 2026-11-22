@@ -76,6 +76,7 @@ CATALOG_PATH = "core/text/src/commonMain/kotlin/io/github/betterzslf/core/text/A
 SCOPE_PREFIXES = tuple(KOTLIN_BASE + name + "/" for name in ("ui", "core", "feature", "data", "platform"))
 C_KOTLIN_PREFIXES = tuple("shared/src/" + name + "/kotlin/" for name in ("androidMain", "iosMain", "jvmMain")) + (
     "androidApp/src/main/kotlin/",
+    "desktopApp/src/jvmMain/kotlin/",
 )
 RETIRED_KOTLIN_PREFIXES = tuple("shared/src/" + name + "/kotlin/" for name in ("standardMain", "proMain"))
 OPTIONAL_KOTLIN_PREFIXES = RETIRED_KOTLIN_PREFIXES + (

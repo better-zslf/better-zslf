@@ -569,6 +569,8 @@ class GuardExceptionTests(unittest.TestCase):
             (self.root / prefix).mkdir(parents=True)
         for prefix in EXTRACTED_ROOTS:
             (self.root / prefix).mkdir(parents=True)
+        # Synced with the guard's C_KOTLIN_PREFIXES: the desktop preview entry is a required checked source dir.
+        (self.root / "desktopApp/src/jvmMain/kotlin/").mkdir(parents=True)
         self.write(self.app_path, "fun App() = Unit\n")
         self.source = 'val protocol = "协议"\n'
         self.write(self.ui_path, self.source)

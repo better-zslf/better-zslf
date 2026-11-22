@@ -124,7 +124,7 @@ class ArchitectureGuardTests(unittest.TestCase):
         self.write("design-system" + ROOT + "ui/DesignComponents.kt", "package io.github.betterzslf.ui\nimport androidx.compose.runtime.Composable\nimport io.github.betterzslf.core.text.AppText\n@Composable fun Card(text: String = AppText.LABEL) = Unit\n")
         self.write("design-system" + ROOT + "ui/ConfirmationCheckRow.kt", "package io.github.betterzslf.ui\nfun ConfirmationCheckRow(checked: Boolean, onChange: (Boolean) -> Unit) = Unit\n")
         self.write("feature/services/presentation" + ROOT + "feature/services/presentation/ServicesUiState.kt", "package io.github.betterzslf.feature.services.presentation\ndata class ServicesUiState(val title: String)\n")
-        self.write("feature/services/ui" + ROOT + "feature/services/ui/ServicesContent.kt", "package io.github.betterzslf.feature.services.ui\nimport io.github.betterzslf.feature.services.presentation.*\nimport io.github.betterzslf.ui.Card\nfun ServicesContent(state: ServicesUiState) = Unit\n")
+        self.write("feature/services/ui" + ROOT + "feature/services/ui/ServicesContent.kt", "package io.github.betterzslf.feature.services.ui\nimport io.github.betterzslf.feature.services.presentation.*\nimport io.github.betterzslf.ui.AppCard\nfun ServicesContent(state: ServicesUiState) = Unit\n")
         self.write("shared" + ROOT + "feature/run/Upload.kt", "package io.github.betterzslf.feature.run\nclass LegacySharedUpload\n")
         self.write("shared" + ROOT + "data/Repository.kt", "package io.github.betterzslf.data\nclass SchoolRepository\n")
         self.write("shared" + ROOT + "App.kt", "package io.github.betterzslf\nclass AppGraph\n")
@@ -275,6 +275,15 @@ class ArchitectureGuardTests(unittest.TestCase):
             destination = self.root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes((Path(__file__).resolve().parents[2] / relative).read_bytes())
+        # Rolling-update mirror: schedule pages import shared design-system symbols wholesale
+        # (AppCard/appSquircleClip in GlassMaterial, etc.), so the whole design-system ui package
+        # mirrors real bytes instead of an enumerated list; future additions land automatically.
+        for relative in sorted(
+            (Path(__file__).resolve().parents[2] / "design-system/src/commonMain/kotlin/io/github/betterzslf/ui").glob("*.kt")
+        ):
+            target = self.root / relative.relative_to(Path(__file__).resolve().parents[2]).as_posix()
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(relative.read_bytes())
         # V2 closing batch: the profile/content verticals mirror the reviewed real sources.
         profile_content_sources = (
             "feature/profile/domain/src/commonMain/kotlin/io/github/betterzslf/feature/profile/ProfileModels.kt",

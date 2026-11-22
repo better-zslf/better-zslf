@@ -1,0 +1,4 @@
+{"code":200,"data":{"errandList":[
+  {"errandId":"preview-task-1","errandScheduleId":"preview-schedule-1","eName":"Morning run around the lake","startTime":"2026-11-22 07:30","endTime":"2026-11-22 08:10","isFinish":"0"},
+  {"errandId":"preview-task-2","errandScheduleId":"preview-schedule-2","eName":"Evening jog","startTime":"2026-11-21 18:00","endTime":"2026-11-21 18:40","isFinish":"1"}
+]},"message":"ok"}

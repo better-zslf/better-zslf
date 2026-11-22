@@ -30,6 +30,8 @@
 
 ## 关键约定
 
+- 文档存放：公共仓只保留**构建文档**（怎么构建，如 BUILDING.md）与**运行文档**（怎么运行/驱动本项目，如 README、iosApp/README、本文件）；其余一切文档——设计决策、进度报告、切片计划、分析笔记——一律放 **pro-ci 私有仓**（docs/ 下），不进公共仓。公共仓是产品代码的公开面，内部过程性文档不随其公开。
+
 - 包名跨模块保持：文件物理迁移不改包名，同包跨模块经依赖解析；`internal` 是模块级可见，跨模块引用需逐条 public 化并披露。
 - 模块坐标：build-logic 的 kmp-library convention 按 parent-qualified group 产生唯一身份；私有仓用显式坐标别名消费。
 - 新模块 Gradle 模板参照既有 feature 模块：纯逻辑库用 `betterzslf.kmp-library`，含 Compose 的库用 `betterzslf.compose-library`。
